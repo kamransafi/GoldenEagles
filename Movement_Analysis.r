@@ -1,4 +1,4 @@
-
+# Need to provide some descriptions.
 ###############################
 DEM <- raster("/home/kami/Documents/Projects/Aktiv/GoldenEagles/Analysis/EnvData/SRTM/DEM.grd")
 studyArea <- bbox(extent(c(6.147962, 15.512771, 45.388163, 48.016078)))
