@@ -1,3 +1,4 @@
+# Need to add some comments and make it more efficient
 
 ###############################
 DEM <- raster("/home/kami/Documents/Projects/Aktiv/GoldenEagles/Analysis/EnvData/SRTM/DEM.grd")
