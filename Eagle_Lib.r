@@ -1,12 +1,56 @@
-#Projection in CH coordinates
+# Change Projection in CH coordinates
 ProjectCH <- function(x)
 {
   Bproj <- spTransform(x, CRS("+proj=somerc +lat_0=46.95240555555556 +lon_0=7.439583333333333 +x_0=600000 +y_0=200000 +ellps=bessel +units=m +no_defs"))
   return(Bproj)
 }
 
+# A simple outlier removal function based on velocity and an empirical distribution function fitted to the speed values measured.
+# This function caculates for each location the distance to the previous and next point divided by the respective time lags.
+# It returns the quantile of the realised velocity based on the entire data for each segment speed. Based on these quantiles 
+# it is possible to identify which points are characterised by unusual speeds (jump back and forth)
+OffIndex <- function(move, lag=1, time.adj=T, longlat=T)
+{
+  x <- coordinates(move)
+  n <- n.locs(move)
+  D1 <- matrix(cbind(x[,1][seq(1, n-(2*lag), 1)], 
+                     x[,2][seq(1, n-(2*lag), 1)],
+                     x[,1][seq((1+2*lag), n, 1)],
+                     x[,2][seq((1+2*lag), n, 1)]), ncol=4)
+  D2 <- matrix(cbind(x[,1][seq(1, n-(2*lag), 1)], 
+                     x[,2][seq(1, n-(2*lag), 1)],
+                     x[,1][seq((1+lag), (n-lag), 1)],
+                     x[,2][seq((1+lag), (n-lag), 1)]), ncol=4)
+  D3 <- matrix(cbind(x[,1][seq((lag+1), (n-lag) , 1)], 
+                     x[,2][seq((lag+1), (n-lag), 1)],
+                     x[,1][seq((2*lag+1), n, 1)],
+                     x[,2][seq((2*lag+1), n, 1)]), ncol=4)
+  
+  if(longlat==F)
+  {
+    d13 <- sqrt(((D1[,3]-D1[,1])^2)+((D1[,4]-D1[,2])^2))
+    d12 <- sqrt(((D2[,3]-D2[,1])^2)+((D2[,4]-D2[,2])^2))
+    d23 <- sqrt(((D3[,3]-D3[,1])^2)+((D3[,4]-D3[,2])^2))
+  }else{
+    d13 <- apply(D1, 1 , function(x) spDistsN1(matrix(x[1:2], nrow=1), x[3:4], longlat=T)) * 1000
+    d12 <- apply(D2, 1 , function(x) spDistsN1(matrix(x[1:2], nrow=1), x[3:4], longlat=T)) * 1000
+    d23 <- apply(D3, 1 , function(x) spDistsN1(matrix(x[1:2], nrow=1), x[3:4], longlat=T)) * 1000
+  }
+  d123 <- d12+d23
+  Tx <- timestamps(move)
+  dT13 <- as.vector(difftime(Tx[seq((1+2*lag), n, 1)], Tx[seq(1, n-(2*lag), 1)], units="secs"))
+  if(time.adj==T)
+  {
+    di <- ((d123/dT13)-(d13/dT13))
+  }else{
+    di <- (d123-d13)
+  }
+  edi <- ecdf(di)
+  return(c(rep(NA, lag), edi(di), rep(NA, lag)))
+}
 
-#Downloads all movement data for a local copy of a study
+
+# Downloads all movement data for a local copy of a study
 localCopy <- function(x, study, login, ExFolder="./Data", NoWarnings=FALSE){
   if(!dir.exists(ExFolder)){
     dir.create(ExFolder)
@@ -24,8 +68,8 @@ localCopy <- function(x, study, login, ExFolder="./Data", NoWarnings=FALSE){
 }
 
 
-#take the first location in every hour of the day (if present) and thin the data to at least 1 loc/h
-simpleThin <- function(x=NULL, study, creds, file.name=NULL){
+# Take the first location in every hour of the day (if present) and thin the data to at least 1 pos/h
+simple1hThin <- function(x=NULL, study, creds, file.name=NULL){
   if(is.null(x) & is.null(file.name)){stop("Define either an Animal name or an input.")}
   if(!is.null(file)){
     eagle <- readRDS(file.name)
@@ -39,7 +83,7 @@ simpleThin <- function(x=NULL, study, creds, file.name=NULL){
   return(eagle1h)
 }
 
-#Distance daily accumulated. Returns a dataframe with distance, numbers of observations per day, day of the year, Year, days since start.
+# Distance daily accumulated. Returns a dataframe with distance, numbers of observations per day, day of the year, Year, days since start.
 dailyDist <- function(x){
   DD <- tapply(distance(x), list(yday(timestamps(x))[-1], year(timestamps(x))[-1]), sum)
   n <- tapply(distance(x), list(yday(timestamps(x))[-1], year(timestamps(x))[-1]), length)
@@ -60,8 +104,8 @@ dailyDist <- function(x){
 }
 
 
-#Function to calculate the net squared distance in map units from a point of reference (defaults to first coordinates).
-#Returns a dataframe of squared distances and the timestamp.
+# Function to calculate the net squared distance in map units from a point of reference (defaults to first coordinates).
+# Returns a data frame of squared distances and the timestamp.
 nsd <- function(x, reference=coordinates(x)[1,]){
   d <- data.frame(N2D=spDistsN1(coordinates(x), reference, longlat = FALSE)^2, 
                   datetime=timestamps(x))
@@ -69,8 +113,8 @@ nsd <- function(x, reference=coordinates(x)[1,]){
   return(d)
 }
 
-#Function to determine an excursion outside an area based on the point of reference in the nsd function
-#and a distance threshold. The function returns the current state, and the durations of the excursions. 
+# Function to determine an excursion outside an area based on the point of reference in the nsd function
+# and a distance threshold. The function returns the current state, and the durations of the excursions. 
 excur <- function(x, threshold=5000){
   d <- sqrt(x[,1])
   if(max(d)<=threshold)
@@ -101,7 +145,8 @@ excur <- function(x, threshold=5000){
   return(d)
 }
 
-#function to return 99% MCP area and the time difference between the first and last location.
+# Function to return 99% MCP area and the time difference between the first and last location.
+# The projection needs to be in Euclidian space
 MCParea <- function(x){
   A <- mcp(x, percent=99, unin="m", unout = "km2")
   dT <- difftime(tail(timestamps(x), 1), head(timestamps(x), 1), units="days")
