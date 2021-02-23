@@ -82,4 +82,3 @@ writeRaster(DEMlr, "/home/kami/Documents/Projects/Aktiv/GoldenEagles/Analysis/En
 writeRaster(hillBlurLR, "/home/kami/Documents/Projects/Aktiv/GoldenEagles/Analysis/EnvData/hillBlurLR.grd", overwrite=TRUE)
 save("wrld", "lakes1", "EaglesSim", "redEagle", "OyEagles", "frame", "studyArea", file="/home/kami/Documents/Projects/Aktiv/GoldenEagles/Analysis/EnvData/Items4Plots.Rdata")
 
-#random comment to see if I have write access... Elham
