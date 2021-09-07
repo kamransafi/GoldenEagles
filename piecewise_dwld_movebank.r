@@ -69,14 +69,15 @@ studyID <- getMovebankID(study, creds)
 Animals <- getMovebankAnimals(study, creds)
 Inds <- data.frame(IndName=Animals$local_identifier, IndID=Animals$individual_id)
 Inds <- Inds[!duplicated(Inds),]
-
+data <- NULL
 for(i in 1:nrow(Inds)){
   SensorIDs <- Animals$sensor_type_id[Animals$individual_id==Inds$IndID[i]]
   IndGPS <- getMovebankData(study, animalName=Inds$IndName[i], creds, removeDuplicatedTimestamps=T)
   attribs <- getMovebankSensorsAttributes(studyID, creds)
   if(2365683 %in% SensorIDs)
   {
-    IndGPS <- ACCpartialDLD(animalName=Inds$IndID[i])
-    }
+    IndACC <- ACCpartialDLD(animalName=Inds$IndID[i])
+  }
+  data[[Inds$IndName[i]]] <- list(IndGPS, IndACC)
 }
 
