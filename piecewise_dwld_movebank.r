@@ -1,8 +1,14 @@
+## Download large amounts of ACC by getting the data for each individual at a time
+## Check for your system whether doMC works. Otherwise can be replaced eventually with foreach
+## extract ACC function extracts acc data from the file and accounts for different sampling frequencies and 
+## number of axis. This is a crude function and should be replaced by functions from the moveACC
+## package. 
+
 library(move)
 library(data.table)
-library(plyr)
-library(doMC)
-registerDoMC(cores=6)
+library(foreach)
+library(doParallel)
+register(cores=6)
 options(digits.secs=4)
 
 
@@ -35,15 +41,27 @@ extractACC <- function(timestamp, eobs_acceleration_axes, eobs_acceleration_samp
   return(cbind(timestamp=timestamp, acc, Sp10thS))
 }
 
-ACCpartialDLD <- function(startTime, endTime){
-  IndACC <- getMovebank(entity="event", study_id=studyID, sensor_type_id=2365683 , animalName=Inds$IndID[1], login=creds, 
-                        attributes=c("timestamp", "eobs_acceleration_axes", "eobs_acceleration_sampling_frequency_per_axis", "eobs_accelerations_raw" ),
-                        timestamp_start=gsub(".", "", sub(" ", "", gsub(":", "", gsub("-", "", startTime))), fixed=T), 
-                        timestamp_end=gsub(".", "", sub(" ", "", gsub(":", "", gsub("-", "", endTime))), fixed=T))
-  IndACC$timestamp <- as.POSIXct(strptime(IndACC$timestamp, "%Y-%m-%d %H:%M:%OS", tz="UTC"))
-  return(rbindlist(llply(1:nrow(IndACC), function(x) extractACC(IndACC[x,1], IndACC[x,2], IndACC[x,3], IndACC[x,4]), .parallel=T)))
+ACCpartialDLD <- function(animalName){
+  # get the time range for ACC data
+  Trange <- getMovebank(entity="event", study_id=studyID, sensor_type_id=2365683 , animalName=animalName, login=creds, 
+                        attributes=c("timestamp"))
+  Trange <- as.vector(Trange$timestamp)
+  # split the download in chuncks of 10k lines per download
+  dlsq <- cbind(seq(0, length(Trange), by=10000)+1, c(seq(0, length(Trange), by=10000), length(Trange))[-1])
+  # create start and end timestamps for download
+  DLDtimeSeq <- data.frame(startTime=Trange[dlsq[,1]], endTime=Trange[dlsq[,2]])
+  #download the chunks in parallel #nrow(DLDtimeSeq)
+  ACCdld <- foreach(j=1:3, .combine="rbind") %do% {
+    IndACC <- getMovebank(entity="event", study_id=studyID, sensor_type_id=2365683 , animalName=Inds$IndID[1], login=creds, 
+                          attributes=c("timestamp", "eobs_acceleration_axes", "eobs_acceleration_sampling_frequency_per_axis", "eobs_accelerations_raw" ),
+                          timestamp_start=gsub(".", "", sub(" ", "", gsub(":", "", gsub("-", "", DLDtimeSeq$startTime[j]))), fixed=T), 
+                          timestamp_end=gsub(".", "", sub(" ", "", gsub(":", "", gsub("-", "", DLDtimeSeq$endTime[j]))), fixed=T))
+    IndACC$timestamp <- as.POSIXct(strptime(IndACC$timestamp, "%Y-%m-%d %H:%M:%OS", tz="UTC"))
+    foreach(x=1:nrow(IndACC), .combine="rbind") %dopar% (extractACC(IndACC[x,1], IndACC[x,2], IndACC[x,3], IndACC[x,4]))
+  }
+  return(ACCdld)
 }
-  
+
 
 study <- "LifeTrack Golden Eagle Alps"
 creds <- movebankLogin()
@@ -54,19 +72,11 @@ Inds <- Inds[!duplicated(Inds),]
 
 for(i in 1:nrow(Inds)){
   SensorIDs <- Animals$sensor_type_id[Animals$individual_id==Inds$IndID[i]]
-#  IndGPS <- getMovebankData(study, animalName=Inds$IndName[i], creds, removeDuplicatedTimestamps=T)
+  IndGPS <- getMovebankData(study, animalName=Inds$IndName[i], creds, removeDuplicatedTimestamps=T)
   attribs <- getMovebankSensorsAttributes(studyID, creds)
   if(2365683 %in% SensorIDs)
   {
-    Trange <- getMovebank(entity="event", study_id=studyID, sensor_type_id=2365683 , animalName=Inds$IndID[i], login=creds, 
-                          attributes=c("timestamp"))
-    Trange <- as.vector(Trange$timestamp)
-    dlsq <- cbind(seq(0, length(Trange), by=10000)+1, c(seq(0, length(Trange), by=10000), length(Trange))[-1])
-    DLDtimeSeq <- data.frame(startTime=Trange[dlsq[,1]], endTime=Trange[dlsq[,2]])
-    t0 <- Sys.time()
-    acc_table <- rbindlist(lapply(1:3, function(x) ACCpartialDLD(DLDtimeSeq[x,1], DLDtimeSeq[x,2]))) #, .parallel = T nrow(DLDtimeSeq)4
-    Sys.time()-t0
+    IndGPS <- ACCpartialDLD(animalName=Inds$IndID[i])
     }
-  
 }
 
