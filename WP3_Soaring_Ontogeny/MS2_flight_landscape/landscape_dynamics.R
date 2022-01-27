@@ -164,7 +164,7 @@ load("post_em_mv_minutely.RData") #mv_mnt
 #          speed = ifelse(speed > quantile(speed, 0.999), quantile(speed, 0.999), #replace flight height values than the 90% quantile with the 90% quantile value
 #                                   speed))
 
-embc_input <- as.data.frame(mv_mnt) %>% 
+embc_input <- as.data.frame(mv_mnt) %>%  #the medians dont change, so is there any point in reassigning outlier values??
   drop_na(speed) %>% #remove NA values for speed
   mutate(flight_h = ifelse(flight_h > 3000, 3000, #replace flight height values higher than 3000 with 3000
                            ifelse(flight_h < -100, -100, #replace flight height values lower than -100 with -100
@@ -178,9 +178,53 @@ m_spd <- data.matrix(embc_input[,c("speed","flight_h")])
 #call embc
 bc_spd <- embc(m_spd)
 
-#investigate the bc
+#investigate the bc (Garriga et al 2016; S2)
+sctr(bc_spd)
+
+#smooth the labeling (deals with single assignments that are surrounded by other labels)
+bc_smth <- smth(bc_spd,dlta = 0.5)
+
+X11()
+par(mfrow = c(1,2))
+sctr(bc_spd)
+sctr(bc_smth)
+
+
+#investigate the bc (Garriga et al 2016; S2)
 sctr(bc_spd)
 
 lkhp(bc_spd)
 
 stts(bc_spd)
+
+#distribution of variables in each category
+hist(bc_spd@X[which(bc_spd@A%in%c(1,3)),1],breaks=seq(0,max(bc_spd@X[,1]),
+                                                    max(bc_spd@X[,1])/50),include.lowest=TRUE,xlim=range(bc_spd@X[,1]),
+     xlab='velocity (m/s)',main='velocity distribution for LOW turns',cex.main=0.8)
+abline(v=bc_spd@R[1,3],col=1,lwd=1.5,lty='dashed')
+hist(bc_spd@X[which(bc_spd@A%in%c(2,4)),1],breaks=seq(0,max(bc_spd@X[,1]),
+                                                    max(bc_spd@X[,1])/50),include.lowest=TRUE,xlim=range(bc_spd@X[,1]),
+     xlab='velocity (m/s)',main='velocity distribution for HIGH turns',cex.main=0.8)
+abline(v=bc_spd@R[4,2],col=1,lwd=1.5,lty='dotdash')
+
+table(bc_spd@A)
+
+#append cluster labels (1:LL, 2:LH, 3:HL, and4:HH) to original data
+embc_input$embc_clst <- bc_spd@A
+
+
+##################### will it make any difference if outliers are left alone?
+
+input <- as.data.frame(mv_mnt) %>%  
+  drop_na(speed)
+
+
+#create a matrix of flight height and speed
+m <- data.matrix(input[,c("speed","flight_h")])
+
+#call embc
+bc <- embc(m)
+
+#investigate the bc (Garriga et al 2016; S2)
+X11();sctr(bc)
+table(bc@A)
