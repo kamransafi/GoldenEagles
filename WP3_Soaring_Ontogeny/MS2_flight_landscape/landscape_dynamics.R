@@ -156,13 +156,21 @@ load("post_em_mv_minutely.RData") #mv_mnt
 #prep for embc (for all individuals pooled. no reliability function will be used for speed, because data collection frequency is pretty uniform)
 
 #deal with outliers and NAs
+# embc_input <- as.data.frame(mv_mnt) %>% 
+#   drop_na(speed) %>% #remove NA values for speed
+#   mutate(flight_h = ifelse(flight_h > quantile(flight_h, 0.999), quantile(flight_h, 0.999), #replace flight height values higher than the 90% quantile with the 90% quantile value
+#                               ifelse(flight_h < quantile(flight_h, 0.001), quantile(flight_h, 0.001), #replace flight height values lower than 10% quantile with the 10% quantile value
+#                                      flight_h)),
+#          speed = ifelse(speed > quantile(speed, 0.999), quantile(speed, 0.999), #replace flight height values than the 90% quantile with the 90% quantile value
+#                                   speed))
+
 embc_input <- as.data.frame(mv_mnt) %>% 
   drop_na(speed) %>% #remove NA values for speed
-  mutate(flight_h = ifelse(flight_h > quantile(mv_mnt$flight_h, 0.9), quantile(mv_mnt$flight_h, 0.9), #replace flight height values higher than the 90% quantile with the 90% quantile value
-                              ifelse(flight_h < quantile(mv_mnt$flight_h, 0.1), quantile(mv_mnt$flight_h, 0.1), #replace flight height values lower than 10% quantile with the 10% quantile value
-                                     flight_h)),
-         speed = ifelse(speed > quantile(mv$speed, 0.9, na.rm = T), quantile(mv$speed, 0.9, na.rm = T), #replace flight height values than the 90% quantile with the 90% quantile value
-                                  speed))
+  mutate(flight_h = ifelse(flight_h > 3000, 3000, #replace flight height values higher than 3000 with 3000
+                           ifelse(flight_h < -100, -100, #replace flight height values lower than -100 with -100
+                                  flight_h)),
+         speed = ifelse(speed > 50, 50, #replace flight height values higher than 10000 with 10000
+                        speed))
 
 #create a matrix of flight height and speed
 m_spd <- data.matrix(embc_input[,c("speed","flight_h")])
@@ -173,4 +181,6 @@ bc_spd <- embc(m_spd)
 #investigate the bc
 sctr(bc_spd)
 
+lkhp(bc_spd)
 
+stts(bc_spd)
