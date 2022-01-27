@@ -213,11 +213,12 @@ table(bc_spd@A)
 embc_input$embc_clst <- bc_spd@A
 
 
-##################### will it make any difference if outliers are left alone? YES!!!
+###what if i remove the outliers?
 
-input <- as.data.frame(mv_mnt) %>%  
-  drop_na(speed)
-
+input <- as.data.frame(mv_mnt) %>%
+  drop_na(speed) %>% #remove NA values for speed
+  filter(between(flight_h, quantile(flight_h, 0.005), quantile(flight_h, 0.999)) & speed < quantile(speed, 0.999)) %>% 
+  as.data.frame()
 
 #create a matrix of flight height and speed
 m <- data.matrix(input[,c("speed","flight_h")])
@@ -227,4 +228,6 @@ bc <- embc(m)
 
 #investigate the bc (Garriga et al 2016; S2)
 X11();sctr(bc)
-table(bc@A)
+
+bc_smth <- smth(bc,dlta = 0.5)
+X11();sctr(bc_smth)
