@@ -153,71 +153,24 @@ save(mv_mnt, file = "post_em_mv_minutely.RData") #move object with minutely data
 
 load("post_em_mv_minutely.RData") #mv_mnt
 
+#prep for embc (for all individuals pooled. no reliability function will be used for speed, because data collection frequency is pretty uniform)
 
+#deal with outliers and NAs
+embc_input <- as.data.frame(mv_mnt) %>% 
+  drop_na(speed) %>% #remove NA values for speed
+  mutate(flight_h = ifelse(flight_h > quantile(mv_mnt$flight_h, 0.9), quantile(mv_mnt$flight_h, 0.9), #replace flight height values higher than the 90% quantile with the 90% quantile value
+                              ifelse(flight_h < quantile(mv_mnt$flight_h, 0.1), quantile(mv_mnt$flight_h, 0.1), #replace flight height values lower than 10% quantile with the 10% quantile value
+                                     flight_h)),
+         speed = ifelse(speed > quantile(mv$speed, 0.9, na.rm = T), quantile(mv$speed, 0.9, na.rm = T), #replace flight height values than the 90% quantile with the 90% quantile value
+                                  speed))
 
+#create a matrix of flight height and speed
+m_spd <- data.matrix(embc_input[,c("speed","flight_h")])
 
-
-
-#estimate a reliability function and add weight to each value (Garriga et al. 2016, S1)
-#run embc for all individuals pooled
-load("post_em_mv_no_na.RData") #mv_no_na
-
-#focus on a number of individuals for proof of concept
-
-mode_tl <- getmode(mv_no_na$time_lag) #mode of time lag for entire data set
-sample_no_na <- as.data.frame(mv_no_na) %>% 
-  filter(individual.local.identifier %in% c("Almen19 (eobs 7001)", "Sinestra1 19 (eobs 7003)", 
-                                             "Nalps18 (eobs 5860)", "Flüela20 (eobs 7040)", "Punteglias20 (eobs 6483)")) %>% 
-  group_by(individual.local.identifier) %>% 
-  mutate(speed_rel = mode_tl / time_lag) %>%  #estimate reliability of speed values based on frequency of data collection (Garriga et al 2016; suppl. 1)
-  drop_na(speed) %>% #remove NA values for speed.
-  mutate(flight_h_mn = ifelse(flight_h > 3000, 3000,
-                               ifelse(flight_h < -100, -100,
-                                      flight_h))) 
-  
-  
-  
-save(sample_no_na, file = "sample_for_embc.RData")
-
-m_sp <- data.matrix(sample_no_na[,c("speed","flight_h_mn")])
-m_sp_rel <- data.matrix(sample_no_na[,c("speed","speed_rel")])
-bc_sp_rel <- embc(m_sp,  U = m_sp_rel)
+#call embc
+bc_spd <- embc(m_spd)
 
 #investigate the bc
-sctr(bc_sp)
-
-
-m_gsp <- data.matrix(sample_no_na[,c("ground.speed","flight_h_mn")])
-bc_gsp <- embc(m_gsp)
-
-#investigate the bc
-sctr(bc_gsp)
-
-#### ind-specific
-seg <- lapply(split(data_df, data_df$id), function(ind){
-  #create a matrix of data points as rows and input features as columns
-  m <- data.matrix(ind[,c("speed","height.above.ellipsoid")])
-  
-  bc <- embc(m)
-  ind$flight <- as.factor(bc@A) #add clustering labels to the data frame
-  levels(ind$flight) <- c("LL", "LH", "HL", "HH")
-  
-  ind
-}) %>% 
-  reduce(rbind)
-
-#directly use the move object for embc (from the tutorial).. the tutorial only covers stbc which uses speed and turn angle
-embc(mv)
-
-
-
-###hourly subset. do I need this? annotate everything and aggregate in some way. ######
-#explore data collection program and subset to hourly
-mv$timeLag <- unlist(lapply(timeLag(mv,units = "mins"), c, NA))
-
-#hourly subset and burst assignment
-
-
-
+sctr(bc_spd)
 
 
