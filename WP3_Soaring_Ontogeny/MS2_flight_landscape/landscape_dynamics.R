@@ -213,7 +213,7 @@ table(bc_spd@A)
 embc_input$embc_clst <- bc_spd@A
 
 
-##################### will it make any difference if outliers are left alone?
+##################### will it make any difference if outliers are left alone? YES!!!
 
 input <- as.data.frame(mv_mnt) %>%  
   drop_na(speed)
