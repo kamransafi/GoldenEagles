@@ -1,6 +1,6 @@
 #script for analysis of golden eagle data for the dynamics of the energy landscape manuscript
 #full data set downloaded from Movebank on Jan. 13. 2022
-#Jan 11. 2022
+#Jan 11. 2022. Elham Nourani. Konstanz, DE
 
 library(tidyverse)
 library(lubridate)
@@ -8,7 +8,7 @@ library(move)
 library(sf)
 library(EMbC)
 
-wgs<-CRS("+proj=longlat +datum=WGS84 +no_defs")
+wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
 meters_proj <- CRS("+proj=moll +ellps=WGS84")
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
@@ -66,8 +66,6 @@ data_w_info <- data %>%
 save(data_w_info, file = "all_data_w_emig.RData")
 
 
-
-
 # STEP 2: assign life stages: filter post-emigration ----------------------------------------------------------------
 
 ind_ls <- split(data_w_info, data_w_info$individual.local.identifier)
@@ -114,11 +112,6 @@ post_em$flight_h <- post_em$height.above.ellipsoid - post_em$dem_alt
 
 save(post_em, file = "post_em_df_dem.RData")
 
-#investigate this in one individual
-one <- post_em %>% 
-  filter(id == "Almen18")
-
-plot(one$ground.speed, one$flight_h)
 
 # STEP 4: subset to 20 min and estimate ground speed ----------------------------------------------------------------
 
@@ -140,6 +133,21 @@ save(mv, file = "post_em_mv.RData")
 #remove NA values of flight_h
 mv_no_na <- mv[!is.na(mv$flight_h),]
 
+#keep the first instance of every minute.
+df_mnt <- as.data.frame(mv_no_na) %>%
+  group_by(individual.local.identifier, year(timestamp), month(timestamp), day(timestamp), hour(timestamp), minute(timestamp)) %>%
+  slice(1) %>% 
+  dplyr::select(!c("coords.x2" ,"coords.x1", "year(timestamp)","month(timestamp)", "day(timestamp)","hour(timestamp)", "minute(timestamp)")) %>% #remove columns that I don't need
+  as.data.frame()
+
+#convert back to a move object
+mv_mnt <- move(x = df_mnt$location.long, y = df_mnt$location.lat, time = df_mnt$timestamp, proj = wgs, data = df_mnt, animal = df_mnt$individual.local.identifier)
+
+#calculate ground speed and time interval between points
+mv_mnt$speed <- unlist(lapply(speed(mv_mnt),c, NA ))
+mv_mnt$time_lag <- unlist(lapply(timeLag(mv_mnt, units = "mins"),  c, NA))
+
+save(mv_mnt, file = "post_em_mv_minutely.RData")
 
 mv_ls <- lapply(split(mv_no_na), function(ind){
   

@@ -5,4 +5,4 @@ Manuscript 2: dynamics of the energy landscape from the birds' perspetive along 
 
 Date: Jan. 27. 2022
 
-Authors: Elham Nourani {enourani@ab.mpg.de} , Hester Brønnvik, Martina Scacco, Kamran Safi
+Authors: Elham Nourani {enourani@ab.mpg.de}, Hester Brønnvik, Martina Scacco, Kamran Safi
