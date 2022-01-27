@@ -113,7 +113,7 @@ post_em$flight_h <- post_em$height.above.ellipsoid - post_em$dem_alt
 save(post_em, file = "post_em_df_dem.RData")
 
 
-# STEP 4: subset to 20 min and estimate ground speed ----------------------------------------------------------------
+# STEP 4: subset to 1 min intervals and estimate ground speed ----------------------------------------------------------------
 
 #remove duplicated timestamps
 rows_to_delete <- unlist(sapply(getDuplicatedTimestamps(x = post_em$individual.local.identifier, timestamps = post_em$timestamp,
@@ -128,7 +128,7 @@ post_em <- post_em[order(c(post_em$individual.local.identifier, post_em$timestam
 mv <- move(x = post_em$location.long, y = post_em$location.lat, time = post_em$timestamp, proj = wgs, data = post_em, animal = post_em$individual.local.identifier)
 mv$speed <- unlist(lapply(speed(mv),c, NA ))
 
-save(mv, file = "post_em_mv.RData")
+save(mv, file = "post_em_mv.RData") #move object with original data frequency and NA values
 
 #remove NA values of flight_h
 mv_no_na <- mv[!is.na(mv$flight_h),]
@@ -147,63 +147,16 @@ mv_mnt <- move(x = df_mnt$location.long, y = df_mnt$location.lat, time = df_mnt$
 mv_mnt$speed <- unlist(lapply(speed(mv_mnt),c, NA ))
 mv_mnt$time_lag <- unlist(lapply(timeLag(mv_mnt, units = "mins"),  c, NA))
 
-save(mv_mnt, file = "post_em_mv_minutely.RData")
+save(mv_mnt, file = "post_em_mv_minutely.RData") #move object with minutely data frequency and no NA values for flight height
 
-mv_ls <- lapply(split(mv_no_na), function(ind){
-  
-  #thin the track
-  track_th <- ind %>%
-    thinTrackTime(interval = as.difftime(20, units = 'mins'),
-                  tolerance = as.difftime(5, units = 'mins')) #the unselected bursts are the large gaps between the selected ones
-  
-  #assign burst IDs (each chunk of track with 1 hour intervals is one burst... longer gaps will divide the brusts) 
-  track_th$selected <- c(as.character(track_th@burstId),NA) #assign selected as a variable
-  track_th$burst_id <- c(1,rep(NA,nrow(track_th)-1)) #define value for first row
-  if(nrow(track_th@data) == 1){
-    track_th@data$burst_id <- track_th$burst_id
-  } else {for(i in 2:nrow(track_th@data)){
-    if(i== nrow(track_th@data)){
-      track_th@data$burst_id[i] <- NA
-    } else
-      if(track_th@data[i-1,"selected"] == "selected"){
-        track_th@data$burst_id[i] <- track_th@data[i-1,"burst_id"]
-      } else {
-        track_th@data$burst_id[i] <- track_th@data[i-1,"burst_id"] + 1
-      }
-  }
-  }
-  
-  #convert back to a move object (from move burst)
-  #if(nrow(track_th) > 0){
-  track_th <- as(track_th,"Move")
-  #}
-  
-  track_th
-})
+# STEP 5: EMbC segmentation ----------------------------------------------------------------
 
-
-#calculate speed
-track_th$speed <- unlist(lapply(speed(track_th),c, NA )) #in m/s
-track_th$time_lag <- unlist(lapply(timeLag(track_th, units = "mins"),  c, NA))
+load("post_em_mv_minutely.RData") #mv_mnt
 
 
 
-# STEP 4: estimate ground speed and data collection frequency----------------------------------------------------------------
 
 
-mv_no_na$speed <- unlist(lapply(speed(mv_no_na), c, NA))
-mv_no_na$time_lag <- unlist(lapply(timeLag(mv_no_na, units = "mins"),  c, NA))
-
-save(mv_no_na, file = "post_em_mv_no_na.RData")
-
-#time lag investigation
-time_lag_summary <- as.data.frame(mv_no_na) %>% 
-  group_by(individual.local.identifier, month(timestamp)) %>% 
-  summarize(tl_min = min(time_lag, na.rm = T),
-            tl_mode = getmode(time_lag),
-            tl_max = max(time_lag))
-
-# STEP 4: EMbC segmentation ----------------------------------------------------------------
 
 #estimate a reliability function and add weight to each value (Garriga et al. 2016, S1)
 #run embc for all individuals pooled
