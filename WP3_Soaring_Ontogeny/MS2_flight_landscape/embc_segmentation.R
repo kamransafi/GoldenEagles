@@ -1,4 +1,4 @@
-#script for analysis of golden eagle data for the dynamics of the energy landscape manuscript
+#script for analysis of golden eagle data for the dynamics of the energy landscape manuscript: data clean up and segmentation
 #full data set downloaded from Movebank on Jan. 13. 2022
 #Jan 11. 2022. Elham Nourani. Konstanz, DE
 
