@@ -238,6 +238,8 @@ X11();sctr(bc_smth)
 input$embc_clst <- bc@A
 input$embc_clst_smth <- bc_smth2@A
 
+save(input, file = "embc_output.RData")
+
 #select a sample track and visualize
 smpl <- input %>% 
   filter(individual.local.identifier == "Trimmis20 (eobs 7041)")
