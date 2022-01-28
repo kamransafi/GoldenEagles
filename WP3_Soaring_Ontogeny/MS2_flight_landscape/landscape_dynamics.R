@@ -116,6 +116,8 @@ save(post_em, file = "post_em_df_dem.RData")
 
 # STEP 4: subset to 1 min intervals and estimate ground speed ----------------------------------------------------------------
 
+load("post_em_df_dem.RData") #post_em
+
 #remove duplicated timestamps
 rows_to_delete <- unlist(sapply(getDuplicatedTimestamps(x = post_em$individual.local.identifier, timestamps = post_em$timestamp,
                                                         sensorType = "gps"),"[",-1)) #get all but the first row of each set of duplicate rows
@@ -229,15 +231,16 @@ bc <- embc(m)
 #investigate the bc (Garriga et al 2016; S2)
 X11();sctr(bc)
 
-bc_smth2 <- smth(bc,dlta = 0.6)
-X11();sctr(bc_smth2)
+bc_smth <- smth(bc,dlta = 0.6)
+X11();sctr(bc_smth)
 
 #append cluster labels (1:LL, 2:LH, 3:HL, and4:HH) to original data
-input$embc_clst <- bc_smth@A
+input$embc_clst <- bc@A
+input$embc_clst_smth <- bc_smth2@A
 
 #select a sample track and visualize
 smpl <- input %>% 
-  filter(individual.local.identifier == "Sampuoir1 19 (eobs 5943)")
+  filter(individual.local.identifier == "Trimmis20 (eobs 7041)")
 
 coordinates(smpl) <- ~ location.long + location.lat
 proj4string(smpl) <- wgs
@@ -246,3 +249,4 @@ proj4string(ln) <- wgs
 
 mapview(ln, color = "gray") + mapview(smpl, zcol = "embc_clst")
 
+mapview(dd, color = "gray") + mapview(smpl, zcol = "embc_clst_smth")
