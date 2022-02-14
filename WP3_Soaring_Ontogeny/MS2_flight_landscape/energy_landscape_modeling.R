@@ -26,6 +26,8 @@ load("embc_output.RData") #input
 flight <- input %>% 
   filter(embc_clst_smth == 4) #use the smoothed values of clustering
 
+save(flight, file = "flight_only.RData")
+
 # #plot and see
 # flight_sf <- flight %>% 
 #   st_as_sf(coords = c("location.long", "location.lat"), crs = wgs)
@@ -37,8 +39,8 @@ flight <- input %>%
 mv <- move(x = flight$location.long, y = flight$location.lat, time = flight$timestamp, proj = wgs, data = flight, animal = flight$individual.local.identifier)
 
 
-hr <- 30 #minutes; determine the sub-sampling interval
-tolerance <- 5 #minutes; tolerance for sub-sampling
+hr <- 60 #minutes; determine the sub-sampling interval
+tolerance <- 15 #minutes; tolerance for sub-sampling
 n_alt <- 100 #number of alternative steps.
 
 #prepare cluster for parallel computation
@@ -60,7 +62,7 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
 
 #used_av_ls <- parLapply(mycl, move_ls, function(group){ # for each group (ie. unique species-flyway combination)
   
-  sp_obj_ls <- lapply(split(group), function(track){ #for each track,
+  sp_obj_ls <- parLapply(mycl, split(mv), function(track){ #for each individual (i.e. track),
     
     #--STEP 1: thin the data 
     track_th <- track %>%
@@ -107,13 +109,17 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
       bursted_sp$track<-track@idData$track
       bursted_sp$species<-track@idData$species
     }
-    
-    #bursted_sp$track<-track@idData$seg_id 
+  
     
     bursted_sp
     
   }) %>% 
     Filter(function(x) length(x) > 1, .) #remove segments with no observation
+  
+  Sys.time() - b 
+  stopCluster(mycl) 
+  
+  save(sp_obj_ls, file = "one_hr_25_ind.RData")
   
   #--STEP 4: estimate step length and turning angle distributions
   #put everything in one df
@@ -132,7 +138,7 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
   fit.gamma1 <- fitdist(sl, distr = "gamma", method = "mle")
   
   #plot turning angle and step length distributions
-  pdf(paste0("/home/enourani/ownCloud/Work/Projects/delta_t/R_files/2021/ssf_plots/", hr, "_", tolerance, "/",group@idData$group[1], ".pdf"))
+  pdf(paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ssf_figs/ta_sl_", hr, "_", tolerance, ".pdf"))
   par(mfrow=c(1,2))
   hist(sl, freq=F, main="", xlab = "Step length (km)")
   plot(function(x) dgamma(x, shape = fit.gamma1$estimate[[1]],
@@ -142,12 +148,28 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
   dev.off()
   
   #diagnostic plots for step length distribution
-  pdf(paste0("/home/enourani/ownCloud/Work/Projects/delta_t/R_files/2021/ssf_plots/", hr, "_", tolerance, "/",group@idData$group[1], "_diag.pdf"))
+  pdf(paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ssf_figs/diagnostics_", hr, "_", tolerance, ".pdf"))
   plot(fit.gamma1)
   dev.off()
   
   #--STEP 5: produce alternative steps
-  used_av_track <- lapply(sp_obj_ls, function(track){ #for each trackment
+  #prepare cluster for parallel computation
+  mycl <- makeCluster(10) #the number of CPUs to use (adjust this based on your machine)
+  
+  clusterExport(mycl, c("mv", "hr", "mu", "kappa", "fit.gamma1", "tolerance", "n_alt","wgs", "meters_proj", "NCEP.loxodrome.na")) #define the variable that will be used within the ParLapply call
+  
+  clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
+    library(sf)
+    library(sp)
+    library(tidyverse)
+    library(move)
+    library(CircStats)
+    library(circular)
+    library(fitdistrplus)
+  })
+  
+  (b <- Sys.time()) 
+  used_av_track <- parLapply(mycl, sp_obj_ls, function(track){ #for each track
     
     lapply(split(track,track$burst_id),function(burst){ #for each burst,
       
@@ -182,15 +204,18 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
         proj4string(rnd_sp) <- meters_proj
         rnd_sp <- spTransform(rnd_sp, wgs)
         
+        #check visually
+        # mapview(current_point, color = "red") + mapview(previous_point, color = "orange") + mapview(used_point, color = "yellow") + mapview(rnd_sp, color = "black", cex = 0.5)
+        
         #put used and available points together
         df <- used_point@data %>%  
           slice(rep(row_number(), n_alt+1)) %>% #paste each row n_alt times for the used and alternative steps
-          mutate(location.long = c(head(x,1),rnd_sp@coords[,1]), #the coordinates were called x and y in the previous version
-                 location.lat = c(head(y,1),rnd_sp@coords[,2]),
+          mutate(location.long = c(head(coords.x1,1),rnd_sp@coords[,1]), #the coordinates were called x and y in the previous version
+                 location.lat = c(head(coords.x2,1),rnd_sp@coords[,2]),
                  turning_angle = c(head(turning_angle,1),deg(rnd_sp$turning_angle)),
                  step_length = c(head(step_length,1),rnd_sp$step_length),
                  used = c(1,rep(0,n_alt)))  %>%
-          dplyr::select(-c("x","y")) %>% 
+          dplyr::select(-c("coords.x1","coords.x2")) %>% 
           rowwise() %>% 
           mutate(heading = NCEP.loxodrome.na(lat1 = current_point@coords[,2], lat2 = location.lat, lon1 = current_point@coords[,1], lon2 = location.long)) %>% 
           as.data.frame()
@@ -205,12 +230,11 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
     
   }) %>% 
     reduce(rbind)
-  used_av_track
-#})
 
-Sys.time() - b 
-
-stopCluster(mycl) 
+  Sys.time() - b 
+  stopCluster(mycl) 
 
 
-save(used_av_ls, file = "2021/public/ssf_input_all_60_15_150.RData")
+
+
+save(used_av_track, file = "one_hr_25_ind_100alt.RData")
