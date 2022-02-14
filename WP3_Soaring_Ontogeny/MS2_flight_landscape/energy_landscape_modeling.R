@@ -11,7 +11,7 @@ library(parallel)
 library(CircStats)
 library(circular)
 library(fitdistrplus)
-
+library(raster)
 
 wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
 meters_proj <- CRS("+proj=moll +ellps=WGS84")
@@ -235,6 +235,24 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
   stopCluster(mycl) 
 
 
+save(used_av_track, file = "one_hr_25_ind_100alt.RData") #222907 rows
 
 
-save(used_av_track, file = "one_hr_25_ind_100alt.RData")
+# STEP 3: summary stats ----------------------------------------------------------------
+
+load("one_hr_25_ind_100alt.RData") #used_av_track
+
+
+
+
+# STEP 4: annotation ----------------------------------------------------------------
+
+#manually annotate with static variables.
+load("/home/enourani/ownCloud/Work/GIS_files/EU_DEM/eu_dem_v11_E40N20/dem_wgs") #dem_wgs spatial res: 25 m
+cropped_dem <- 
+slope <- terrain(dem_wgs, opt = c("slope", "aspect", "roughness"), unit = "degrees", filename = "slope_aspect.tif")
+
+
+#extract elevation values
+post_em$dem_alt <- extract(x = dem_wgs, y = post_em[,c("location.long","location.lat")], method = "bilinear")
+
