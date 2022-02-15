@@ -1,5 +1,6 @@
 #script for analysis of golden eagle data for the dynamics of the energy landscape manuscript: energy landscape construction
 #follows on from embc_segmentation.R
+#the first attempt will only include static variables. reasons: 1)movebank annotation isn't working and 2)res of static variables is higher
 #Jan 28. 2022. Elham Nourani. Konstanz, DE
 
 library(tidyverse)
@@ -33,7 +34,11 @@ save(flight, file = "flight_only.RData")
 #   st_as_sf(coords = c("location.long", "location.lat"), crs = wgs)
 # mapview(flight_sf, zcol = "individual.local.identifier")
 
-# STEP 2: step selection prep- generate alternative steps ----------------------------------------------------------------
+
+# STEP 2: variogram to decide on data resolution ----------------------------------------------------------------
+
+
+# STEP 3: step selection prep- generate alternative steps ----------------------------------------------------------------
 
 #create move object
 mv <- move(x = flight$location.long, y = flight$location.lat, time = flight$timestamp, proj = wgs, data = flight, animal = flight$individual.local.identifier)
@@ -238,21 +243,28 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
 save(used_av_track, file = "one_hr_25_ind_100alt.RData") #222907 rows
 
 
-# STEP 3: summary stats ----------------------------------------------------------------
+# STEP 4: summary stats ----------------------------------------------------------------
 
 load("one_hr_25_ind_100alt.RData") #used_av_track
 
 
 
 
-# STEP 4: annotation ----------------------------------------------------------------
+# STEP 5: annotation ----------------------------------------------------------------
 
 #manually annotate with static variables.
 load("/home/enourani/ownCloud/Work/GIS_files/EU_DEM/eu_dem_v11_E40N20/dem_wgs") #dem_wgs spatial res: 25 m
-cropped_dem <- 
-slope <- terrain(dem_wgs, opt = c("slope", "aspect", "roughness"), unit = "degrees", filename = "slope_aspect.tif")
 
+  
+dem <- raster("/home/enourani/ownCloud/Work/GIS_files/EU_DEM/eu_dem_v11_E40N20/eu_dem_v11_E40N20.TIF")
+slope <- terrain(dem, opt = c("slope", "aspect", "roughness"), unit = "degrees", filename = "slope_aspect.tif")
+
+slope_wgs <-  projectRaster(slope, crs = wgs) 
+
+save(slope_wgs, file = "/home/enourani/ownCloud/Work/GIS_files/EU_DEM/eu_dem_v11_E40N20/slope_wgs.RData")
 
 #extract elevation values
 post_em$dem_alt <- extract(x = dem_wgs, y = post_em[,c("location.long","location.lat")], method = "bilinear")
+
+
 
