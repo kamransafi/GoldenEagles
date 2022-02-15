@@ -6,6 +6,7 @@
 library(tidyverse)
 library(lubridate)
 library(move)
+library(ctmm)
 library(sf)
 library(mapview)
 library(parallel)
@@ -37,6 +38,22 @@ save(flight, file = "flight_only.RData")
 
 # STEP 2: variogram to decide on data resolution ----------------------------------------------------------------
 
+#create move object
+load("flight_only.RData") #flight
+mv <- move(x = flight$location.long, y = flight$location.lat, time = flight$timestamp, proj = wgs, data = flight, animal = flight$individual.local.identifier)
+tel <- as.telemetry(mv)
+sv <- lapply(tel, variogram)
+
+var <- sv[[23]]
+plot(var, CTMM = variogram.fit(var, interactive = F),xlim=xlim)
+plot(var, CTMM = variogram.fit(var, interactive = F), level = 0.5)
+
+level <- c(0.5,0.95) # 50% and 95% CIs
+xlim <- c(0,1 %#% "hour") # 0-12 hour window
+plot(var,xlim=xlim,level=level)
+
+m.ou <- ctmm(sigma=23 %#% "km^2",tau=6 %#% "day")
+plot(var,CTMM=m.ou,level=level,col.CTMM="purple",xlim=xlim)
 
 # STEP 3: step selection prep- generate alternative steps ----------------------------------------------------------------
 
