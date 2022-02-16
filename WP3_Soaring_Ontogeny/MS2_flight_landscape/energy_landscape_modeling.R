@@ -52,18 +52,18 @@ level <- c(0.5,0.95) # 50% and 95% CIs
 xlim <- c(0,1 %#% "hour") # 0-12 hour window
 plot(var,xlim=xlim,level=level)
 
-m.ou <- ctmm(sigma=23 %#% "km^2",tau=6 %#% "day")
-plot(var,CTMM=m.ou,level=level,col.CTMM="purple",xlim=xlim)
+#conclusion: the variogram looks weird... just go with 20 min for now....
 
 # STEP 3: step selection prep- generate alternative steps ----------------------------------------------------------------
 
+load("flight_only.RData") #flight
 #create move object
 mv <- move(x = flight$location.long, y = flight$location.lat, time = flight$timestamp, proj = wgs, data = flight, animal = flight$individual.local.identifier)
 
 
-hr <- 60 #minutes; determine the sub-sampling interval
-tolerance <- 15 #minutes; tolerance for sub-sampling
-n_alt <- 100 #number of alternative steps.
+hr <- 20 #minutes; determine the sub-sampling interval
+tolerance <- 5 #minutes; tolerance for sub-sampling
+n_alt <- 50 #number of alternative steps.
 
 #prepare cluster for parallel computation
 mycl <- makeCluster(10) #the number of CPUs to use (adjust this based on your machine)
@@ -118,7 +118,7 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
     burst_ls <- Filter(function(x) length(x) >= 3, burst_ls) #remove bursts with less than 3 observations
     
     burst_ls <- lapply(burst_ls, function(burst){
-      burst$step_length <- c(distance(burst),NA) 
+      burst$step_length <- c(move::distance(burst),NA) 
       burst$turning_angle <- c(NA,turnAngleGc(burst),NA)
       burst
     })
@@ -128,11 +128,11 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
     
     #reassign values
     if(length(bursted_sp) >= 1){
-      bursted_sp$track<-track@idData$track
-      bursted_sp$species<-track@idData$species
+      bursted_sp$track <- track@idData$track
+      bursted_sp$individual.taxon.canonical.name <- track@idData$individual.taxon.canonical.name
+      bursted_sp$individual.local.identifier <- track@idData$individual.local.identifier
     }
   
-    
     bursted_sp
     
   }) %>% 
@@ -141,7 +141,7 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
   Sys.time() - b 
   stopCluster(mycl) 
   
-  save(sp_obj_ls, file = "one_hr_25_ind.RData")
+  save(sp_obj_ls, file = paste0("sl_", hr, "_min_25_ind.RData"))
   
   #--STEP 4: estimate step length and turning angle distributions
   #put everything in one df
@@ -256,25 +256,74 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
   Sys.time() - b 
   stopCluster(mycl) 
 
-
-save(used_av_track, file = "one_hr_25_ind_100alt.RData") #222907 rows
-
+save(used_av_track, file = paste0("alt_", n_alt, "_", hr, "_min_25_ind.RData")) #315843
 
 # STEP 4: summary stats ----------------------------------------------------------------
 
-load("one_hr_25_ind_100alt.RData") #used_av_track
+load("alt_50_20_min_25_ind.RData") #used_av_track
+
+used_av_track %>% 
+  mutate(yr_mn = paste(year(timestamp), month(timestamp), sep = "_"),
+         yr_day = paste(year(timestamp), yday(timestamp), sep = "_"),
+         yr = year(timestamp)) %>% 
+  group_by(individual.local.identifier) %>%
+  summarise(n_d = n_distinct(yr_day),
+            n_m = n_distinct(yr_mn),
+            n_yr = n_distinct(yr),
+            min_yr = min(yr)) %>% 
+  ungroup() %>% 
+  arrange(n_d) %>% 
+  as.data.frame()
+  
+#data quantity per month
+mn_summary <- used_av_track %>% 
+  mutate(mn = month(timestamp)) %>% 
+  group_by(individual.local.identifier,mn) %>% 
+  summarise(data = n())
 
 
+barplot(names.arg = mn_summary$mn, height = mn_summary$data, col = as.factor(mn_summary$individual.local.identifier), beside = F)
 
+# STEP 5: annotation: static ----------------------------------------------------------------
 
-# STEP 5: annotation ----------------------------------------------------------------
+load("alt_50_20_min_25_ind.RData") #used_av_track
 
-#manually annotate with static variables.
+#manually annotate with static variables: elevation, slope, ruggedness (difference between the maximum and the minimum value of a cell and its 8 surrounding cells),
+#unevenness in slope, aspect and elevation (TPI). (difference between the value of a cell and the mean value of its 8 surrounding cells)
+#martina aggregates all to 100 m resolution
+
 load("/home/enourani/ownCloud/Work/GIS_files/EU_DEM/eu_dem_v11_E40N20/dem_wgs") #dem_wgs spatial res: 25 m
 
-  
 dem <- raster("/home/enourani/ownCloud/Work/GIS_files/EU_DEM/eu_dem_v11_E40N20/eu_dem_v11_E40N20.TIF")
-slope <- terrain(dem, opt = c("slope", "aspect", "roughness"), unit = "degrees", filename = "slope_aspect.tif")
+slope <- terrain(dem, opt = "slope", unit = "degrees", filename = "slope.tif")
+aspect <- terrain(dem, opt = "aspect", unit = "degrees", filename = "aspect.tif")
+TRI <- terrain(dem, opt = "tri", unit = "degrees", filename = "TRI.tif")
+TPI <- terrain(dem, opt = "TPI", unit = "degrees", filename = "TPI.tif")
+
+#estimate slope and aspect unevenness
+sl_uneven <- terrain(slope, opt = "TPI", unit = "degrees", filename = "slope_TPI.tif")
+as_uneven <- terrain(aspect, opt = "TPI", unit = "degrees", filename = "aspect_TPI.tif")
+
+#aggregate raster cells to 100 m resolution
+dem_100 <- raster::aggregate(x = dem, fact = 4, filename = "dem_100.tif")
+slope_100 <- raster::aggregate(x = slope, fact = 4, filename = "slope_100.tif")
+aspect_100 <- raster::aggregate(x = aspect, fact = 4, filename = "aspect_100.tif")
+sl_uneven_100 <- raster::aggregate(x = sl_uneven, fact = 4, filename = "slope_TPI_100.tif")
+as_uneven_100 <- raster::aggregate(x = as_uneven, fact = 4, filename = "aspect_TPI_100.tif")
+TRI_100 <- raster::aggregate(x = TRI, fact = 4, filename = "TRI_100.tif")
+TPI_100 <- raster::aggregate(x = TPI, fact = 4, filename = "TPI_100.tif")
+
+#create a stack
+topo <- stack(list(dem_100, sl_uneven_100, as_uneven_100, TRI_100, TPI_100, slope_100, aspect_100))
+topo_wgs <- projectRaster(topo, crs = wgs)
+
+#extract values
+st_ann <- cbind(used_av_track, extract(x = TPI_100, y = used_av_track[,c("location.long","location.lat")], method = "bilinear"))
+
+save(st_ann, file = "")
+
+########### old
+s <- raster("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/slope_aspect.tif")
 
 slope_wgs <-  projectRaster(slope, crs = wgs) 
 
