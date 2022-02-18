@@ -113,7 +113,6 @@ post_em$flight_h <- post_em$height.above.ellipsoid - post_em$dem_alt
 
 save(post_em, file = "post_em_df_dem.RData")
 
-
 # STEP 4: subset to 1 min intervals and estimate ground speed ----------------------------------------------------------------
 
 load("post_em_df_dem.RData") #post_em

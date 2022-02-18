@@ -314,6 +314,7 @@ TRI_100 <- raster::aggregate(x = TRI, fact = 4, filename = "TRI_100.tif")
 TPI_100 <- raster::aggregate(x = TPI, fact = 4, filename = "TPI_100.tif")
 
 #create a stack
+topo <- stack(list("dem_100.tif", "slope_100.tif", "aspect_100.tif", "slope_TPI_100.tif",  "aspect_TPI_100.tif", "TRI_100.tif", "TPI_100.tif"))
 topo <- stack(list(dem_100, sl_uneven_100, as_uneven_100, TRI_100, TPI_100, slope_100, aspect_100))
 topo_wgs <- projectRaster(topo, crs = wgs)
 
