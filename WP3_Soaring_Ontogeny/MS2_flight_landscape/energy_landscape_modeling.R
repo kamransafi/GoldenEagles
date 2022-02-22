@@ -324,5 +324,43 @@ topo_ann <- cbind(used_av_track, extract(x = topo_wgs, y = used_av_track[,c("loc
 
 save(topo_ann, file = "alt_50_20_min_25_ind_static_ann.RData")
 
+# STEP 6: annotation: days since fledging and emigration ----------------------------------------------------------------
 
+load("alt_50_20_min_25_ind_static_ann.RData") #topo_ann
 
+#open emigration information
+## Hester's files on matching the names
+load("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/data/from_Hester/eagle_names.RData") #eagle_names
+#open file with info on fledging and emigration timing (from Svea)
+dates <- read.csv("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/data/Goldeneagles_emigration_time_10_2021.csv",
+                  stringsAsFactors = F, fileEncoding = "latin1") %>%  
+  rowwise() %>% 
+  mutate(fledging_timestamp = paste(paste(strsplit(date_fledging, "\\.") %>% map_chr(., 3), #yr 
+                                          strsplit(date_fledging, "\\.") %>% map_chr(., 2), #mnth
+                                          strsplit(date_fledging, "\\.") %>% map_chr(., 1), sep = "-"),  #day
+                                    time_fledging, sep = " "),
+         emigration_timestamp = ifelse(is.na(date_emigration), NA , 
+                                       paste(paste(strsplit(date_emigration, "\\.") %>% map_chr(., 3), #yr 
+                                                   strsplit(date_emigration, "\\.") %>% map_chr(., 2), #mnth
+                                                   strsplit(date_emigration, "\\.") %>% map_chr(., 1), sep = "-"),  #day
+                                             time_emigration, sep = " "))) %>% 
+  ungroup() %>% 
+  mutate(fledging_timestamp = as.POSIXct(strptime(fledging_timestamp,format = "%Y-%m-%d %H:%M:%S"),tz = "UTC"),
+         emigration_timestamp = as.POSIXct(strptime(emigration_timestamp,format = "%Y-%m-%d %H:%M:%S"),tz = "UTC")) %>% 
+  full_join(eagle_names, by = c("id" = "age_name")) %>% 
+  as.data.frame()
+
+cmpl_ann <- lapply(split(topo_ann, topo_ann$individual.local.identifier), function(x){
+  
+  ind_dates <- dates %>% 
+    filter(local_identifier == unique(x$individual.local.identifier))
+  
+  x <- x %>% 
+    mutate(days_since_emig = difftime(timestamp,ind_dates$emigration_timestamp, units = c("days")),
+           days_since_fled = difftime(timestamp,ind_dates$fledging_timestamp, units = c("days")))
+  
+})
+
+#cmpl_ann <- topo_ann %>%
+#group_by(individual.local.identifier) %>% 
+  
