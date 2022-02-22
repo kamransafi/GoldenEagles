@@ -10,10 +10,22 @@ load("alt_50_20_min_25_ind_static_time_ann.RData") #cmpl_ann
 
 # STEP 1: data exploration ----------------------------------------------------------------
 
-#terrain elevation ~ days since emigration 
+#terrain ~ days since emigration ..... no patterns in the plots
 
 plot(cmpl_ann[cmpl_ann$used == 1, c("days_since_emig", "dem_100")])
-plot(cmpl_ann[cmpl_ann$used == 1, c("days_since_fled", "dem_100")])
+plot(cmpl_ann[cmpl_ann$used == 1, c("days_since_emig", "slope_100")])
+plot(cmpl_ann[cmpl_ann$used == 1, c("days_since_emig", "aspect_100")])
+plot(cmpl_ann[cmpl_ann$used == 1, c("days_since_emig", "slope_TPI_100")])
+plot(cmpl_ann[cmpl_ann$used == 1, c("days_since_emig", "TPI_100")])
+plot(cmpl_ann[cmpl_ann$used == 1, c("days_since_emig", "TRI_100")])
+plot(cmpl_ann[cmpl_ann$used == 1, c("days_since_emig", "aspect_TPI_100")])
+
+
+ggplot(cmpl_ann, aes(as.numeric(days_since_emig), aspect_TPI_100)) +
+  geom_point() +
+  stat_smooth(aes(group = individual.local.identifier), method = "lm") +
+  theme_minimal() +
+  theme(legend.position = "none")
 
 
 # STEP 2: summary boxplots ----------------------------------------------------------------
