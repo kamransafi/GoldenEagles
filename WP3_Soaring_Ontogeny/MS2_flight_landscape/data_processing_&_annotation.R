@@ -21,6 +21,8 @@ meters_proj <- CRS("+proj=moll +ellps=WGS84")
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 source("/home/enourani/ownCloud/Work/Projects/delta_t/R_files/global_seascape/functions.R")
 
+
+
 # STEP 1: open data and filter out non-commuting flights ----------------------------------------------------------------
 
 load("embc_output.RData") #input
