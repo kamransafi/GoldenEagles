@@ -1,6 +1,6 @@
-#script for analysis of golden eagle data for the dynamics of the energy landscape manuscript: energy landscape construction
+#script for analysis of golden eagle data for the dynamics of the energy landscape manuscript: random step generation and annotation
 #follows on from embc_segmentation.R
-#the first attempt will only include static variables. reasons: 1)movebank annotation isn't working and 2)res of static variables is higher
+#the first attempt will only include static variables. reasons: 1) movebank annotation isn't working and 2) res of static variables is higher
 #Jan 28. 2022. Elham Nourani. Konstanz, DE
 
 library(tidyverse)

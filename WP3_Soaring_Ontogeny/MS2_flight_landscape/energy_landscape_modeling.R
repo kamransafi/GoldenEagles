@@ -7,3 +7,13 @@
 
 #open annotated data (static variables and time since fledging and emigration)
 load("alt_50_20_min_25_ind_static_time_ann.RData") #cmpl_ann
+
+# STEP 1: data exploration ----------------------------------------------------------------
+
+#terrain elevation ~ days since emigration 
+
+plot(cmpl_ann[cmpl_ann$used == 1, c("days_since_emig", "dem_100")])
+plot(cmpl_ann[cmpl_ann$used == 1, c("days_since_fled", "dem_100")])
+
+
+# STEP 2: summary boxplots ----------------------------------------------------------------
