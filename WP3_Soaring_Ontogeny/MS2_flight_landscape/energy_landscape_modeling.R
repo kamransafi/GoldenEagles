@@ -313,25 +313,16 @@ as_uneven_100 <- raster::aggregate(x = as_uneven, fact = 4, filename = "aspect_T
 TRI_100 <- raster::aggregate(x = TRI, fact = 4, filename = "TRI_100.tif")
 TPI_100 <- raster::aggregate(x = TPI, fact = 4, filename = "TPI_100.tif")
 
-#create a stack
+#create a stack using raster paths
 topo <- stack(list("dem_100.tif", "slope_100.tif", "aspect_100.tif", "slope_TPI_100.tif",  "aspect_TPI_100.tif", "TRI_100.tif", "TPI_100.tif"))
-topo <- stack(list(dem_100, sl_uneven_100, as_uneven_100, TRI_100, TPI_100, slope_100, aspect_100))
-topo_wgs <- projectRaster(topo, crs = wgs)
+topo_wgs <- projectRaster(topo, res = 0.001, crs = wgs)
+
+save(topo_wgs, file = "all_topo_100m_wgs.RData")
 
 #extract values
-st_ann <- cbind(used_av_track, extract(x = TPI_100, y = used_av_track[,c("location.long","location.lat")], method = "bilinear"))
+topo_ann <- cbind(used_av_track, extract(x = topo_wgs, y = used_av_track[,c("location.long","location.lat")], method = "bilinear"))
 
-save(st_ann, file = "")
-
-########### old
-s <- raster("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/slope_aspect.tif")
-
-slope_wgs <-  projectRaster(slope, crs = wgs) 
-
-save(slope_wgs, file = "/home/enourani/ownCloud/Work/GIS_files/EU_DEM/eu_dem_v11_E40N20/slope_wgs.RData")
-
-#extract elevation values
-post_em$dem_alt <- extract(x = dem_wgs, y = post_em[,c("location.long","location.lat")], method = "bilinear")
+save(topo_ann, file = "alt_50_20_min_25_ind_static_ann.RData")
 
 
 
