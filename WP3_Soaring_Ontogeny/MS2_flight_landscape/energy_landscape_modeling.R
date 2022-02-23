@@ -3,7 +3,8 @@
 #the first attempt will only include static variables. reasons: 1) movebank annotation isn't working and 2) res of static variables is higher
 #Feb 22. 2022. Elham Nourani. Konstanz, DE
 
-
+library(tidyverse)
+library(corrr)
 
 #open annotated data (static variables and time since fledging and emigration)
 load("alt_50_20_min_25_ind_static_time_ann.RData") #cmpl_ann
@@ -88,4 +89,20 @@ for(i in 1:length(variables)){
 #also consider making the plots for periods of time and not only one day
 
 # STEP 3: check for collinearity ----------------------------------------------------------------
+
+cmpl_ann %>% 
+  dplyr::select(c("dem_100", "slope_100", "aspect_100", "TRI_100", "TPI_100", "slope_TPI_100", "aspect_TPI_100")) %>% 
+  correlate() %>% 
+  stretch() %>% 
+  filter(abs(r) > 0.6) #slope and TRI are correlated (.98)
+
+# STEP 4: standardize variables ----------------------------------------------------------------
+
+all_data <- cmpl_ann %>% 
+  mutate_at(c("dem_100", "slope_100", "aspect_100", "TRI_100", "TPI_100", "slope_TPI_100", "aspect_TPI_100"),
+            list(z = ~(scale(.)))) 
+
+# STEP 5: ssf modeling ----------------------------------------------------------------
+
+# quick and dirty using clogit? for what time period???
 
