@@ -29,8 +29,8 @@ cmpl_ann %>%
 cmpl_ann %>% 
   group_by(individual.local.identifier) %>% 
   summarize(max_day = max(round(as.numeric(days_since_emig)))) %>% 
-  summarize(mode = Mode(max_day),
-            mean = mean(max_day))
+  summarize(mode = Mode(max_day), # 537
+            mean = mean(max_day)) #444
 
 
 #terrain ~ days since emigration ..... no patterns in the plots
@@ -51,5 +51,41 @@ ggplot(cmpl_ann[cmpl_ann$used == 1,], aes(as.numeric(days_since_emig), aspect_TP
   theme(legend.position = "none")
 
 
-# STEP 2: summary boxplots ----------------------------------------------------------------
+# STEP 2: summary plots ----------------------------------------------------------------
+
+#one set of boxplots for select days: 10, 50 , 100, 500
+
+data_int <- cmpl_ann %>% 
+  mutate(days_since_emig_n = round(as.numeric(days_since_emig))) %>% 
+  filter(days_since_emig_n %in% c(1, 10, 30 , 100, 300)) %>% 
+  mutate(days_f = as.factor(days_since_emig_n))
+
+
+X11(width = 6, height = 9)
+
+par(mfrow= c(4,2), 
+    oma = c(0,0,3,0), 
+    las = 1,
+    mgp = c(0,1,0))
+
+
+variables <- c("dem_100", "slope_100", "aspect_100", "TRI_100", "TPI_100", "slope_TPI_100", "aspect_TPI_100" )
+
+for(i in 1:length(variables)){
+  boxplot(data_int[,variables[i]] ~ data_int[,"days_f"], data = data_int, boxfill = NA, border = NA, main = variables[i], xlab = "", ylab = "")
+  if(i == 1){
+    legend("topleft", legend = c("used","available"), fill = c(alpha("darkgoldenrod1", 0.9),"gray"), bty = "n", cex = 0.8)
+  }
+  boxplot(data_int[data_int$used == 1, variables[i]] ~ data_int[data_int$used == 1,"days_f"], outcol = alpha("black", 0.2),
+          yaxt = "n", xaxt = "n", add = T, boxfill = alpha("darkgoldenrod1", 0.9),  lwd = 0.7, outpch = 20, outcex = 0.8,
+          boxwex = 0.25, at = 1:length(unique(data_int[data_int$used == 1, "days_f"])) - 0.15)
+  boxplot(data_int[data_int$used == 0, variables[i]] ~ data_int[data_int$used == 0, "days_f"], outcol = alpha("black", 0.2),
+          yaxt = "n", xaxt = "n", add = T, boxfill = "grey", lwd = 0.7, outpch = 20, outcex = 0.8,
+          boxwex = 0.25, at = 1:length(unique(data_int[data_int$used == 1 , "days_f"])) + 0.15)
+  
+}
+
+#also consider making the plots for periods of time and not only one day
+
+# STEP 3: check for collinearity ----------------------------------------------------------------
 
