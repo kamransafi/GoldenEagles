@@ -93,6 +93,36 @@ for (i in 1:length(gpsAcc_ls)) {
 
 ###########################################################################################
 
+### Retrieve GPS data for the birds with life stage data
+###########################################################################################
+load("loginStored.RData")
+eagleStudyId <- 282734839
+
+
+# get individuals
+
+inds <- vector()
+for (i in 1:length(gps_fls)) {
+  id <- gps_fls[[i]]@idData$local_identifier
+  inds <- c(inds,id)
+}
+
+inds_todo <- eagle_names$local_identifier[which(!eagle_names$local_identifier %in% inds)]
+
+gps_fls <- list()
+
+for (i in inds_todo) {
+  gps_fls[[length(gps_fls) + 1]] <- getMovebankData(study="LifeTrack Golden Eagle Alps", animalName = i,
+                                  removeDuplicatedTimestamps=T, login=loginStored)
+  print(paste0("Retrieved location data for bird ", which(inds_todo == i), ", ", i, "."), quote = F)
+}
+# memory error for 
+# "Tuors1 19 (eobs 7010)" "Tuors2 19 (eobs 7011)" "Viluoch17 (eobs 4570)"
+#save(gps_fls, file = "gps_data_29_23.02.22.RData")
+
+
+###########################################################################################
+
 
 ### Assign IDs to events, count the time spent, and plot it
 ###########################################################################################
