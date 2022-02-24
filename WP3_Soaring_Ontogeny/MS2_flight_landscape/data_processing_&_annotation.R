@@ -258,7 +258,13 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
   Sys.time() - b 
   stopCluster(mycl) 
 
+  
+used_av_track <- used_av_track %>% 
+  mutate(stratum = paste(individual.local.identifier, burst_id, step_id, sep = "_"))
+  
 save(used_av_track, file = paste0("alt_", n_alt, "_", hr, "_min_25_ind.RData")) #315843
+
+
 
 # STEP 4: summary stats ----------------------------------------------------------------
 
