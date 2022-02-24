@@ -5,6 +5,7 @@
 
 library(tidyverse)
 library(corrr)
+library(INLA)
 
 #open annotated data (static variables and time since fledging and emigration)
 load("alt_50_20_min_25_ind_static_time_ann.RData") #cmpl_ann
@@ -91,7 +92,7 @@ for(i in 1:length(variables)){
 # STEP 3: check for collinearity ----------------------------------------------------------------
 
 cmpl_ann %>% 
-  dplyr::select(c("dem_100", "slope_100", "aspect_100", "TRI_100", "TPI_100", "slope_TPI_100", "aspect_TPI_100")) %>% 
+  dplyr::select(c("dem_100", "slope_100", "aspect_100", "TRI_100", "TPI_100", "slope_TPI_100", "aspect_TPI_100", "days_since_emig_n")) %>% 
   correlate() %>% 
   stretch() %>% 
   filter(abs(r) > 0.6) #slope and TRI are correlated (.98)
@@ -99,7 +100,7 @@ cmpl_ann %>%
 # STEP 4: standardize variables ----------------------------------------------------------------
 
 all_data <- cmpl_ann %>% 
-  mutate_at(c("dem_100", "slope_100", "aspect_100", "TRI_100", "TPI_100", "slope_TPI_100", "aspect_TPI_100"),
+  mutate_at(c("dem_100", "slope_100", "aspect_100", "TRI_100", "TPI_100", "slope_TPI_100", "aspect_TPI_100", "days_since_emig_n"),
             list(z = ~(scale(.)))) 
 
 # STEP 5: ssf modeling ----------------------------------------------------------------
@@ -109,6 +110,7 @@ all_data <- cmpl_ann %>%
 
 
 # INLA formula using interaction terms for time and predictor variables.
+# control for month of year or temperature....
 
 #repeat the random effect
 all_data <- all_data %>% 
@@ -119,14 +121,31 @@ all_data <- all_data %>%
          days_f1 = factor(days_since_emig_n ),
          days_f2 = factor(days_since_emig_n ),
          days_f3 = factor(days_since_emig_n ),
-         days_f4 = factor(days_since_emig_n ))
-
+         days_f4 = factor(days_since_emig_n ),
+         stratum = paste(individual.local.identifier, burst_id, step_id, sep = "_")) # the first round: forgot to include stratum id in the previous code 
 
 mean.beta <- 0
 prec.beta <- 1e-4 
 
+#add one new row to unique strata instead of entire empty copies of strata. assign day since emigration and terrain values on a regular grid
+set.seed(200)
+
+n <- 500
+new_data <- all_data %>%
+  group_by(stratum) %>% 
+  slice_sample(n = 1) %>% 
+  ungroup() %>% 
+  slice_sample(n = n, replace = F) %>% 
+  mutate(used = NA,
+         days_since_emig_n = sample(seq(min(all_data$days_since_emig_n),max(all_data$days_since_emig_n), length.out = 10), n, replace = T), 
+         dem_100_z = sample(seq(min(all_data$dem_100_z),max(all_data$dem_100_z), length.out = 10), n, replace = T), #regular intervals for wind support and delta t, so we can make a raster later on
+         slope_100_z = sample(seq(min(all_data$slope_100_z),max(all_data$slope_100_z), length.out = 10), n, replace = T),
+         aspect_100_z = sample(seq(min(all_data$aspect_100_z),max(all_data$aspect_100_z), length.out = 10), n, replace = T)) %>% 
+  full_join(all_data)
+
+
 #model formula
-formulaM <- used ~ -1 + dem_100_z * days_since_emig_n + slope_100_z * days_since_emig_n + aspect_100_z * days_since_emig_n +
+formulaM <- used ~ -1 + dem_100_z * days_since_emig_n_z + slope_100_z * days_since_emig_n_z + aspect_100_z * days_since_emig_n_z +
   f(stratum, model = "iid", 
     hyper = list(theta = list(initial = log(1e-6),fixed = T))) + 
   f(ind1, dem_100_z, model = "iid",
@@ -136,3 +155,27 @@ formulaM <- used ~ -1 + dem_100_z * days_since_emig_n + slope_100_z * days_since
   f(ind3, aspect_100_z, model = "iid",
     hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
 
+#model
+(b <- Sys.time())
+M <- inla(formulaM, family = "Poisson", 
+          control.fixed = list(
+            mean = mean.beta,
+            prec = list(default = prec.beta)),
+          data = all_data, 
+          num.threads = 10,
+          control.predictor = list(compute = TRUE, link = 1), 
+          control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
+Sys.time() - b  #5.515833 mins
+
+
+#Model for predictions
+(b <- Sys.time())
+M_pred <- inla(formulaM, family = "Poisson", 
+               control.fixed = list(
+                 mean = mean.beta,
+                 prec = list(default = prec.beta)),
+               data = new_data, 
+               num.threads = 10,
+               control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
+               control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
+Sys.time() - b #1.069171 mins without random effects. 7.47236 mins
