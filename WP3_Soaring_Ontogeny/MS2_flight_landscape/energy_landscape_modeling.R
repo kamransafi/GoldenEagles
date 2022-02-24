@@ -6,6 +6,8 @@
 library(tidyverse)
 library(corrr)
 library(INLA)
+library(fields)
+library(raster)
 
 #open annotated data (static variables and time since fledging and emigration)
 load("alt_50_20_min_25_ind_static_time_ann.RData") #cmpl_ann
@@ -179,3 +181,98 @@ M_pred <- inla(formulaM, family = "Poisson",
                control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
                control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
 Sys.time() - b #1.069171 mins without random effects. 7.47236 mins
+
+# STEP 6: ssf output plots ----------------------------------------------------------------
+
+#interaction plots
+#extract predicted values
+used_na <- which(is.na(new_data$used))
+
+
+#extract information for rows that had NAs as response variables
+preds <- data.frame(dem_100_z = new_data[is.na(new_data$used) ,"dem_100_z"],
+                    slope_100_z = new_data[is.na(new_data$used) ,"slope_100_z"],
+                    aspect_100_z = new_data[is.na(new_data$used) ,"aspect_100_z"],
+                    days_since_emig_n_z = new_data[is.na(new_data$used) ,"days_since_emig_n_z"],
+                    preds = M_pred$summary.fitted.values[used_na,"mean"]) %>% 
+  mutate(prob_pres = exp(preds)/(1+exp(preds))) #this should be between 0-1
+
+#create a raster of predictions
+avg_preds_slope <- preds %>% 
+  group_by(days_since_emig_n_z, slope_100_z) %>%  
+  summarise(avg_pres = mean(prob_pres)) %>% 
+  ungroup() %>% 
+  mutate(wspt_backtr = slope_100_z * attr(all_data$slope_100_z, 'scaled:scale') + attr(all_data$slope_100_z, 'scaled:center'),
+         dt_backtr = days_since_emig_n_z * attr(all_data$days_since_emig_n_z, 'scaled:scale') + attr(all_data$days_since_emig_n_z, 'scaled:center')) %>% 
+  dplyr::select(-c("days_since_emig_n_z","slope_100_z")) %>% 
+  as.data.frame()
+
+
+coordinates(avg_preds_slope) <-~ wspt_backtr + dt_backtr 
+gridded(avg_preds_slope) <- TRUE
+r <- raster(avg_preds_slope)
+
+
+#interpolate. for visualization purposes
+surf.1 <- Tps(as.matrix(as.data.frame(r,xy = T)[,c(1,2)],col = 2),as.data.frame(r,xy = T)[,3])
+
+grd <- expand.grid(x = seq(from = extent(r)[1],to = extent(r)[2],by = 2),
+                   y = seq(from = extent(r)[3],to = extent(r)[4],by = 2))
+
+grd$coords <- matrix(c(grd$x,grd$y),ncol=2)
+
+surf.1.pred <- predict.Krig(surf.1,grd$coords)
+interpdf <- data.frame(grd$coords,surf.1.pred)
+
+colnames(interpdf) <- c("slope","days_since_emig","prob_pres")
+
+coordinates(interpdf) <- ~ slope + days_since_emig
+gridded(interpdf) <- TRUE
+interpr <- raster(interpdf)
+
+
+#create a color palette
+cuts <- c(0, 0.25,0.5,0.75,1) #set breaks
+pal <- colorRampPalette(c("aliceblue", "lightskyblue1", "khaki2", "sandybrown", "salmon2","tomato"))
+colpal <- pal(200)
+
+
+
+#plot
+X11(width = 5, height = 4)
+
+par(cex = 0.7,
+    oma = c(0,3.5,0,0),
+    mar = c(0, 0, 0, 1.5),
+    bty = "n",
+    mgp = c(1,0.5,0)
+)
+
+
+raster::plot(interpr, col = colpal, axes = F, box = F, legend = F, ext = extent(c(-22, 28.9, -9.7, 14))) #crop to the extent of observed data
+
+#add axes
+axis(side = 1, at = seq(-20,30,10),
+     labels = seq(-20,30,10),
+     tick = T ,col = NA, col.ticks = 1, # NULL would mean to use the defult color specified by "fg" in par
+     tck = -.015, line = -5.75, cex.axis = 0.7) #tick marks smaller than default by this proportion
+
+axis(side = 2, at = c(-5, 0,5, 10), labels = c(-5, 0,5, 10), 
+     tick = T ,col = NA, col.ticks = 1, tck = -.015, las = 2, cex.axis = 0.7)
+
+lines(x = c(-21.9, -21.9), y = c(-9.9,13.9))
+abline(h =-10)
+
+#axis titles
+mtext("Wind support (m/s)", 1, line = -4, cex = 0.9, font = 3)
+mtext(expression(italic(paste(Delta,"T", "(°C)"))), 2, line = 1.2, cex = 0.9)
+
+#add legend
+plot(interpr, legend.only = T, horizontal = F, col = colpal, legend.args = list("Probability of use", side = 4, font = 1, line = 1.5, cex = 0.7),
+     legend.shrink = 0.4,
+     #smallplot= c(0.12,0.7, 0.06,0.09),
+     axis.args = list(at = seq(0,1,0.25), #same arguments as any axis, to determine the length of the bar and tick marks and labels
+                      labels = seq(0,1,0.25), 
+                      col = NA, #make sure box type in par is set to n, otherwise axes will be drawn on the legend :p
+                      col.ticks = NA,
+                      line = -0.8, cex.axis = 0.7))
