@@ -106,3 +106,33 @@ all_data <- cmpl_ann %>%
 
 # quick and dirty using clogit? for what time period???
 
+
+
+# INLA formula using interaction terms for time and predictor variables.
+
+#repeat the random effect
+all_data <- all_data %>% 
+  mutate(ind1 = factor(individual.local.identifier),
+         ind2 = factor(individual.local.identifier),
+         ind3 = factor(individual.local.identifier),
+         ind4 = factor(individual.local.identifier),
+         days_f1 = factor(days_since_emig_n ),
+         days_f2 = factor(days_since_emig_n ),
+         days_f3 = factor(days_since_emig_n ),
+         days_f4 = factor(days_since_emig_n ))
+
+
+mean.beta <- 0
+prec.beta <- 1e-4 
+
+#model formula
+formulaM <- used ~ -1 + dem_100_z * days_since_emig_n + slope_100_z * days_since_emig_n + aspect_100_z * days_since_emig_n +
+  f(stratum, model = "iid", 
+    hyper = list(theta = list(initial = log(1e-6),fixed = T))) + 
+  f(ind1, dem_100_z, model = "iid",
+    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) + 
+  f(ind2, slope_100_z,  model = "iid",
+    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) +
+  f(ind3, aspect_100_z, model = "iid",
+    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
+
