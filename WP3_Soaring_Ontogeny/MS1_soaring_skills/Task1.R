@@ -16,14 +16,15 @@ library(tidyverse)
 library(move)
 library(lubridate)
 
-### Assign life stages to the birds for which we have gps and acc data associated
+### Assign life stages to the birds for which we have gps data
 ###########################################################################################
 # the file with the names of the birds in different formats
 load("eagle_names.RData")
 
 # the birds that have ACC data associated
-objs <- list.files("C:/Users/Tess Bronnvik/Desktop/Improvement_and_Golden_Eagles/associated")#, full.names = T)
-str_sub(objs, -18,-1) <- ""
+objs <- list.files("C:/Users/Tess Bronnvik/Desktop/Improvement_and_Golden_Eagles/thermals")#, full.names = T)
+objs <- sub("\\) ", "\\)", objs) # correct Stürfis20
+objs <- str_sub(objs, 1,-48)
 objs <- sub(" ", "\\.", objs)
 objs <- sub("Art.San ", "", objs)
 
@@ -41,53 +42,53 @@ stages$date_emigration <- as.POSIXct(gsub("\\.", "\\-", stages$date_emigration),
 # to assign life stage, we look at timestamps < emigration date, and therefore cannot use NA
 stages$date_emigration[which(is.na(stages$date_emigration))] <- Sys.time()
 
-# open the segmented and associated files
+# open the segmented files
 # give each a life_stage column
 # either add data or leave NA
-gpsAcc_fls <- list.files("gps_acc_age")
-gpsAcc_fls <- paste0("gps_acc_age/", gpsAcc_fls)
+gps_fls <- list.files("thermals")
+gps_fls <- paste0("thermals/", gps_fls)
 
-gpsAcc_ls <- list()
+gps_ls <- list()
 
-for (i in gpsAcc_fls) {
+for (i in gps_fls) {
   load(i)
-  if(unique(gaa_df$individual_local_identifier) %in% eagle_names$local_identifier){
-    gpsAcc_ls[[length(gpsAcc_ls) + 1]] <- gaa_df
-    print(paste0("Successfully loaded ", sub("_.RData", "", sub("\\/", "", gsub("gps_acc_age", "", i))), "."), quote = F)
-  } else{rm(i);rm(gaa_df)}
+  if(unique(HRdf$local_identifier) %in% eagle_names$local_identifier){
+    gps_ls[[length(gps_ls) + 1]] <- HRdf
+    print(paste0("Successfully loaded ", unique(HRdf$local_identifier), "."), quote = F)
+  } else{rm(i);rm(HRdf)}
 }
 
 
 # loop through each individual and label its data with life stage
-for (i in 1:length(gpsAcc_ls)) {
-  # get the associated and segmented ACC & GPS data from a single id
-  gaa_df <- gpsAcc_ls[[i]]
-  # add the name for life stage data to the data frame with gps and acc
-  gaa_df$sname <- NA
-  gaa_df$sname <- eagle_names$age_name[which(eagle_names$local_identifier == unique(gaa_df$individual_local_identifier))]
+for (i in 1:length(gps_ls)) {
+  # get the segmented GPS data from a single id
+  gps_df <- gps_ls[[i]]
+  # add the name for life stage data to the data frame with gps
+  gps_df$sname <- NA
+  gps_df$sname <- eagle_names$age_name[which(eagle_names$local_identifier == unique(gps_df$local_identifier))]
   # for each id, match stages to move, 
-  gaa_df$stage <- NA
+  gps_df$stage <- NA
   # then say before fledge, after fledge, and after emigration
-  if (unique(gaa_df$individual_local_identifier) %in% eagle_names$local_identifier){ #our_Inds$eobs
+  if (unique(gps_df$local_identifier) %in% eagle_names$local_identifier){ #our_Inds$eobs
     # timestamps less than date of fledging are classified as 1 (pre-fledging)
-    gaa_df$stage[which(gaa_df$timestamp < stages$date_fledging[which(stages$id == unique(gaa_df$sname))])] <- 1
+    gps_df$stage[which(gps_df$timestamp < stages$date_fledging[which(stages$id == unique(gps_df$sname))])] <- 1
     # timestamps greater than date of fledging & less than date of emigration are classfied as 2 (fledgling)
-    gaa_df$stage[which(gaa_df$timestamp > stages$date_fledging[which(stages$id == unique(gaa_df$sname))] & 
-                         gaa_df$timestamp < stages$date_emigration[which(stages$id == unique(gaa_df$sname))])] <- 2
+    gps_df$stage[which(gps_df$timestamp > stages$date_fledging[which(stages$id == unique(gps_df$sname))] & 
+                         gps_df$timestamp < stages$date_emigration[which(stages$id == unique(gps_df$sname))])] <- 2
     # timesamps greater than date of emigration are classfied as 3 (emigrant)
-    gaa_df$stage[which(gaa_df$timestamp > stages$date_emigration[which(stages$id == unique(gaa_df$sname))])] <- 3
+    gps_df$stage[which(gps_df$timestamp > stages$date_emigration[which(stages$id == unique(gps_df$sname))])] <- 3
   }
   # save the file again
-  save(gaa_df, file = paste0("gps_acc_age/", unique(gaa_df$individual_local_identifier), "_gps_acc_age.RData"))
+  save(gps_df, file = paste0("gps_age/", unique(gps_df$local_identifier), gsub("-",".", Sys.Date()), "_gps_age.RData"))
   # signal
-  print(paste0("Added life stage information to ", unique(gaa_df$individual_local_identifier), "."), quote = F)
+  print(paste0("Added life stage information to ", unique(gps_df$local_identifier), "."), quote = F)
 }
 
 # finally, check that there are life stage data associated with each individual
-for (i in 1:length(gpsAcc_ls)) {
-  df <- gpsAcc_ls[[i]]
-  if(is.na(df$stage)){
-    print(paste0(unique(gpsAcc_ls[[i]]$individual_local_identifier), " has no stages."))
+for (i in 1:length(gps_ls)) {
+  df <- gps_ls[[i]]
+  if(NA %in% unique(df$stage)){
+    print(paste0(unique(gps_ls[[i]]$local_identifier), " has no stages."))
   }
 }
 
@@ -113,7 +114,7 @@ gps_fls <- list()
 
 for (i in inds_todo) {
   gps_fls[[length(gps_fls) + 1]] <- getMovebankData(study="LifeTrack Golden Eagle Alps", animalName = i,
-                                  removeDuplicatedTimestamps=T, login=loginStored)
+                                                    removeDuplicatedTimestamps=T, login=loginStored)
   print(paste0("Retrieved location data for bird ", which(inds_todo == i), ", ", i, "."), quote = F)
 }
 # memory error for 
@@ -121,26 +122,31 @@ for (i in inds_todo) {
 #save(gps_fls, file = "gps_data_29_23.02.22.RData")
 
 
+preps <- list.files("prepped/")
+# preps <- str_sub(preps, 1, -35)
+preps <- paste0("prepped/", preps)
+load(preps[1])
+
 ###########################################################################################
 
 
 ### Assign IDs to events, count the time spent, and plot it
 ###########################################################################################
-cfls_ls <- list.files("gps_acc_age")
-cfls_ls <- paste0("gps_acc_age/", cfls_ls)
+cfls_ls <- list.files("gps_age")
+cfls_ls <- paste0("gps_age/", cfls_ls)
 
 cfls <- data.frame()
 
 for (i in cfls_ls) {
   load(i)
-  gaa_df <- gaa_df[which(gaa_df$stage == 2),]
-  cfls <- rbind(cfls,gaa_df)
-  rm(gaa_df)
-  print(paste0("Successfully loaded ", sub("_.RData", "", sub("\\/", "", gsub("gps_acc_age", "", i))), "."), quote = F)
+  gps_df <- gps_df[which(gps_df$stage == 2),]
+  cfls <- rbind(cfls,gps_df)
+  rm(gps_df)
+  print(paste0("Successfully loaded ", str_sub(sub("_.RData", "", sub("\\/", "", gsub("gps_age", "", i))), 1, -11), "."), quote = F)
 }
 ori_cfls <- cfls
 #save(ori_cfls, file = "cfls.RData")
-load("cfls.RData"); cfls <- ori_cfls
+#load("cfls.RData"); cfls <- ori_cfls
 
 cfls <- cfls %>% 
   # only post-fledging and pre-emigration soaring events
@@ -152,32 +158,62 @@ cfls <- cfls %>%
 
 ## 2. give IDs to each unique linear event
 
-# where the thermal cluster is linear soaring, True
-cfls$linear[which(cfls$thermalClust == "linear")] <- T
-# where it is circular or "other", False
-cfls$linear[which(cfls$thermalClust != "linear")] <- F
-# assign a new number to each slope soaring event 
-cfls$linear_event <- inverse.rle(within.list(rle(cfls$linear), 
-                                 values[values] <- seq_along(values[values])))
-cfls$linear_event[which(cfls$linear_event == 0)] <- NA
-# give each a linear ID
-cfls$linearID <- paste0(cfls$burstIDcorrect, "_", cfls$linear_event)
-cfls$linearID[grep("NA", cfls$linearID)] <- NA
+# a data frame to hold the IDs
+cfls2 <- data.frame()
+# a vector to separate the individuals and days so that there is no chance that the data
+# for one ends on a thermal and the next starts on a thermal, which are then counted as a single
+# event
+cfls$id_date <- paste0(cfls$local_identifier," ", cfls$ymd)
+id_date <- unique(cfls$id_date)
 
+for (i in id_date) {
+  df <- cfls[which(cfls$id_date == i), ]
+  df <- df[order(df$timestamp),]
+  df$linear <- NA
+  # where the thermal cluster is linear soaring, True
+  df$linear[which(df$thermalClust == "linear")] <- T
+  # where it is circular or "other", False
+  df$linear[which(df$thermalClust != "linear")] <- F
+  # assign a new number to each slope soaring event 
+  df$linearID <- inverse.rle(within.list(rle(df$linear), 
+                                           values[values] <- seq_along(values[values])))
+  df$linearID[which(df$linearID == 0)] <- NA
+  cfls2 <- rbind(cfls2, df)
+  print(paste0("Assigned orographic event IDs for ", i, "."), quote = F)
+}
+
+# a data frame to hold the IDs
+cfls3 <- data.frame()
+
+
+# and to each thermal event
+for (i in unique(cfls$id_date)) {
+  df <- cfls2[which(cfls2$id_date == i), ]
+  df <- df[order(df$timestamp),]
+  df$thermal <- NA
+  # where the thermal cluster is thermal soaring, True
+  df$thermal[which(df$thermalClust == "circular")] <- T
+  # where it is linear or "other", False
+  df$thermal[which(df$thermalClust != "circular")] <- F
+  # assign a new number to each slope soaring event 
+  df$thermalID <- inverse.rle(within.list(rle(df$thermal), 
+                                         values[values] <- seq_along(values[values])))
+  df$thermalID[which(df$thermalID == 0)] <- NA
+  cfls3 <- rbind(cfls3, df)
+  print(paste0("Assigned thermal event IDs for ", i, "."), quote = F)
+}
 
 
 ## 3. measure the time spent in each "event"
 
-cfls <- cfls %>%
+cfls <- cfls3 %>%
   # work within slope soaring events
-  group_by(individual_local_identifier, year, month, day, burstIDcorrect, linearID) %>%
-  arrange(timestamp) %>% 
+  group_by(id_date, linearID) %>%
   # calculate the time difference between the last and first observations
   mutate(line_dt = difftime(.$timestamp[n()],.$timestamp[1])) %>% 
   ungroup() %>% 
   # work within thermal soaring events
-  group_by(individual_local_identifier, year, month, day, burstIDcorrect, thermalID) %>%
-  arrange(timestamp) %>% 
+  group_by(id_date, thermalID) %>%
   # calculate the time difference between the last and first observations
   mutate(circle_dt = difftime(.$timestamp[n()],.$timestamp[1])) %>% 
   ungroup()
@@ -193,43 +229,61 @@ lapply(cfls_ls, sum())
 
 Lcfls <- cfls %>% 
   # within each slope soaring event 
-  group_by(linearID) %>% 
+  group_by(id_date, linearID) %>% 
   # select the first observation
   slice(1) %>% 
   # in all the data
   ungroup() %>% 
   # per day
-  group_by(individual_local_identifier, ymd) %>% 
+  group_by(id_date) %>% 
   # sum the seconds in linear events
-  mutate(day_lines = sum(as.numeric(line_dt), na.rm = T),
-         day_circles = NA) %>% 
+  mutate(day_lines = sum(as.numeric(line_dt), na.rm = T)) %>% 
   # one value per day
   slice(1) %>% 
   ungroup()
 Ccfls <- cfls %>% 
   # within each thermal soaring event 
-  group_by(thermalID) %>% 
+  group_by(id_date, thermalID) %>% 
   # select the first observation
   slice(1) %>% 
   # in all the data
   ungroup() %>% 
   # per day
-  group_by(individual_local_identifier, ymd) %>% 
+  group_by(id_date) %>% 
   # sum the seconds in linear events
-  mutate(day_lines = NA,
-         day_circles = sum(as.numeric(circle_dt), na.rm = T)) %>% 
+  mutate(day_circles = sum(as.numeric(circle_dt), na.rm = T)) %>% 
   # one value per day
   slice(1) %>% 
-  ungroup()
+  ungroup() %>% 
+  dplyr::select(thermalClust, timestamp, local_identifier, ymd, id_date, linear, 
+         linearID, thermal, thermalID, circle_dt, day_circles)
 
 
 ## 5. Calculate the ratio of linear to circular soaring
-# only one observation of each soaring event, both linear and circular
-#Ccfls$day_lines <- Lcfls$day_lines[which(Lcfls$ymd == Ccfls$ymd)]
-Rcfls <- Ccfls %>% 
+
+# merge the data by id_date so that a single frame holds both linear and thermal soaring
+Rcfls <- merge(Lcfls, Ccfls, by = "id_date")
+
+# append the fledging dates for each individual
+Rcfls$fledging_date <- NA
+rcfls <- data.frame()
+
+inds <- unique(Rcfls$local_identifier.x)
+for (i in inds) {
+  df <- Rcfls[which(Rcfls$local_identifier.x == i),]
+  df$fledging_date <- stages$date_fledging[which(stages$id == 
+            eagle_names$age_name[which(eagle_names$local_identifier == i)])]
+  rcfls <- rbind(rcfls, df)
+  
+}
+
+# calculate the number of days between each observation and fledging
+rcfls$dsf <- rcfls$timestamp.x - rcfls$fledging_date
+
+rcfls <- rcfls %>% 
   rowwise() %>% 
   mutate(ratiosoar = day_lines/day_circles)
 
 
-plot(Rcfls$day, Rcfls$ratiosoar)
+plot(rcfls$dsf, rcfls$ratiosoar)
 
