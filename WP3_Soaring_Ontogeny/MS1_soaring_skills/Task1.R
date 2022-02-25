@@ -278,12 +278,19 @@ for (i in inds) {
 }
 
 # calculate the number of days between each observation and fledging
-rcfls$dsf <- rcfls$timestamp.x - rcfls$fledging_date
+rcfls$dsf <- as.numeric(as.Date(rcfls$ymd.x) - as.Date(paste(year(rcfls$fledging_date), month(rcfls$fledging_date), day(rcfls$fledging_date), sep = "-")))
 
 rcfls <- rcfls %>% 
   rowwise() %>% 
   mutate(ratiosoar = day_lines/day_circles)
 
+ggplot(rcfls[which(rcfls$ratiosoar != Inf),], aes(x = dsf, y = ratiosoar, color = local_identifier.x)) + 
+  geom_point() +
+  #geom_smooth(method = "lm", se = F) +
+  labs(x = "Days since fledging", y = "Ratio of slope to thermal soaring (s)") + 
+  ylim(c(0, 150)) +
+  scale_x_continuous(breaks = seq.int(0, 500, by = 50)) +
+  theme_classic() +
+  theme(legend.position="none", axis.text = element_text(color = "black"))
 
-plot(rcfls$dsf, rcfls$ratiosoar)
 
