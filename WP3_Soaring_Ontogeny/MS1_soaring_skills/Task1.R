@@ -150,7 +150,8 @@ ori_cfls <- cfls
 
 cfls <- cfls %>% 
   # only post-fledging and pre-emigration soaring events
-  filter(thermalClust != "other") %>% 
+  filter(thermalClust != "other",
+         soarClust != "glide") %>% 
   mutate(year = year(timestamp),
          month = month(timestamp),
          day = day(timestamp), 
@@ -284,13 +285,16 @@ rcfls <- rcfls %>%
   rowwise() %>% 
   mutate(ratiosoar = day_lines/day_circles)
 
-ggplot(rcfls[which(rcfls$ratiosoar != Inf),], aes(x = dsf, y = ratiosoar, color = local_identifier.x)) + 
+## 6. Plot the ratio of liner:thermal soaring over days since fledging
+
+ggplot(rcfls[which(rcfls$ratiosoar != Inf),], aes(x = dsf, y = ratiosoar)) + 
   geom_point() +
-  #geom_smooth(method = "lm", se = F) +
+  geom_smooth(method = "lm", se = F) +
   labs(x = "Days since fledging", y = "Ratio of slope to thermal soaring (s)") + 
   ylim(c(0, 150)) +
   scale_x_continuous(breaks = seq.int(0, 500, by = 50)) +
   theme_classic() +
   theme(legend.position="none", axis.text = element_text(color = "black"))
 
+###########################################################################################
 
