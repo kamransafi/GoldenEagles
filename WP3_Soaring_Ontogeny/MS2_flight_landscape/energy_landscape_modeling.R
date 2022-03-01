@@ -9,6 +9,8 @@ library(INLA)
 library(fields)
 library(raster)
 
+setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
+
 #open annotated data (static variables and time since fledging and emigration)
 load("alt_50_20_min_25_ind_static_time_ann.RData") #cmpl_ann
 
@@ -131,16 +133,21 @@ all_data <- all_data %>%
          days_f3 = factor(days_since_emig_n),
          days_f4 = factor(days_since_emig_n))
 
+save(all_data, file = "alt_50_20_min_25_ind_static_inlaready.RData")
+
+
+load("alt_50_20_min_25_ind_static_inlaready.RData")
+
 mean.beta <- 0
 prec.beta <- 1e-4 
 
 #add one new row to unique strata instead of entire empty copies of strata. assign day since emigration and terrain values on a regular grid
 set.seed(200)
 
-n <- 1000
+n <- 500
 new_data <- all_data %>%
   group_by(stratum) %>% 
-  slice_sample(n = 1) %>% 
+  slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
   ungroup() %>% 
   slice_sample(n = n, replace = F) %>% 
   mutate(used = NA,
@@ -152,7 +159,7 @@ new_data <- all_data %>%
 
 
 #model formula. slope and TRI are correlated
-formulaM <- used ~ -1 + dem_100_z * days_since_emig_n_z + slope_100_z * days_since_emig_n_z + aspect_100_z * days_since_emig_n_z + TPI_100 * days_since_emig_n_z + 
+formulaM <- used ~ -1 + dem_100_z * days_since_emig_n_z + slope_100_z * days_since_emig_n_z + aspect_100_z * days_since_emig_n_z +
   f(stratum, model = "iid", 
     hyper = list(theta = list(initial = log(1e-6),fixed = T))) + 
   f(ind1, dem_100_z, model = "iid",
@@ -174,6 +181,7 @@ M <- inla(formulaM, family = "Poisson",
           control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
 Sys.time() - b  #5.515833 mins
 
+save(M, file = "inla_model_1.RData")
 
 #Model for predictions
 (b <- Sys.time())
@@ -185,7 +193,9 @@ M_pred <- inla(formulaM, family = "Poisson",
                num.threads = 10,
                control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
                control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
-Sys.time() - b #500 missing values: 7.47236 mins; 1000 missing values: 
+Sys.time() - b #500 missing values: 7.47236 mins
+
+save(M_pred, file = "inla_model_pred1.RData")
 
 #try link = 1
 (b <- Sys.time())
