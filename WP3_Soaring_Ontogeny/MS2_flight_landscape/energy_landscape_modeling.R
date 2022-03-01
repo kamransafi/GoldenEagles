@@ -12,6 +12,11 @@ library(raster)
 #open annotated data (static variables and time since fledging and emigration)
 load("alt_50_20_min_25_ind_static_time_ann.RData") #cmpl_ann
 
+cmpl_ann <- cmpl_ann %>% 
+  mutate(days_since_emig_n = ceiling(as.numeric(days_since_emig)), #round up
+         stratum = paste(individual.local.identifier, burst_id, step_id, sep = "_")) #forgot to include stratum id in the previous code ) %>%  
+
+
 Mode <- function(x, na.rm = FALSE) {
   if(na.rm){
     x = x[!is.na(x)]
@@ -26,13 +31,13 @@ Mode <- function(x, na.rm = FALSE) {
 #number of days available for each individual
 cmpl_ann %>% 
   group_by(individual.local.identifier) %>% 
-  summarize(max_day = max(round(as.numeric(days_since_emig)))) %>% 
+  summarize(max_day = max(ceiling(as.numeric(days_since_emig)))) %>% #round up days since emigration. we don't want zeros
   ggplot(aes(x = individual.local.identifier, y = max_day)) +
   geom_col()
 
 cmpl_ann %>% 
   group_by(individual.local.identifier) %>% 
-  summarize(max_day = max(round(as.numeric(days_since_emig)))) %>% 
+  summarize(max_day = max(ceiling(as.numeric(days_since_emig)))) %>% 
   summarize(mode = Mode(max_day), # 537
             mean = mean(max_day)) #444
 
@@ -59,22 +64,21 @@ ggplot(cmpl_ann[cmpl_ann$used == 1,], aes(as.numeric(days_since_emig), aspect_TP
 
 #one set of boxplots for select days: 10, 50 , 100, 500
 
-data_int <- cmpl_ann %>% 
-  mutate(days_since_emig_n = round(as.numeric(days_since_emig))) %>% 
+data_int <- cmpl_ann %>%
   filter(days_since_emig_n %in% c(1, 10, 30 , 100, 300)) %>% 
   mutate(days_f = as.factor(days_since_emig_n))
 
 
+variables <- c("dem_100", "slope_100", "aspect_100", "TRI_100", "TPI_100", "slope_TPI_100", "aspect_TPI_100" )
+
 X11(width = 6, height = 9)
+
+png("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/box_plots.png", width = 6, height = 9, units = "in", res = 300)
 
 par(mfrow= c(4,2), 
     oma = c(0,0,3,0), 
     las = 1,
     mgp = c(0,1,0))
-
-
-variables <- c("dem_100", "slope_100", "aspect_100", "TRI_100", "TPI_100", "slope_TPI_100", "aspect_TPI_100" )
-
 for(i in 1:length(variables)){
   boxplot(data_int[,variables[i]] ~ data_int[,"days_f"], data = data_int, boxfill = NA, border = NA, main = variables[i], xlab = "", ylab = "")
   if(i == 1){
@@ -88,6 +92,8 @@ for(i in 1:length(variables)){
           boxwex = 0.25, at = 1:length(unique(data_int[data_int$used == 1 , "days_f"])) + 0.15)
   
 }
+dev.off()
+
 
 #also consider making the plots for periods of time and not only one day
 
@@ -120,11 +126,10 @@ all_data <- all_data %>%
          ind2 = factor(individual.local.identifier),
          ind3 = factor(individual.local.identifier),
          ind4 = factor(individual.local.identifier),
-         days_f1 = factor(days_since_emig_n ),
-         days_f2 = factor(days_since_emig_n ),
-         days_f3 = factor(days_since_emig_n ),
-         days_f4 = factor(days_since_emig_n ),
-         stratum = paste(individual.local.identifier, burst_id, step_id, sep = "_")) # the first round: forgot to include stratum id in the previous code 
+         days_f1 = factor(days_since_emig_n),
+         days_f2 = factor(days_since_emig_n),
+         days_f3 = factor(days_since_emig_n),
+         days_f4 = factor(days_since_emig_n))
 
 mean.beta <- 0
 prec.beta <- 1e-4 
@@ -132,7 +137,7 @@ prec.beta <- 1e-4
 #add one new row to unique strata instead of entire empty copies of strata. assign day since emigration and terrain values on a regular grid
 set.seed(200)
 
-n <- 500
+n <- 1000
 new_data <- all_data %>%
   group_by(stratum) %>% 
   slice_sample(n = 1) %>% 
@@ -146,8 +151,8 @@ new_data <- all_data %>%
   full_join(all_data)
 
 
-#model formula
-formulaM <- used ~ -1 + dem_100_z * days_since_emig_n_z + slope_100_z * days_since_emig_n_z + aspect_100_z * days_since_emig_n_z +
+#model formula. slope and TRI are correlated
+formulaM <- used ~ -1 + dem_100_z * days_since_emig_n_z + slope_100_z * days_since_emig_n_z + aspect_100_z * days_since_emig_n_z + TPI_100 * days_since_emig_n_z + 
   f(stratum, model = "iid", 
     hyper = list(theta = list(initial = log(1e-6),fixed = T))) + 
   f(ind1, dem_100_z, model = "iid",
@@ -180,13 +185,29 @@ M_pred <- inla(formulaM, family = "Poisson",
                num.threads = 10,
                control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
                control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
+Sys.time() - b #500 missing values: 7.47236 mins; 1000 missing values: 
+
+#try link = 1
+(b <- Sys.time())
+M_pred2 <- inla(formulaM, family = "Poisson", 
+               control.fixed = list(
+                 mean = mean.beta,
+                 prec = list(default = prec.beta)),
+               data = new_data, 
+               num.threads = 10,
+               control.predictor = list(compute = TRUE, link = 1), #this means that NA values will be predicted.
+               control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
 Sys.time() - b #1.069171 mins without random effects. 7.47236 mins
+
 
 # STEP 6: ssf output plots ----------------------------------------------------------------
 
 #interaction plots
 #extract predicted values
 used_na <- which(is.na(new_data$used))
+
+y_axis_var <- c("dem_100_z", "slope_100_z", "aspect_100_z")
+x_axis_var <- "days_since_emig_n_z"
 
 
 #extract information for rows that had NAs as response variables
@@ -197,7 +218,21 @@ preds <- data.frame(dem_100_z = new_data[is.na(new_data$used) ,"dem_100_z"],
                     preds = M_pred$summary.fitted.values[used_na,"mean"]) %>% 
   mutate(prob_pres = exp(preds)/(1+exp(preds))) #this should be between 0-1
 
-#create a raster of predictions
+#create a raster of predictions for each variable
+
+for (i in y_axis_var){
+  y <- preds
+  
+  avg_pred <- preds %>% 
+    group_by(x_axis_var, i) %>%  
+    summarise(avg_pres = mean(prob_pres)) %>% 
+    ungroup() %>% 
+    mutate(wspt_backtr = slope_100_z * attr(all_data$slope_100_z, 'scaled:scale') + attr(all_data$slope_100_z, 'scaled:center'),
+           dt_backtr = days_since_emig_n_z * attr(all_data$days_since_emig_n_z, 'scaled:scale') + attr(all_data$days_since_emig_n_z, 'scaled:center')) %>% 
+    dplyr::select(-c("days_since_emig_n_z","slope_100_z")) %>% 
+    as.data.frame()
+  
+}
 avg_preds_slope <- preds %>% 
   group_by(days_since_emig_n_z, slope_100_z) %>%  
   summarise(avg_pres = mean(prob_pres)) %>% 
