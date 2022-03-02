@@ -12,9 +12,11 @@
 
 setwd("C:/Users/Tess Bronnvik/Desktop/Improvement_and_Golden_Eagles")
 
-library(tidyverse)
+
 library(move)
 library(lubridate)
+library(tidyverse)
+library(ggpubr)
 
 ### Assign life stages to the birds for which we have gps data
 ###########################################################################################
@@ -148,14 +150,66 @@ ori_cfls <- cfls
 #save(ori_cfls, file = "cfls.RData")
 #load("cfls.RData"); cfls <- ori_cfls
 
-cfls <- cfls %>% 
-  # only post-fledging and pre-emigration soaring events
-  filter(thermalClust != "other",
-         soarClust != "glide") %>% 
-  mutate(year = year(timestamp),
-         month = month(timestamp),
-         day = day(timestamp), 
-         ymd = paste(year, month, day, sep = "-"))
+# reclassify the thermal soaring events so that there is no circular gliding
+cfls$thermalClust <- "other"
+cfls$thermalClust[which(cfls$gr.speed >= 2 & cfls$soarClust == "soar" & cfls$turnAngle_smooth >= 300)] <- "circular"
+cfls$thermalClust[which(cfls$gr.speed >= 2 & cfls$soarClust=="soar" & cfls$thermalClust != "circular")] <- "linear"
+cfls$thermalClust <- factor(cfls$thermalClust, levels=c("circular","linear","other"))
+
+# remove unnecessary and unwieldy data
+{
+cfls$nick_name <- NULL
+cfls$earliest_date_born <- NULL
+cfls$latest_date_born <- NULL
+cfls$comments <- NULL
+cfls$death_comments <- NULL
+cfls$barometric_pressure <- NULL
+cfls$eobs_status <- NULL
+cfls$eobs_temperature <- NULL
+cfls$eobs_type_of_fix <- NULL
+cfls$eobs_used_time_to_get_fix <-NULL
+cfls$sensor <- NULL
+cfls$sensor_type_id <- NULL
+cfls$sensor_type_id <- NULL
+cfls$sensor_type_ids <- NULL
+cfls$timestamp_start <- NULL
+cfls$timestamp_end <- NULL
+}
+
+
+# append the fledging dates for each individual
+cfls$fledging_date <- NA
+tcfls <- cfls
+cfls <- data.frame()
+
+inds <- unique(tcfls$local_identifier)
+for (i in unique(tcfls$local_identifier)) {
+  df <- tcfls[which(tcfls$local_identifier == i),]
+  df$fledging_date <- stages$date_fledging[which(stages$id == 
+                                                   eagle_names$age_name[which(eagle_names$local_identifier == i)])]
+  cfls <- rbind(cfls, df)
+  
+}
+
+# calculate the time spent in flight per day
+cfls <- cfls[which(cfls$gr.speed >= 2),] # only flight data
+cfls$ymd <- format(cfls$timestamp, format = "%Y-%m-%d")
+cfls$id_date <- paste0(cfls$local_identifier," ", cfls$ymd)
+
+id_date <- unique(cfls$id_date)
+
+cfls_t <- data.frame()
+
+for (i in id_date) {
+  df <- cfls[which(cfls$id_date == i),]
+  df <- df[order(df$timestamp),]
+  df$flight_time <- as.numeric(difftime(df$timestamp[nrow(df)], df$timestamp[1], units = "sec"))
+  cfls_t <- rbind(cfls_t, df)
+  rm(df)
+  print(paste0("Calculated flight time per day for ", i, "."), quote = F)
+}
+
+cfls <- cfls_t; rm(cfls_t)
 
 ## 2. give IDs to each unique linear event
 
@@ -164,8 +218,8 @@ cfls2 <- data.frame()
 # a vector to separate the individuals and days so that there is no chance that the data
 # for one ends on a thermal and the next starts on a thermal, which are then counted as a single
 # event
-cfls$id_date <- paste0(cfls$local_identifier," ", cfls$ymd)
-id_date <- unique(cfls$id_date)
+
+
 
 for (i in id_date) {
   df <- cfls[which(cfls$id_date == i), ]
@@ -180,8 +234,10 @@ for (i in id_date) {
                                            values[values] <- seq_along(values[values])))
   df$linearID[which(df$linearID == 0)] <- NA
   cfls2 <- rbind(cfls2, df)
+  rm(df)
   print(paste0("Assigned orographic event IDs for ", i, "."), quote = F)
 }
+cfls <- cfls2; rm(cfls2)
 
 # a data frame to hold the IDs
 cfls3 <- data.frame()
@@ -189,7 +245,7 @@ cfls3 <- data.frame()
 
 # and to each thermal event
 for (i in unique(cfls$id_date)) {
-  df <- cfls2[which(cfls2$id_date == i), ]
+  df <- cfls[which(cfls$id_date == i), ]
   df <- df[order(df$timestamp),]
   df$thermal <- NA
   # where the thermal cluster is thermal soaring, True
@@ -201,100 +257,134 @@ for (i in unique(cfls$id_date)) {
                                          values[values] <- seq_along(values[values])))
   df$thermalID[which(df$thermalID == 0)] <- NA
   cfls3 <- rbind(cfls3, df)
+  rm(df)
   print(paste0("Assigned thermal event IDs for ", i, "."), quote = F)
 }
+cfls <- cfls3; rm(cfls3)
 
+## 3. measure the time spent in each soaring "event"
 
-## 3. measure the time spent in each "event"
+# pare down the data to relieve computing stress
+# using only the data for linear or thermal soaring
+cfls <- cfls[which(cfls$thermalClust != "other"),]
 
-cfls <- cfls3 %>%
-  # work within slope soaring events
-  group_by(id_date, linearID) %>%
-  # calculate the time difference between the last and first observations
-  mutate(line_dt = difftime(.$timestamp[n()],.$timestamp[1])) %>% 
-  ungroup() %>% 
-  # work within thermal soaring events
-  group_by(id_date, thermalID) %>%
-  # calculate the time difference between the last and first observations
-  mutate(circle_dt = difftime(.$timestamp[n()],.$timestamp[1])) %>% 
-  ungroup()
-# these columns now hold the time spent in an event and the time spent out of it
-cfls$line_dt[which(cfls$thermalClust != "linear")] <- NA
-cfls$circle_dt[which(cfls$thermalClust != "circular")] <- NA
-# these columns now hold only the time spent in an event
+# create a column to store the linear event difference in time 
+cfls$line_dt <- NA
+
+templ <- data.frame()
+tempt <- data.frame()
+
+for (i in id_date) {
+  df <- cfls[which(cfls$id_date == i),]
+  line <- unique(df$linearID)
+  for (j in line) {
+    df2 <- df[which(df$linearID == j),]
+    df2$line_dt <- as.numeric(difftime(df2$timestamp[nrow(df2)], df2$timestamp[1], units = "sec"))
+    templ <- rbind(templ, df2)
+    rm(df2)
+  }
+  print(paste0("Calculated time spent in each linear soaring event for ", i, "."), quote = F)
+  circle <- unique(df$thermalID)
+  for (k in circle){
+    df2 <- df[which(df$thermalID == k),]
+    df2$circle_dt <- as.numeric(difftime(df2$timestamp[nrow(df2)], df2$timestamp[1], units = "sec"))
+    tempt <- rbind(tempt, df2)
+    rm(df2)
+  }
+  print(paste0("Calculated time spent in each thermal soaring event for ", i, "."), quote = F)
+  rm(df)
+}
+
+#save(templ, file = "templ_1Mar.RData")
+#save(tempt, file = "tempt_1Mar.RData")
 
 # 4. sum the time spent per day
-cfls_ls <- split(cfls, cfls$individual_local_identifier)
 
-lapply(cfls_ls, sum())
+thermal_times <- data.frame()
 
-Lcfls <- cfls %>% 
-  # within each slope soaring event 
-  group_by(id_date, linearID) %>% 
-  # select the first observation
-  slice(1) %>% 
-  # in all the data
-  ungroup() %>% 
-  # per day
+# the thermal events in a day for an individual
+for (i in unique(tempt$id_date)) {
+  # single individual and day
+  df <- tempt[which(tempt$id_date == i),]
+  # its thermal events
+  circle <- unique(df$thermalID)
+  all_obs <- data.frame()
+  for (j in circle) {
+    # single thermal
+    event <- df[which(df$thermalID == j),]
+    # the first observation of it (all observations hold the same amount of time)
+    obs <- event[1,]
+    # added to the first observation of all other thermals on that day
+    all_obs <- rbind(all_obs, obs)
+  }
+  # sum the time spent on thermals per day and add it to the id_date df
+  df$tpd <- sum(all_obs$circle_dt)
+  thermal_times <- rbind(thermal_times, df)
+  print(paste0("Calculated time spent in thermals for ", i, "."), quote = F)
+}
+
+linear_times <- data.frame()
+
+for (i in unique(templ$id_date)) {
+  # single individual and day
+  df <- templ[which(templ$id_date == i),]
+  # its thermal events
+  line <- unique(df$linearID)
+  all_obs <- data.frame()
+  for (j in line) {
+    # single thermal
+    event <- df[which(df$linearID == j),]
+    # the first observation of it (all observations hold the same amount of time)
+    obs <- event[1,]
+    # added to the first observation of all other thermals on that day
+    all_obs <- rbind(all_obs, obs)
+  }
+  # sum the time spent on thermals per day and add it to the id_date df
+  df$tpd <- sum(all_obs$line_dt)
+  linear_times <- rbind(linear_times, df)
+  print(paste0("Calculated time spent linear soaring for ", i, "."), quote = F)
+}
+
+rm(templ);rm(tempt)
+
+
+thermal_times <- thermal_times %>% 
   group_by(id_date) %>% 
-  # sum the seconds in linear events
-  mutate(day_lines = sum(as.numeric(line_dt), na.rm = T)) %>% 
-  # one value per day
-  slice(1) %>% 
-  ungroup()
-Ccfls <- cfls %>% 
-  # within each thermal soaring event 
-  group_by(id_date, thermalID) %>% 
-  # select the first observation
-  slice(1) %>% 
-  # in all the data
-  ungroup() %>% 
-  # per day
+  slice(1)
+linear_times <- linear_times %>% 
   group_by(id_date) %>% 
-  # sum the seconds in linear events
-  mutate(day_circles = sum(as.numeric(circle_dt), na.rm = T)) %>% 
-  # one value per day
-  slice(1) %>% 
-  ungroup() %>% 
-  dplyr::select(thermalClust, timestamp, local_identifier, ymd, id_date, linear, 
-         linearID, thermal, thermalID, circle_dt, day_circles)
-
+  slice(1)
 
 ## 5. Calculate the ratio of linear to circular soaring
 
-# merge the data by id_date so that a single frame holds both linear and thermal soaring
-Rcfls <- merge(Lcfls, Ccfls, by = "id_date")
-
-# append the fledging dates for each individual
-Rcfls$fledging_date <- NA
-rcfls <- data.frame()
-
-inds <- unique(Rcfls$local_identifier.x)
-for (i in inds) {
-  df <- Rcfls[which(Rcfls$local_identifier.x == i),]
-  df$fledging_date <- stages$date_fledging[which(stages$id == 
-            eagle_names$age_name[which(eagle_names$local_identifier == i)])]
-  rcfls <- rbind(rcfls, df)
-  
-}
 
 # calculate the number of days between each observation and fledging
-rcfls$dsf <- as.numeric(as.Date(rcfls$ymd.x) - as.Date(paste(year(rcfls$fledging_date), month(rcfls$fledging_date), day(rcfls$fledging_date), sep = "-")))
+thermal_times$dsf <- as.numeric(as.Date(thermal_times$ymd) - as.Date(paste(year(thermal_times$fledging_date), month(thermal_times$fledging_date), day(thermal_times$fledging_date), sep = "-")))
+linear_times$dsf <- as.numeric(as.Date(linear_times$ymd) - as.Date(paste(year(linear_times$fledging_date), month(linear_times$fledging_date), day(linear_times$fledging_date), sep = "-")))
 
-rcfls <- rcfls %>% 
-  rowwise() %>% 
-  mutate(ratiosoar = day_lines/day_circles)
+# calculate the ratio of soaring to total time spent flying per day
+thermal_times$ttf <- thermal_times$tpd/thermal_times$flight_time
+linear_times$ltf <- linear_times$tpd/linear_times$flight_time
 
-## 6. Plot the ratio of liner:thermal soaring over days since fledging
+#save(rcfls, file = "rcfls_01.3.22.RData")
 
-ggplot(rcfls[which(rcfls$ratiosoar != Inf),], aes(x = dsf, y = ratiosoar)) + 
+## 6. Plot the ratio of soaring:flight over days since fledging
+
+thermal_plot <- ggplot(thermal_times, aes(x = dsf, y = ttf)) + 
   geom_point() +
   geom_smooth(method = "lm", se = F) +
-  labs(x = "Days since fledging", y = "Ratio of slope to thermal soaring (s)") + 
-  ylim(c(0, 150)) +
+  labs(x = "Days since fledging", y = "Relative time spent thermal soaring (s)") +
   scale_x_continuous(breaks = seq.int(0, 500, by = 50)) +
   theme_classic() +
   theme(legend.position="none", axis.text = element_text(color = "black"))
+linear_plot <- ggplot(linear_times, aes(x = dsf, y = ltf)) + 
+  geom_point() +
+  geom_smooth(method = "lm", se = F) +
+  labs(x = "Days since fledging", y = "Relative time spent slope soaring (s)") + 
+  scale_x_continuous(breaks = seq.int(0, 500, by = 50)) +
+  theme_classic() +
+  theme(legend.position="none", axis.text = element_text(color = "black"))
+ggarrange(thermal_plot,linear_plot, common.legend = F)
 
 ###########################################################################################
 
