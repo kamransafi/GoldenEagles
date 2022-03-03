@@ -161,13 +161,13 @@ new_data <- all_data %>%
 #model formula. slope and TRI are correlated
 formulaM <- used ~ -1 + dem_100_z * days_since_emig_n_z + slope_100_z * days_since_emig_n_z + aspect_100_z * days_since_emig_n_z +
   f(stratum, model = "iid", 
-    hyper = list(theta = list(initial = log(1e-6),fixed = T))) + 
-  f(ind1, dem_100_z, model = "iid",
-    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) + 
-  f(ind2, slope_100_z,  model = "iid",
-    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) +
-  f(ind3, aspect_100_z, model = "iid",
-    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
+    hyper = list(theta = list(initial = log(1e-6),fixed = T))) #+ run without random effects first 
+  # f(ind1, dem_100_z, model = "iid",
+  #   hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) + 
+  # f(ind2, slope_100_z,  model = "iid",
+  #   hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) +
+  # f(ind3, aspect_100_z, model = "iid",
+  #   hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
 
 #model
 (b <- Sys.time())
@@ -181,7 +181,7 @@ M <- inla(formulaM, family = "Poisson",
           control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
 Sys.time() - b  #5.515833 mins
 
-save(M, file = "inla_model_1.RData")
+save(M, file = "inla_model_1_norandom.RData")
 
 #Model for predictions
 (b <- Sys.time())
@@ -195,7 +195,7 @@ M_pred <- inla(formulaM, family = "Poisson",
                control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
 Sys.time() - b #500 missing values: 7.47236 mins
 
-save(M_pred, file = "inla_model_pred1.RData")
+save(M_pred, file = "inla_model_pred1_norandom.RData")
 
 #try link = 1
 (b <- Sys.time())
@@ -208,6 +208,8 @@ M_pred2 <- inla(formulaM, family = "Poisson",
                control.predictor = list(compute = TRUE, link = 1), #this means that NA values will be predicted.
                control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
 Sys.time() - b #1.069171 mins without random effects. 7.47236 mins
+
+save(M_pred2, file = "inla_model_pred2_norandom.RData")
 
 
 # STEP 6: ssf output plots ----------------------------------------------------------------
@@ -230,6 +232,7 @@ preds <- data.frame(dem_100_z = new_data[is.na(new_data$used) ,"dem_100_z"],
 
 #create a raster of predictions for each variable
 
+#write the procedure in a for loop so I don't have to repeat three times manually... still working on it
 for (i in y_axis_var){
   y <- preds
   
@@ -243,6 +246,7 @@ for (i in y_axis_var){
     as.data.frame()
   
 }
+
 avg_preds_slope <- preds %>% 
   group_by(days_since_emig_n_z, slope_100_z) %>%  
   summarise(avg_pres = mean(prob_pres)) %>% 
@@ -321,3 +325,4 @@ plot(interpr, legend.only = T, horizontal = F, col = colpal, legend.args = list(
                       col = NA, #make sure box type in par is set to n, otherwise axes will be drawn on the legend :p
                       col.ticks = NA,
                       line = -0.8, cex.axis = 0.7))
+
