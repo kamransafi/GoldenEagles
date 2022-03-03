@@ -1,4 +1,6 @@
 ## Task 1: ratio of soaring modes
+## Hester Brønnvik
+## hbronnvik@ab.mpg.de
 ## 21.02.22
 
 
