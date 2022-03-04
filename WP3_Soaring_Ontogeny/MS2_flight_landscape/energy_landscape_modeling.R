@@ -115,9 +115,13 @@ all_data <- cmpl_ann %>%
 
 # STEP 5: ssf modeling ----------------------------------------------------------------
 
-# quick and dirty using clogit? for what time period???
+# quick and dirty using clogit. for what time period???
 
-
+library(survival)
+form1a <- used ~ dem_100_z * days_since_emig_n_z + slope_100_z * days_since_emig_n_z + aspect_100_z * days_since_emig_n_z + 
+  slope_TPI_100_z * days_since_emig_n_z + aspect_TPI_100_z * days_since_emig_n_z  +  strata(stratum)
+ssf_full <- clogit(form1a, data = all_data)
+summary(ssf_full) #so, include at least altitude, slope, slope_TPI in the model
 
 # INLA formula using interaction terms for time and predictor variables.
 # control for month of year or temperature....
@@ -142,7 +146,7 @@ mean.beta <- 0
 prec.beta <- 1e-4 
 
 #add one new row to unique strata instead of entire empty copies of strata. assign day since emigration and terrain values on a regular grid
-set.seed(200)
+set.seed(500)
 
 n <- 500
 new_data <- all_data %>%
@@ -154,19 +158,20 @@ new_data <- all_data %>%
          days_since_emig_n = sample(seq(min(all_data$days_since_emig_n),max(all_data$days_since_emig_n), length.out = 10), n, replace = T), 
          dem_100_z = sample(seq(min(all_data$dem_100_z),max(all_data$dem_100_z), length.out = 10), n, replace = T), #regular intervals for wind support and delta t, so we can make a raster later on
          slope_100_z = sample(seq(min(all_data$slope_100_z),max(all_data$slope_100_z), length.out = 10), n, replace = T),
+         slope_TPI_100_z = sample(seq(min(all_data$slope_TPI_100_z),max(all_data$slope_TPI_100_z), length.out = 10), n, replace = T),
          aspect_100_z = sample(seq(min(all_data$aspect_100_z),max(all_data$aspect_100_z), length.out = 10), n, replace = T)) %>% 
   full_join(all_data)
 
 
 #model formula. slope and TRI are correlated
-formulaM <- used ~ -1 + dem_100_z * days_since_emig_n_z + slope_100_z * days_since_emig_n_z + aspect_100_z * days_since_emig_n_z +
+formulaM <- used ~ -1 + dem_100_z * days_since_emig_n_z + slope_100_z * days_since_emig_n_z + slope_TPI_100_z * days_since_emig_n_z +
   f(stratum, model = "iid", 
     hyper = list(theta = list(initial = log(1e-6),fixed = T))) #+ run without random effects first 
   # f(ind1, dem_100_z, model = "iid",
   #   hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) + 
   # f(ind2, slope_100_z,  model = "iid",
   #   hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) +
-  # f(ind3, aspect_100_z, model = "iid",
+  # f(ind3, slope_TPI_100_z, model = "iid",
   #   hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
 
 #model
@@ -182,6 +187,10 @@ M <- inla(formulaM, family = "Poisson",
 Sys.time() - b  #5.515833 mins
 
 save(M, file = "inla_model_1_norandom.RData")
+save(M, file = "inla_model_1tpi_norandom.RData")
+
+library(ggregplot)
+Efxplot(M)
 
 #Model for predictions
 (b <- Sys.time())
@@ -223,106 +232,131 @@ x_axis_var <- "days_since_emig_n_z"
 
 
 #extract information for rows that had NAs as response variables
-preds <- data.frame(dem_100_z = new_data[is.na(new_data$used) ,"dem_100_z"],
-                    slope_100_z = new_data[is.na(new_data$used) ,"slope_100_z"],
-                    aspect_100_z = new_data[is.na(new_data$used) ,"aspect_100_z"],
-                    days_since_emig_n_z = new_data[is.na(new_data$used) ,"days_since_emig_n_z"],
-                    preds = M_pred$summary.fitted.values[used_na,"mean"]) %>% 
-  mutate(prob_pres = exp(preds)/(1+exp(preds))) #this should be between 0-1
+# preds <- data.frame(dem_100_z = new_data[is.na(new_data$used) ,"dem_100_z"],
+#                     slope_100_z = new_data[is.na(new_data$used) ,"slope_100_z"],
+#                     aspect_100_z = new_data[is.na(new_data$used) ,"aspect_100_z"],
+#                     days_since_emig_n_z = new_data[is.na(new_data$used) ,"days_since_emig_n_z"],
+#                     preds = M_pred$summary.fitted.values[used_na,"mean"]) %>%
+#   mutate(prob_pres = exp(preds)/(1+exp(preds))) #this should be between 0-1
 
-#create a raster of predictions for each variable
 
-#write the procedure in a for loop so I don't have to repeat three times manually... still working on it
+#extract probability of presence for missing values
+fitted_values <- data.frame(days_since_emig_n_z = new_data[is.na(new_data$used) ,"days_since_emig_n_z"],
+                            preds = M_pred$summary.fitted.values[used_na,"mean"]) %>% 
+  mutate(prob_pres = exp(preds)/(1+exp(preds))) 
+
+#extract center and scale values for time variable, to be used for back transformation. The y-axis attributes will be extracted in the for loop
+x_axis_attr_scale <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:scale')
+x_axis_attr_center <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:center')
+
 for (i in y_axis_var){
-  y <- preds
   
-  avg_pred <- preds %>% 
-    group_by(x_axis_var, i) %>%  
+  fitted_df <- fitted_values %>% 
+    mutate(new_data[is.na(new_data$used), i])
+  #extract scale and center values needed to back transform the scaled values
+  i_scale <- attr(all_data[,colnames(all_data) == i],'scaled:scale')
+  i_center <- attr(all_data[,colnames(all_data) == i],'scaled:center')
+  
+  #summarize values, so each (x,y) combo has one probability value
+  avg_pred <- fitted_df %>% 
+    group_by_at(c(1,4)) %>%  #group by days since emigration and i
     summarise(avg_pres = mean(prob_pres)) %>% 
     ungroup() %>% 
-    mutate(wspt_backtr = slope_100_z * attr(all_data$slope_100_z, 'scaled:scale') + attr(all_data$slope_100_z, 'scaled:center'),
-           dt_backtr = days_since_emig_n_z * attr(all_data$days_since_emig_n_z, 'scaled:scale') + attr(all_data$days_since_emig_n_z, 'scaled:center')) %>% 
-    dplyr::select(-c("days_since_emig_n_z","slope_100_z")) %>% 
+    mutate(dplyr::select(.,all_of(i)) * i_scale + i_center, #back-transform the values for plotting
+           dplyr::select(.,all_of(x_axis_var)) * x_axis_attr_scale + x_axis_attr_center ) %>% #these columns replace the original columns 1 and 2
+    rename(x_backtr = 1, #days since fledging
+           i_backtr = 2) %>%  #y axis variables
     as.data.frame()
+  
+  #create a raster
+  coordinates(avg_pred) <-~ x_backtr + i_backtr 
+  gridded(avg_pred) <- TRUE
+  r <- raster(avg_pred)
+  
+  
+  #interpolate. for visualization purposes
+  surf.1 <- Tps(as.matrix(as.data.frame(r,xy = T)[,c(1,2)],col = 2), as.data.frame(r,xy = T)[,3])
+  
+  grd <- expand.grid(x = seq(from = extent(r)[1],to = extent(r)[2],by = 2),
+                     y = seq(from = extent(r)[3],to = extent(r)[4],by = 2))
+  
+  grd$coords <- matrix(c(grd$x,grd$y),ncol=2)
+  
+  surf.1.pred <- predict.Krig(surf.1,grd$coords)
+  interpdf <- data.frame(grd$coords, surf.1.pred)
+  
+  colnames(interpdf) <- c("x_backtr","i_backtr","prob_pres")
+  
+  coordinates(interpdf) <- ~ x_backtr + i_backtr
+  gridded(interpdf) <- TRUE
+  interpr <- raster(interpdf)
+  
+  
+  #create a color palette
+  cuts <- c(0, 0.25,0.5,0.75,1) #set breaks
+  pal <- colorRampPalette(c("aliceblue", "lightskyblue1", "khaki2", "sandybrown", "salmon2","tomato"))
+  colpal <- pal(100)
+  
+  
+  #manually determine the range of y axis for each variable
+  if(i == "dem_100_z"){
+    y_axis_r <- c(68,3977)
+    y_axis_lab <- c(100, seq(500, 3500, 1000)) #keep all labels at n = 5 to keep everything neat
+  } else if(i == "slope_100_z"){
+    y_axis_r <- c(0,70)
+    y_axis_lab <- seq(10, 50, 10)
+  } else if(i == "aspect_100_z"){
+    y_axis_r <- c(4,355)
+    y_axis_lab <- c(5, 90, 180, 270, 350)
+  }
+  
+  
+  #range of x axis
+  x_axis_r <- c(1, 829)
+  #labels of x axis
+  x_axis_lab <- seq(100,800, 100)
+  
+  
+  #plot
+  X11(width = 5, height = 4)
+  
+  par(cex = 0.7,
+      oma = c(0,3.5,0,0),
+      mar = c(0, 0, 0, 1.5),
+      bty = "n",
+      mgp = c(1,0.5,0)
+  )
+  
+  
+  raster::plot(interpr, col = colpal, axes = F, box = F, legend = F, ext = extent(c(x_axis_r[1], x_axis_r[2], y_axis_r[1], y_axis_r[2]))) #crop to the extent of observed data
+  
+  #add axes
+  axis(side = 1, at = x_axis_lab, #x_axis
+       labels = x_axis_lab,
+       tick = T , col = NA, col.ticks = 1, # NULL would mean to use the defult color specified by "fg" in par
+       tck = -.015, line = -2.7, cex.axis = 0.7) #tick marks smaller than default by this proportion
+  
+  axis(side = 2, at = y_axis_lab, labels = y_axis_lab, 
+       tick = T ,col = NA, col.ticks = 1, tck = -.015, las = 2, cex.axis = 0.7)
+  
+  lines(x = c(-21.9, -21.9), y = c(-9.9,13.9)) #x and y axis lines
+  #abline(h =-10)
+  
+  #axis titles
+  mtext(strsplit(x_axis_var, split = "z")[[1]], 1, line = -4, cex = 0.9, font = 3)
+  mtext(strsplit(i, split = "z")[[1]], 2, line = 1.2, cex = 0.9)
+  
+  #add legend
+  plot(interpr, legend.only = T, horizontal = F, col = colpal, legend.args = list("Probability of use", side = 4, font = 1, line = 1.5, cex = 0.7),
+       legend.shrink = 0.4,
+       #smallplot= c(0.12,0.7, 0.06,0.09),
+       axis.args = list(at = seq(0,1,0.25), #same arguments as any axis, to determine the length of the bar and tick marks and labels
+                        labels = seq(0,1,0.25), 
+                        col = NA, #make sure box type in par is set to n, otherwise axes will be drawn on the legend :p
+                        col.ticks = NA,
+                        line = -0.8, cex.axis = 0.7))
   
 }
 
-avg_preds_slope <- preds %>% 
-  group_by(days_since_emig_n_z, slope_100_z) %>%  
-  summarise(avg_pres = mean(prob_pres)) %>% 
-  ungroup() %>% 
-  mutate(wspt_backtr = slope_100_z * attr(all_data$slope_100_z, 'scaled:scale') + attr(all_data$slope_100_z, 'scaled:center'),
-         dt_backtr = days_since_emig_n_z * attr(all_data$days_since_emig_n_z, 'scaled:scale') + attr(all_data$days_since_emig_n_z, 'scaled:center')) %>% 
-  dplyr::select(-c("days_since_emig_n_z","slope_100_z")) %>% 
-  as.data.frame()
 
-
-coordinates(avg_preds_slope) <-~ wspt_backtr + dt_backtr 
-gridded(avg_preds_slope) <- TRUE
-r <- raster(avg_preds_slope)
-
-
-#interpolate. for visualization purposes
-surf.1 <- Tps(as.matrix(as.data.frame(r,xy = T)[,c(1,2)],col = 2),as.data.frame(r,xy = T)[,3])
-
-grd <- expand.grid(x = seq(from = extent(r)[1],to = extent(r)[2],by = 2),
-                   y = seq(from = extent(r)[3],to = extent(r)[4],by = 2))
-
-grd$coords <- matrix(c(grd$x,grd$y),ncol=2)
-
-surf.1.pred <- predict.Krig(surf.1,grd$coords)
-interpdf <- data.frame(grd$coords,surf.1.pred)
-
-colnames(interpdf) <- c("slope","days_since_emig","prob_pres")
-
-coordinates(interpdf) <- ~ slope + days_since_emig
-gridded(interpdf) <- TRUE
-interpr <- raster(interpdf)
-
-
-#create a color palette
-cuts <- c(0, 0.25,0.5,0.75,1) #set breaks
-pal <- colorRampPalette(c("aliceblue", "lightskyblue1", "khaki2", "sandybrown", "salmon2","tomato"))
-colpal <- pal(200)
-
-
-
-#plot
-X11(width = 5, height = 4)
-
-par(cex = 0.7,
-    oma = c(0,3.5,0,0),
-    mar = c(0, 0, 0, 1.5),
-    bty = "n",
-    mgp = c(1,0.5,0)
-)
-
-
-raster::plot(interpr, col = colpal, axes = F, box = F, legend = F, ext = extent(c(-22, 28.9, -9.7, 14))) #crop to the extent of observed data
-
-#add axes
-axis(side = 1, at = seq(-20,30,10),
-     labels = seq(-20,30,10),
-     tick = T ,col = NA, col.ticks = 1, # NULL would mean to use the defult color specified by "fg" in par
-     tck = -.015, line = -5.75, cex.axis = 0.7) #tick marks smaller than default by this proportion
-
-axis(side = 2, at = c(-5, 0,5, 10), labels = c(-5, 0,5, 10), 
-     tick = T ,col = NA, col.ticks = 1, tck = -.015, las = 2, cex.axis = 0.7)
-
-lines(x = c(-21.9, -21.9), y = c(-9.9,13.9))
-abline(h =-10)
-
-#axis titles
-mtext("Wind support (m/s)", 1, line = -4, cex = 0.9, font = 3)
-mtext(expression(italic(paste(Delta,"T", "(°C)"))), 2, line = 1.2, cex = 0.9)
-
-#add legend
-plot(interpr, legend.only = T, horizontal = F, col = colpal, legend.args = list("Probability of use", side = 4, font = 1, line = 1.5, cex = 0.7),
-     legend.shrink = 0.4,
-     #smallplot= c(0.12,0.7, 0.06,0.09),
-     axis.args = list(at = seq(0,1,0.25), #same arguments as any axis, to determine the length of the bar and tick marks and labels
-                      labels = seq(0,1,0.25), 
-                      col = NA, #make sure box type in par is set to n, otherwise axes will be drawn on the legend :p
-                      col.ticks = NA,
-                      line = -0.8, cex.axis = 0.7))
 
