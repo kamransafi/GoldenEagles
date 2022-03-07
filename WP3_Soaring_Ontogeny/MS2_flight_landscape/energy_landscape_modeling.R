@@ -148,7 +148,7 @@ prec.beta <- 1e-4
 #add one new row to unique strata instead of entire empty copies of strata. assign day since emigration and terrain values on a regular grid
 set.seed(500)
 
-n <- 500
+n <- 1000
 new_data <- all_data %>%
   group_by(stratum) %>% 
   slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
@@ -189,12 +189,13 @@ Sys.time() - b  #5.515833 mins
 save(M, file = "inla_model_1_norandom.RData")
 save(M, file = "inla_model_1tpi_norandom.RData")
 
+
 library(ggregplot)
-Efxplot(M)
+Efxplot(list(M,M_pred3))
 
 #Model for predictions
 (b <- Sys.time())
-M_pred <- inla(formulaM, family = "Poisson", 
+M_pred3 <- inla(formulaM, family = "Poisson", 
                control.fixed = list(
                  mean = mean.beta,
                  prec = list(default = prec.beta)),
@@ -205,6 +206,8 @@ M_pred <- inla(formulaM, family = "Poisson",
 Sys.time() - b #500 missing values: 7.47236 mins
 
 save(M_pred, file = "inla_model_pred1_norandom.RData")
+save(M_pred3, file = "inla_model_pred3_norandom_1000NAs.RData")
+
 
 #try link = 1
 (b <- Sys.time())
@@ -221,7 +224,7 @@ Sys.time() - b #1.069171 mins without random effects. 7.47236 mins
 save(M_pred2, file = "inla_model_pred2_norandom.RData")
 
 
-# STEP 6: ssf output plots ----------------------------------------------------------------
+# STEP 6: ssf output plots: the interaction plots ----------------------------------------------------------------
 
 #interaction plots
 #extract predicted values
@@ -242,7 +245,7 @@ x_axis_var <- "days_since_emig_n_z"
 
 #extract probability of presence for missing values
 fitted_values <- data.frame(days_since_emig_n_z = new_data[is.na(new_data$used) ,"days_since_emig_n_z"],
-                            preds = M_pred$summary.fitted.values[used_na,"mean"]) %>% 
+                            preds = M_pred3$summary.fitted.values[used_na,"mean"]) %>% 
   mutate(prob_pres = exp(preds)/(1+exp(preds))) 
 
 #extract center and scale values for time variable, to be used for back transformation. The y-axis attributes will be extracted in the for loop
