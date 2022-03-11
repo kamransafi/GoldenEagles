@@ -7,10 +7,10 @@
 ## 2. Plot against days since fledging
 
 library(lubridate)
-library(ggplot2)
+library(ggplot2) 
 library(ggpubr)
 
-cfls_ls <- list.files("gps_acc_age")
+cfls_ls <- list.files("gps_acc_age") 
 cfls_ls <- paste0("gps_acc_age/", cfls_ls)
 
 cfls <- data.frame()
