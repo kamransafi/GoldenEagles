@@ -4,11 +4,11 @@
 ## 21.02.22
 
 
-## 1. Identify all thermal soaring events
-## 2. Identify all slope soaring events
+## 1. Calculate the total time spent flying in these data (gliding, soaring, flapping)
+## 2. Identify all soaring events
 ## 3. Measure how much time is spent in each
 ## 4. Sum these over each day
-## 5. Calculate the ratio
+## 5. Calculate the ratio of soaring to flight
 ## 6. Plot the ratio over days since fledging
 
 
@@ -193,7 +193,7 @@ for (i in unique(tcfls$local_identifier)) {
   
 }
 
-# calculate the time spent in flight per day
+## 1. calculate the time spent in flight per day
 cfls <- cfls[which(cfls$gr.speed >= 2),] # only flight data
 cfls$ymd <- format(cfls$timestamp, format = "%Y-%m-%d")
 cfls$id_date <- paste0(cfls$local_identifier," ", cfls$ymd)
@@ -213,7 +213,7 @@ for (i in id_date) {
 
 cfls <- cfls_t; rm(cfls_t)
 
-## 2. give IDs to each unique linear event
+## 2. give IDs to each unique soaring event
 
 # a data frame to hold the IDs
 cfls2 <- data.frame()
@@ -357,7 +357,7 @@ linear_times <- linear_times %>%
   group_by(id_date) %>% 
   slice(1)
 
-## 5. Calculate the ratio of linear to circular soaring
+## 5. Calculate the ratio of soaring time to flight time
 
 
 # calculate the number of days between each observation and fledging
