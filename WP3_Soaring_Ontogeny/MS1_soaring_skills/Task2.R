@@ -77,8 +77,6 @@ ggplot(pd_ws, aes(x = dsf, y = wind_speed, color = individual_local_identifier))
   theme(legend.position="none", axis.text = element_text(color = "black"))
 
 
-
-=======
 ## Task 2: wind speed exposure within thermals
 ## Hester Brønnvik
 ## hbronnvik@ab.mpg.de
@@ -156,7 +154,3 @@ ggplot(pd_ws, aes(x = dsf, y = wind_speed, color = individual_local_identifier))
   scale_x_continuous(breaks = seq.int(0, max(pd_ws$dsf), by = 40)) +
   theme_classic() +
   theme(legend.position="none", axis.text = element_text(color = "black"))
-
-
-
->>>>>>> ab27f7d71ee108537235d2ab5ba4f1eacf451148:Task2.R
