@@ -15,10 +15,10 @@ library(tidyverse)
 library(ggpubr)
 library(plyr)
 library(doParallel)
-cl <- makeCluster(detectCores()-3, type='PSOCK')
-registerDoParallel(cl)
+#cl <- makeCluster(detectCores()-3, type='PSOCK')
+#registerDoParallel(cl)
 is.error <- function(x) inherits(x, "try-error")
-source("associate_ACCinfoToGPS.R") #For ACCtoGPS function
+source("associate_ACCinfoToGPS.R") #For ACCtoGPS_parallel function
 load("loginStored.RData") # The MoveBank login
 eagleStudyId <- 282734839 # The golden eagle study on MoveBank
 
@@ -493,8 +493,8 @@ gpsAcc_ls <- llply(gpsInds, function(ind)try({
         vedba <- sqrt((accMx[,1]-mean(accMx[,1]))^2 + (accMx[,2]-mean(accMx[,2]))^2 + (accMx[,3]-mean(accMx[,3]))^2)
         ODBA <- (accMx[,1]-mean(accMx[,1])) + (accMx[,2]-mean(accMx[,2])) + (accMx[,3]-mean(accMx[,3]))
         
-        accDf_vedba[j, c("n_samples_per_axis", "acc_burst_duration_s", "meanVedba", "cumVedba", "ODBA", "meanODBA", "cODBA")] <- c(n_samples_per_axis, acc_burst_duration_s, 
-                                                                                                                                   mean(vedba, na.rm=T), sum(vedba, nrm=T), ODBA,
+        accDf_vedba[j, c("n_samples_per_axis", "acc_burst_duration_s", "meanVedba", "cumVedba", "meanODBA", "cODBA")] <- c(n_samples_per_axis, acc_burst_duration_s, 
+                                                                                                                                   mean(vedba, na.rm=T), sum(vedba, nrm=T),
                                                                                                                                    mean(ODBA, na.rm=T), sum(ODBA, na.rm=T))
       }
       # Merge the resulting columns (vedba etc) to the gps data based on acc_event_id
@@ -528,12 +528,12 @@ Sys.time() - start_time
 
 # measure the time spent in each soaring "event"
 # using only the data for thermal soaring
-cfls <- cfls[which(cfls$thermalClust == "circular"),]
+gpsAccDf <- gpsAccDf[which(gpsAccDf$thermalClust == "circular"),]
 
 tempt <- data.frame()
 
 # for each day
-for (i in id_date) {
+for (i in unique(gpsAccDf$id_date)) {
   df <- gpsAccDf[which(gpsAccDf$id_date == i),]
   # and or each thermal soaring event
   circle <- unique(df$thermalID)
@@ -549,75 +549,118 @@ for (i in id_date) {
 }
 
 gpsAccDf <- tempt; rm(tempt)
+#save(gpsAccDf, file = "df_with_soaring_times.RData")
+
+hist(gpsAccDf$circle_dt, breaks = 400)
 
 ## 3. Sum ODBA within each thermal
 
 # create a column of unique event IDs
 gpsAccDf$thermal_event <- paste0(gpsAccDf$id_date, "_", gpsAccDf$thermalID)
 
-odbaDF <- gpsAccDf %>% 
+dbaDF <- gpsAccDf %>% 
   # for each ID, day, and thermal with a unique acc_event_id (unique nearest timestamp, unique cumulative ODBA)
   group_by(thermal_event, acc_event_id) %>% 
-  # take only the first value (just one cumulative ODBA)
+  # take only the first value (just one mean ODBA per acc event)
   slice(1) %>%
   ungroup() %>% 
   # then within each thermal
   group_by(thermal_event) %>%
-  # sum the DBA 
-  mutate(sum_ODBA = sum(cODBA)) %>% 
-  # finally, take just the one sum ODBA per thermal
-  slice(1)
-ungroup()
+  # average the DBA 
+  mutate(mean_ODBA_thermal = mean(meanODBA),
+         mean_VeDBA_thermal = mean(meanVedba)) %>% 
+  # finally, take just the one mean ODBA per thermal
+  slice(1) %>% 
+  ungroup()
 
 
-## 4. Find the ratio of ODBA to time spent 
-odbaDF$ratio_dba_sec <- odbaDF$sumODBA/odbaDF$circle_dt
+## 4. Find the ratio of average ODBA to time spent 
+dbaDF$ratio_odba_sec <- dbaDF$mean_ODBA_thermal/dbaDF$circle_dt
+dbaDF$ratio_vedba_sec <- dbaDF$mean_VeDBA_thermal/dbaDF$circle_dt
 
 
 ## 5. Plot the ratio against days since fledging
 
 # # while working with the subset of birds that Svea aged:
-# 
+#
 # # append the fledging dates
 # # the file with the fledging and emigration dates
-# stages <- read.csv("Goldeneagles10_2021.csv", stringsAsFactors = F)
-# # correct encoding
-# stages$id <- gsub("\xfc", "ü", stages$id)
-# stages$id <- gsub("\xf6", "ö", stages$id)
-# stages <- stages[order(stages$id),]
-# # get the fledging date column re-arranged
-# stages$date_fledging <- paste0(stages$date_fledging, " ", stages$time_fledging)
-# stages$date_fledging <- as.POSIXct(gsub("\\.", "\\-", stages$date_fledging), format = "%d-%m-%Y %H:%M:%OS")
-# # get the emigration date column re-arranged
-# stages$date_emigration <- paste0(stages$date_emigration, " ", stages$time_emigration)
-# stages$date_emigration <- as.POSIXct(gsub("\\.", "\\-", stages$date_emigration), format = "%d-%m-%Y %H:%M:%OS")
-# # set all the missing emigration dates to today so that it is impossible for a bird to have timestamps > emigration date
-# # to assign life stage, we look at timestamps < emigration date, and therefore cannot use NA
-# stages$date_emigration[which(is.na(stages$date_emigration))] <- Sys.time()
-# 
-# # the file containing the names in different formats
-# load("eagle_names.RData")
-# 
-# # append the fledging dates
-# odbaDF$fledging_date <- NA
-# sub_df <- odbaDF[which(odbaDF$local_identifier %in% eagle_names$local_identifier),]
-# tcfls <- sub_df
-# sub_df <- data.frame()
-# 
-# for (i in unique(tcfls$local_identifier)) {
-#   df <- tcfls[which(tcfls$local_identifier == i),]
-#   df$fledging_date <- stages$date_fledging[which(stages$id == 
-#                                                    eagle_names$age_name[which(eagle_names$local_identifier == i)])]
-#   sub_df <- rbind(sub_df, df)
-#   
-# }
-# 
-# rm(tcfls)
+stages <- read.csv("Goldeneagles10_2021.csv", stringsAsFactors = F)
+# correct encoding
+stages$id <- gsub("\xfc", "ü", stages$id)
+stages$id <- gsub("\xf6", "ö", stages$id)
+stages <- stages[order(stages$id),]
+# get the fledging date column re-arranged
+stages$date_fledging <- paste0(stages$date_fledging, " ", stages$time_fledging)
+stages$date_fledging <- as.POSIXct(gsub("\\.", "\\-", stages$date_fledging), format = "%d-%m-%Y %H:%M:%OS")
+# get the emigration date column re-arranged
+stages$date_emigration <- paste0(stages$date_emigration, " ", stages$time_emigration)
+stages$date_emigration <- as.POSIXct(gsub("\\.", "\\-", stages$date_emigration), format = "%d-%m-%Y %H:%M:%OS")
+# set all the missing emigration dates to today so that it is impossible for a bird to have timestamps > emigration date
+# to assign life stage, we look at timestamps < emigration date, and therefore cannot use NA
+stages$date_emigration[which(is.na(stages$date_emigration))] <- Sys.time()
 
-ggplot(sub_df, aes(x = dsf, y = ratio_dba_sec))+
+# the file containing the names in different formats
+load("eagle_names.RData")
+
+# append the fledging dates
+dbaDF$fledging_date <- NA
+sub_df <- dbaDF[which(dbaDF$local_identifier %in% eagle_names$local_identifier),]
+tcfls <- sub_df
+sub_df <- data.frame()
+
+for (i in unique(tcfls$local_identifier)) {
+  df <- tcfls[which(tcfls$local_identifier == i),]
+  df$fledging_date <- stages$date_fledging[which(stages$id ==
+                                                   eagle_names$age_name[which(eagle_names$local_identifier == i)])]
+  df$emigration_date <- stages$date_emigration[which(stages$id ==
+                                                   eagle_names$age_name[which(eagle_names$local_identifier == i)])]
+  df$stage <- NA
+  df$stage[which(df$timestamp < df$fledging_date)] <- "nestling"
+  df$stage[which(df$timestamp >= df$fledging_date & df$timestamp < df$emigration_date)] <- "fledgling"
+  df$stage[which(df$timestamp >= df$emigration_date)] <- "emigrant"
+  sub_df <- rbind(sub_df, df)
+
+}
+
+rm(tcfls)
+
+# use only post fledging dependence period data
+sub_df <- sub_df[which(sub_df$stage == "fledgling"),]
+
+sub_df$dsf <- as.numeric(sub_df$timestamp - sub_df$fledging_date)
+
+ggplot(sub_df, aes(x = dsf, y = ratio_odba_sec))+
   geom_point() +
   geom_smooth(method = "lm", se = F, aes(color = sub_df$local_identifier)) +
   labs(x = "Days since fledging", y = "ODBA per time") +
   scale_x_continuous(breaks = seq.int(0, 1100, by = 200)) +
   theme_classic() +
   theme(legend.position="none", axis.text = element_text(color = "black"))
+
+ggplot(sub_df, aes(x = dsf, y = ratio_vedba_sec))+
+  geom_point() +
+  geom_smooth(method = "lm")#, se = F, aes(color = sub_df$local_identifier)) +
+  labs(x = "Days since fledging", y = "ODBA per time") +
+  scale_x_continuous(breaks = seq.int(min(sub_df$dsf), max(sub_df$dsf), by = 200)) +
+  theme_classic() +
+  theme(legend.position="none", axis.text = element_text(color = "black"))
+  
+  ggplot(sub_df, aes(x = dsf, y = mean_VeDBA_thermal))+
+    geom_point() +
+    geom_smooth(method = "lm")#, se = F, aes(color = sub_df$local_identifier)) +
+  labs(x = "Days since fledging", y = "ODBA per time") +
+    scale_x_continuous(breaks = seq.int(min(sub_df$dsf), max(sub_df$dsf), by = 200)) +
+    theme_classic() +
+    theme(legend.position="none", axis.text = element_text(color = "black"))
+##############################################################################################
+
+
+
+
+
+
+
+
+
+
