@@ -321,3 +321,92 @@ plot(interpr, legend.only = T, horizontal = F, col = colpal, legend.args = list(
                       col.ticks = NA,
                       line = -0.8, cex.axis = 0.7))
 
+############# model and interaction plots for the full model for all individuals: just for exploration. without random effects. for exploration purposes only #####
+#model with only habitat selection 
+form1b <- used ~ dem_100_z * days_since_emig_n_z + 
+  slope_TPI_100_z * days_since_emig_n_z + 
+  aspect_TPI_100_z * days_since_emig_n_z  + 
+  TRI_100_z * days_since_emig_n_z + 
+  TPI_100_z * days_since_emig_n_z + 
+  strata(stratum)
+
+HS_all_inds <- clogit(form1b, data = all_data) 
+plot_summs(HS_all_inds)
+
+
+#create new data for predictions
+n <- 100
+new_data_all <- all_data %>%
+  group_by(stratum) %>% 
+  slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
+  ungroup() %>% 
+  slice_sample(n = n, replace = F) %>% 
+  mutate(used = NA,  #regular intervals for all variables, so we can make a raster later on
+         days_since_emig_n = sample(seq(min(all_data$days_since_emig_n),max(all_data$days_since_emig_n), length.out = 20), n, replace = T), 
+         days_since_emig_n_z = sample(seq(min(all_data$days_since_emig_n_z),max(all_data$days_since_emig_n_z), length.out = 20), n, replace = T), #more levels for time than the other variables
+         dem_100_z = sample(seq(min(all_data$dem_100_z),max(all_data$dem_100_z), length.out = 20), n, replace = T),
+         slope_TPI_100_z = sample(seq(min(all_data$slope_TPI_100_z),max(all_data$slope_TPI_100_z), length.out = 20), n, replace = T),
+         aspect_TPI_100_z = sample(seq(min(all_data$aspect_TPI_100_z),max(all_data$aspect_TPI_100_z), length.out = 20), n, replace = T),
+         TRI_100_z = sample(seq(min(all_data$TRI_100_z),max(all_data$TRI_100_z), length.out = 20), n, replace = T),
+         TPI_100_z = sample(seq(min(all_data$TPI_100_z),max(all_data$TPI_100_z), length.out = 20), n, replace = T)) 
+
+#predictions for only the habitat selection model
+preds <- predict(HS_all_inds, newdata = new_data_all, type = "risk")
+preds_pr <- new_data_all %>% 
+  mutate(preds = preds) %>% 
+  rowwise %>% 
+  mutate(probs = preds/(preds+1))
+
+# STEP 6: ssf output plots: the interaction plots ----------------------------------------------------------------
+#create a raster of the prediction
+
+
+y_axis_var <- c("dem_100_z", "slope_TPI_100_z", "aspect_TPI_100_z", "TRI_100_z", "TPI_100_z")
+x_axis_var <- "days_since_emig_n_z"
+
+#extract center and scale values for time variable, to be used for back transformation. The y-axis attributes will be extracted in the for loop
+x_axis_attr_scale <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:scale')
+x_axis_attr_center <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:center')
+
+
+  #extract scale and center values needed to back transform the scaled values. do this using the whole dataset.
+  i_scale <- attr(all_data[,colnames(all_data) == i],'scaled:scale')
+  i_center <- attr(all_data[,colnames(all_data) == i],'scaled:center')
+  
+  #summarize values, so each (x,y) combo has one probability value
+  avg_pred <- preds_pr %>% 
+    group_by_at(c(i,x_axis_var)) %>%  #group by days since emigration and i
+    summarise(avg_pres = mean(probs)) %>% 
+    ungroup() %>% 
+    mutate(dplyr::select(.,all_of(i)) * i_scale + i_center, #back-transform the values for plotting
+           dplyr::select(.,all_of(x_axis_var)) * x_axis_attr_scale + x_axis_attr_center ) %>% #these columns replace the original columns 1 and 2
+    #rename(x_backtr = 1, #days since fledging
+    #       i_backtr = 2) %>%  #y axis variables
+    as.data.frame()
+  
+  #create a raster
+  coordinates(avg_pred) <- c(x_axis_var, i)
+  gridded(avg_pred) <- TRUE
+  r <- raster(avg_pred)
+  
+  
+  #interpolate. for visualization purposes
+  surf.1 <- Tps(as.matrix(as.data.frame(r,xy = T)[,c(1,2)],col = 2), as.data.frame(r,xy = T)[,3])
+  
+  grd <- expand.grid(x = seq(from = extent(r)[1],to = extent(r)[2],by = 2),
+                     y = seq(from = extent(r)[3],to = extent(r)[4],by = 2))
+  
+  grd$coords <- matrix(c(grd$x,grd$y), ncol = 2)
+  
+  surf.1.pred <- predict.Krig(surf.1,grd$coords)
+  interpdf <- data.frame(grd$coords, surf.1.pred)
+  
+  colnames(interpdf) <- c("x_backtr","i_backtr","prob_pres")
+  
+  coordinates(interpdf) <- ~ x_backtr + i_backtr
+  gridded(interpdf) <- TRUE
+  interpr <- raster(interpdf)
+  
+X11()
+spplot(interpr)  
+  
