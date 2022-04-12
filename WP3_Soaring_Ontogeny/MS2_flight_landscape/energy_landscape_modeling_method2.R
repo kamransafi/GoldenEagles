@@ -1,13 +1,17 @@
 #script for analysis of golden eagle data for the dynamics of the energy landscape manuscript: modeling the energy landscape
 #follows on from embc_segmentation.R and data_processing_&_annotation.R
 #the first attempt will only include static variables. reasons: 1) movebank annotation isn't working and 2) res of static variables is higher
-#Feb 22. 2022. Elham Nourani. Konstanz, DE
+#This version tries the method of fitting one model per individual. using the iSSA framework (selection-free movement kernel + habitat selection kernel)
+#Apr 11. 2022. Elham Nourani. Konstanz, DE
 
 library(tidyverse)
 library(corrr)
 library(INLA)
 library(fields)
 library(raster)
+library(survival)
+library(ggregplot) #to plot coeffs of INLA
+library(jtools) #to plot coeffs of clogit
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
@@ -115,32 +119,214 @@ all_data <- cmpl_ann %>%
 
 # STEP 5: ssf modeling ----------------------------------------------------------------
 
-# quick and dirty using clogit. for what time period???
+#select one individual to get the workflow straight: "Almen19 (eobs 7001)" or "Droslöng17 (eobs 5704)"
 
-library(survival)
-form1a <- used ~ dem_100_z * days_since_emig_n_z + slope_100_z * days_since_emig_n_z + aspect_100_z * days_since_emig_n_z + 
-  slope_TPI_100_z * days_since_emig_n_z + aspect_TPI_100_z * days_since_emig_n_z  +  strata(stratum)
-ssf_full <- clogit(form1a, data = all_data)
-summary(ssf_full) #so, include at least altitude, slope, slope_TPI and aspect_TPI in the model
+one_ind <- all_data %>% 
+  filter(individual.local.identifier == "Droslöng17 (eobs 5704)")
 
+
+#model
+#slope on its own is a percentage, dont use it. use unevenness in the slope. aspect on its own is also weird. use unevenness in aspect. treat days since as a continous variable
+form1a <- used ~  cos(turning_angle) * days_since_emig_n_z + 
+  log(step_length) * days_since_emig_n_z + 
+  dem_100_z * days_since_emig_n_z + 
+  slope_TPI_100_z * days_since_emig_n_z + 
+  aspect_TPI_100_z * days_since_emig_n_z  + 
+  TRI_100_z * days_since_emig_n_z + 
+  TPI_100_z * days_since_emig_n_z + 
+  strata(stratum)
+ssf_full <- clogit(form1a, data = one_ind) #in the clogit model, scaling the days makes the results easier to understand 
+summary(ssf_full) 
+plot_summs(ssf_full)
+
+ssf_all_inds <- clogit(form1a, data = all_data) 
+plot_summs(ssf_all_inds)
+
+#model without interaction term for movement variables
+form1aa <- used ~  cos(turning_angle) + log(step_length) + 
+  dem_100_z * days_since_emig_n_z + 
+  slope_TPI_100_z * days_since_emig_n_z + 
+  aspect_TPI_100_z * days_since_emig_n_z  + 
+  TRI_100_z * days_since_emig_n_z + 
+  TPI_100_z * days_since_emig_n_z + 
+  strata(stratum)
+
+ssf_all_inds2 <- clogit(form1aa, data = all_data) 
+plot_summs(ssf_all_inds2)
+
+#model with only habitat selection 
+form1b <- used ~ dem_100_z * days_since_emig_n_z + 
+  slope_TPI_100_z * days_since_emig_n_z + 
+  aspect_TPI_100_z * days_since_emig_n_z  + 
+  TRI_100_z * days_since_emig_n_z + 
+  TPI_100_z * days_since_emig_n_z + 
+  strata(stratum)
+
+ssf_HS <- clogit(form1b, data = one_ind) 
+plot_summs(ssf_HS)
+
+HS_all_inds <- clogit(form1b, data = all_data) 
+plot_summs(HS_all_inds)
+
+plot_summs(ssf_all_inds, ssf_all_inds2, HS_all_inds)
+plot_summs(ssf_full,ssf_HS)
+
+
+#create new data for predictions
+n <- 100
+new_data <- one_ind %>%
+  group_by(stratum) %>% 
+  slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
+  ungroup() %>% 
+  slice_sample(n = n, replace = F) %>% 
+  mutate(used = NA,  #regular intervals for all variables, so we can make a raster later on
+         days_since_emig_n = sample(seq(min(one_ind$days_since_emig_n),max(one_ind$days_since_emig_n), length.out = 20), n, replace = T), 
+         days_since_emig_n_z = sample(seq(min(one_ind$days_since_emig_n_z),max(one_ind$days_since_emig_n_z), length.out = 20), n, replace = T), #more levels for time than the other variables
+         dem_100_z = sample(seq(min(one_ind$dem_100_z),max(one_ind$dem_100_z), length.out = 20), n, replace = T),
+         slope_TPI_100_z = sample(seq(min(one_ind$slope_TPI_100_z),max(one_ind$slope_TPI_100_z), length.out = 20), n, replace = T),
+         aspect_TPI_100_z = sample(seq(min(one_ind$aspect_TPI_100_z),max(one_ind$aspect_TPI_100_z), length.out = 20), n, replace = T),
+         TRI_100_z = sample(seq(min(one_ind$TRI_100_z),max(one_ind$TRI_100_z), length.out = 20), n, replace = T),
+         TPI_100_z = sample(seq(min(one_ind$TPI_100_z),max(one_ind$TPI_100_z), length.out = 20), n, replace = T)) #%>% 
+  #full_join(one_ind)
+
+#predictions for only the habitat selection model
+preds <- predict(ssf_HS, newdata = new_data, type = "risk")
+preds_pr <- new_data %>% 
+  mutate(preds = preds) %>% 
+  rowwise %>% 
+  mutate(probs = preds/(preds+1))
+
+# STEP 6: ssf output plots: the interaction plots ----------------------------------------------------------------
+#create a raster of the prediction
+
+
+y_axis_var <- c("dem_100_z", "slope_TPI_100_z", "aspect_TPI_100_z", "TRI_100_z", "TPI_100_z")
+x_axis_var <- "days_since_emig_n_z"
+
+#extract center and scale values for time variable, to be used for back transformation. The y-axis attributes will be extracted in the for loop
+x_axis_attr_scale <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:scale')
+x_axis_attr_center <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:center')
+
+lapply(y_axis_var, function(i){
+  
+#extract scale and center values needed to back transform the scaled values. do this using the whole dataset.
+i_scale <- attr(all_data[,colnames(all_data) == i],'scaled:scale')
+i_center <- attr(all_data[,colnames(all_data) == i],'scaled:center')
+
+#summarize values, so each (x,y) combo has one probability value
+avg_pred <- preds_pr %>% 
+  group_by_at(c(i,x_axis_var)) %>%  #group by days since emigration and i
+  summarise(avg_pres = mean(probs)) %>% 
+  ungroup() %>% 
+  mutate(dplyr::select(.,all_of(i)) * i_scale + i_center, #back-transform the values for plotting
+         dplyr::select(.,all_of(x_axis_var)) * x_axis_attr_scale + x_axis_attr_center ) %>% #these columns replace the original columns 1 and 2
+  #rename(x_backtr = 1, #days since fledging
+  #       i_backtr = 2) %>%  #y axis variables
+  as.data.frame()
+
+#create a raster
+coordinates(avg_pred) <- c(x_axis_var, i)
+gridded(avg_pred) <- TRUE
+r <- raster(avg_pred)
+
+
+#interpolate. for visualization purposes
+surf.1 <- Tps(as.matrix(as.data.frame(r,xy = T)[,c(1,2)],col = 2), as.data.frame(r,xy = T)[,3])
+
+grd <- expand.grid(x = seq(from = extent(r)[1],to = extent(r)[2],by = 2),
+                   y = seq(from = extent(r)[3],to = extent(r)[4],by = 2))
+
+grd$coords <- matrix(c(grd$x,grd$y), ncol = 2)
+
+surf.1.pred <- predict.Krig(surf.1,grd$coords)
+interpdf <- data.frame(grd$coords, surf.1.pred)
+
+colnames(interpdf) <- c("x_backtr","i_backtr","prob_pres")
+
+coordinates(interpdf) <- ~ x_backtr + i_backtr
+gridded(interpdf) <- TRUE
+interpr <- raster(interpdf)
+
+#save the raster
+
+
+})
+
+X11()
+
+spplot(interpr)
+
+
+#create a color palette
+cuts <- c(0, 0.25,0.5,0.75,1) #set breaks
+pal <- colorRampPalette(c("aliceblue", "lightskyblue1", "khaki2", "sandybrown", "salmon2","tomato"))
+colpal <- pal(100)
+
+
+#manually determine the range of y axis for each variable
+if(i == "dem_100_z"){
+  y_axis_r <- c(68,3977)
+  y_axis_lab <- c(100, seq(500, 3500, 1000)) #keep all labels at n = 5 to keep everything neat
+} else if(i == "slope_100_z"){
+  y_axis_r <- c(0,70)
+  y_axis_lab <- seq(10, 50, 10)
+} else if(i == "aspect_100_z"){
+  y_axis_r <- c(4,355)
+  y_axis_lab <- c(5, 90, 180, 270, 350)
+}
+
+
+#range of x axis
+x_axis_r <- c(1, 829)
+#labels of x axis
+x_axis_lab <- seq(100,800, 100)
+
+
+#plot
+X11(width = 5, height = 4)
+
+par(cex = 0.7,
+    oma = c(1,3.5,1,1),
+    mar = c(1, 1, 1, 1.5),
+    bty = "n",
+    mgp = c(1,0.5,0)
+)
+
+
+raster::plot(interpr, col = colpal, axes = F, box = F, legend = F, ext = extent(c(x_axis_r[1], x_axis_r[2], y_axis_r[1], y_axis_r[2]))) #crop to the extent of observed data
+
+#add axes
+axis(side = 1, at = x_axis_lab, #x_axis
+     labels = x_axis_lab,
+     tick = T , col = NA, col.ticks = 1, # NULL would mean to use the defult color specified by "fg" in par
+     tck = -.015, line = -2.7, cex.axis = 0.7) #tick marks smaller than default by this proportion
+
+axis(side = 2, at = y_axis_lab, labels = y_axis_lab, 
+     tick = T ,col = NA, col.ticks = 1, tck = -.015, las = 2, cex.axis = 0.7)
+
+lines(x = c(-21.9, -21.9), y = c(-9.9,13.9)) #x and y axis lines
+#abline(h =-10)
+
+#axis titles
+mtext(strsplit(x_axis_var, split = "z")[[1]], 1, line = -4, cex = 0.9, font = 3)
+mtext(strsplit(i, split = "z")[[1]], 2, line = 1.2, cex = 0.9)
+
+#add legend
+plot(interpr, legend.only = T, horizontal = F, col = colpal, legend.args = list("Probability of use", side = 4, font = 1, line = 1.5, cex = 0.7),
+     legend.shrink = 0.4,
+     #smallplot= c(0.12,0.7, 0.06,0.09),
+     axis.args = list(at = seq(0,1,0.25), #same arguments as any axis, to determine the length of the bar and tick marks and labels
+                      labels = seq(0,1,0.25), 
+                      col = NA, #make sure box type in par is set to n, otherwise axes will be drawn on the legend :p
+                      col.ticks = NA,
+                      line = -0.8, cex.axis = 0.7))
+
+
+
+
+#####==================================================================
 # INLA formula using interaction terms for time and predictor variables.
 # control for month of year or temperature....
-
-#repeat the random effect
-all_data <- all_data %>% 
-  mutate(ind1 = factor(individual.local.identifier),
-         ind2 = factor(individual.local.identifier),
-         ind3 = factor(individual.local.identifier),
-         ind4 = factor(individual.local.identifier),
-         days_f1 = factor(days_since_emig_n),
-         days_f2 = factor(days_since_emig_n),
-         days_f3 = factor(days_since_emig_n),
-         days_f4 = factor(days_since_emig_n))
-
-save(all_data, file = "alt_50_20_min_25_ind_static_inlaready.RData")
-
-
-load("alt_50_20_min_25_ind_static_inlaready.RData")
 
 mean.beta <- 0
 prec.beta <- 1e-4 
@@ -148,31 +334,15 @@ prec.beta <- 1e-4
 #add one new row to unique strata instead of entire empty copies of strata. assign day since emigration and terrain values on a regular grid
 set.seed(500)
 
-n <- 1000
-new_data <- all_data %>%
-  group_by(stratum) %>% 
-  slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
-  ungroup() %>% 
-  slice_sample(n = n, replace = F) %>% 
-  mutate(used = NA,
-         days_since_emig_n = sample(seq(min(all_data$days_since_emig_n),max(all_data$days_since_emig_n), length.out = 10), n, replace = T), 
-         dem_100_z = sample(seq(min(all_data$dem_100_z),max(all_data$dem_100_z), length.out = 10), n, replace = T), #regular intervals for wind support and delta t, so we can make a raster later on
-         slope_100_z = sample(seq(min(all_data$slope_100_z),max(all_data$slope_100_z), length.out = 10), n, replace = T),
-         slope_TPI_100_z = sample(seq(min(all_data$slope_TPI_100_z),max(all_data$slope_TPI_100_z), length.out = 10), n, replace = T),
-         aspect_100_z = sample(seq(min(all_data$aspect_100_z),max(all_data$aspect_100_z), length.out = 10), n, replace = T)) %>% 
-  full_join(all_data)
-
-
-#model formula. slope and TRI are correlated
-formulaM <- used ~ -1 + dem_100_z * days_since_emig_n_z + slope_100_z * days_since_emig_n_z + slope_TPI_100_z * days_since_emig_n_z +
+#model formula. without scaling days. All interaction coefficients are zero
+formulaM <- used ~ -1 + scale(log(step_length)) * days_since_emig_n + cos(turning_angle) +  
+  dem_100_z * days_since_emig_n + 
+  slope_TPI_100_z * days_since_emig_n +
+  aspect_TPI_100_z * days_since_emig_n +
+  TRI_100_z * days_since_emig_n +
+  TPI_100_z * days_since_emig_n +
   f(stratum, model = "iid", 
-    hyper = list(theta = list(initial = log(1e-6),fixed = T))) #+ run without random effects first 
-  # f(ind1, dem_100_z, model = "iid",
-  #   hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) + 
-  # f(ind2, slope_100_z,  model = "iid",
-  #   hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) +
-  # f(ind3, slope_TPI_100_z, model = "iid",
-  #   hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
+    hyper = list(theta = list(initial = log(1e-6),fixed = T))) 
 
 #model
 (b <- Sys.time())
@@ -180,18 +350,56 @@ M <- inla(formulaM, family = "Poisson",
           control.fixed = list(
             mean = mean.beta,
             prec = list(default = prec.beta)),
-          data = all_data, 
+          data = one_ind, 
           num.threads = 10,
           control.predictor = list(compute = TRUE, link = 1), 
           control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
 Sys.time() - b  #5.515833 mins
 
-save(M, file = "inla_model_1_norandom.RData")
-save(M, file = "inla_model_1tpi_norandom.RData")
+#save(M, file = "inla_model_1_norandom.RData")
+#save(M, file = "inla_model_1tpi_norandom.RData")
+Efxplot(M)
+
+#scale the days. The output makes more sense, but CIs for days are super wide.
+formulaM2 <- used ~ -1 + scale(log(step_length)) * days_since_emig_n_z + cos(turning_angle) +  
+  dem_100_z * days_since_emig_n_z + 
+  slope_TPI_100_z * days_since_emig_n_z +
+  aspect_TPI_100_z * days_since_emig_n_z +
+  TRI_100_z * days_since_emig_n_z +
+  TPI_100_z * days_since_emig_n_z +
+  f(stratum, model = "iid", 
+    hyper = list(theta = list(initial = log(1e-6),fixed = T))) 
+
+M2 <- inla(formulaM2, family = "Poisson", 
+          control.fixed = list(
+            mean = mean.beta,
+            prec = list(default = prec.beta)),
+          data = one_ind, 
+          num.threads = 10,
+          control.predictor = list(compute = TRUE, link = 1), 
+          control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
+
+Efxplot(list(M,M2))
+
+#backwards model selection
+formulaM3 <- used ~ -1 + scale(log(step_length)) * days_since_emig_n_z + cos(turning_angle) +  
+  dem_100_z * days_since_emig_n_z + 
+  TRI_100_z * days_since_emig_n_z +
+  TPI_100_z * days_since_emig_n_z +
+  f(stratum, model = "iid", 
+    hyper = list(theta = list(initial = log(1e-6),fixed = T))) 
+
+M3 <- inla(formulaM3, family = "Poisson", 
+           control.fixed = list(
+             mean = mean.beta,
+             prec = list(default = prec.beta)),
+           data = one_ind, 
+           num.threads = 10,
+           control.predictor = list(compute = TRUE, link = 1), 
+           control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
 
 
-library(ggregplot)
-Efxplot(list(M,M_pred3))
+Efxplot(list(M3))
 
 #Model for predictions
 (b <- Sys.time())
@@ -221,8 +429,9 @@ M_pred2 <- inla(formulaM, family = "Poisson",
                control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
 Sys.time() - b #1.069171 mins without random effects. 7.47236 mins
 
-save(M_pred2, file = "inla_model_pred2_norandom.RData")
+#save(M_pred2, file = "inla_model_pred2_norandom.RData")
 
+Efxplot(list(M,M_pred3, M_pred2))
 
 # STEP 6: ssf output plots: the interaction plots ----------------------------------------------------------------
 
@@ -230,8 +439,8 @@ save(M_pred2, file = "inla_model_pred2_norandom.RData")
 #extract predicted values
 used_na <- which(is.na(new_data$used))
 
-y_axis_var <- c("dem_100_z", "slope_100_z", "aspect_100_z")
-x_axis_var <- "days_since_emig_n_z"
+y_axis_var <- c("dem_100_z", "slope_100_z")
+x_axis_var <- "days_since_emig_n"
 
 
 #extract information for rows that had NAs as response variables
@@ -244,13 +453,14 @@ x_axis_var <- "days_since_emig_n_z"
 
 
 #extract probability of presence for missing values
-fitted_values <- data.frame(days_since_emig_n_z = new_data[is.na(new_data$used) ,"days_since_emig_n_z"],
+fitted_values <- data.frame(days_since_emig_n_z = new_data[is.na(new_data$used) ,"days_since_emig_n"],
                             preds = M_pred3$summary.fitted.values[used_na,"mean"]) %>% 
   mutate(prob_pres = exp(preds)/(1+exp(preds))) #Inverse-logit transformation to get the probability (between 0 and 1)
 
+#X axis is already untransformed...
 #extract center and scale values for time variable, to be used for back transformation. The y-axis attributes will be extracted in the for loop
-x_axis_attr_scale <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:scale')
-x_axis_attr_center <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:center')
+#x_axis_attr_scale <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:scale')
+#x_axis_attr_center <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:center')
 
 for (i in y_axis_var){
   
