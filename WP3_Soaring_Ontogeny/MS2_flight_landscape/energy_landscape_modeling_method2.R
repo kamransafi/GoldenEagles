@@ -119,22 +119,59 @@ all_data <- cmpl_ann %>%
 
 # STEP 5: ssf modeling ----------------------------------------------------------------
 
+#Apr13 note: prediction rasters don't need to have the same origin and resolution. That can be fixed using terra::resample ftn.
+#model formula for all indiviudals will be the same
+#slope on its own is a percentage, dont use it. use unevenness in the slope. aspect on its own is also weird. use unevenness in aspect. treat days since as a continous variable
+#model with only habitat selection 
+formula <- used ~ dem_100_z * days_since_emig_n_z + 
+  slope_TPI_100_z * days_since_emig_n_z + 
+  aspect_TPI_100_z * days_since_emig_n_z  + 
+  TRI_100_z * days_since_emig_n_z + 
+  TPI_100_z * days_since_emig_n_z + 
+  strata(stratum)
+
+n <- 200 #define n for new data generation
+
+#for all individuals
+lapply(split(all_data, all_data$individual.local.identifier), function(ind){
+  #the model
+  ssf <- clogit(formula, data = ind)
+  #save model output
+  save(ssf, file = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ind_model_outputs_Apr13/", 
+                              ind$individual.local.identifier[1], ".RData"))
+  #generate new data
+  new_data <- ind %>%
+    group_by(stratum) %>% 
+    slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
+    ungroup() %>% 
+    slice_sample(n = n, replace = F) %>% 
+    mutate(used = NA,  #regular intervals for all variables, so we can make a raster later on, but also fixed, so I can overlay rasters for all individuals
+           days_since_emig_n = sample(seq(min(ind$days_since_emig_n),max(ind$days_since_emig_n), length.out = 40), n, replace = T), 
+           days_since_emig_n_z = sample(seq(min(ind$days_since_emig_n_z), max(ind$days_since_emig_n_z), length.out = 40), n, replace = T), 
+           dem_100_z = sample(seq(min(ind$dem_100_z),max(ind$dem_100_z), length.out = 20), n, replace = T),
+           slope_TPI_100_z = sample(seq(min(ind$slope_TPI_100_z),max(ind$slope_TPI_100_z), length.out = 20), n, replace = T),
+           aspect_TPI_100_z = sample(seq(min(ind$aspect_TPI_100_z),max(ind$aspect_TPI_100_z), length.out = 20), n, replace = T),
+           TRI_100_z = sample(seq(min(ind$TRI_100_z),max(ind$TRI_100_z), length.out = 20), n, replace = T),
+           TPI_100_z = sample(seq(min(ind$TPI_100_z),max(ind$TPI_100_z), length.out = 20), n, replace = T))
+  
+  #predict using the model
+  preds <- predict(ssf, newdata = new_data, type = "risk")
+  preds_pr <- new_data %>% 
+    mutate(preds = preds) %>% 
+    rowwise %>% 
+    mutate(probs = preds/(preds+1))
+  
+  
+  
+})
+
 #select one individual to get the workflow straight: "Almen19 (eobs 7001)" or "Droslöng17 (eobs 5704)"
 
 one_ind <- all_data %>% 
   filter(individual.local.identifier == "Droslöng17 (eobs 5704)")
 
 
-#model
-#slope on its own is a percentage, dont use it. use unevenness in the slope. aspect on its own is also weird. use unevenness in aspect. treat days since as a continous variable
-form1a <- used ~  cos(turning_angle) * days_since_emig_n_z + 
-  log(step_length) * days_since_emig_n_z + 
-  dem_100_z * days_since_emig_n_z + 
-  slope_TPI_100_z * days_since_emig_n_z + 
-  aspect_TPI_100_z * days_since_emig_n_z  + 
-  TRI_100_z * days_since_emig_n_z + 
-  TPI_100_z * days_since_emig_n_z + 
-  strata(stratum)
+
 ssf_full <- clogit(form1a, data = one_ind) #in the clogit model, scaling the days makes the results easier to understand 
 summary(ssf_full) 
 plot_summs(ssf_full)
@@ -172,22 +209,36 @@ plot_summs(ssf_all_inds, ssf_all_inds2, HS_all_inds)
 plot_summs(ssf_full,ssf_HS)
 
 
-#create new data for predictions
+#create new data for predictions. use predefined intervals, so all rasters end up with the same cell size and can be overlayed
 n <- 100
 new_data <- one_ind %>%
   group_by(stratum) %>% 
   slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
   ungroup() %>% 
   slice_sample(n = n, replace = F) %>% 
-  mutate(used = NA,  #regular intervals for all variables, so we can make a raster later on
-         days_since_emig_n = sample(seq(min(one_ind$days_since_emig_n),max(one_ind$days_since_emig_n), length.out = 20), n, replace = T), 
-         days_since_emig_n_z = sample(seq(min(one_ind$days_since_emig_n_z),max(one_ind$days_since_emig_n_z), length.out = 20), n, replace = T), #more levels for time than the other variables
+  mutate(used = NA,  #regular intervals for all variables, so we can make a raster later on, but also fixed, so I can overlay rasters for all individuals
+         days_since_emig_n = sample(seq(min(one_ind$days_since_emig_n),max(one_ind$days_since_emig_n), by = 7), n, replace = T), 
+         days_since_emig_n_z = sample(seq(-1.323678, max(one_ind$days_since_emig_n_z), by = 0.2), n, replace = T), 
          dem_100_z = sample(seq(min(one_ind$dem_100_z),max(one_ind$dem_100_z), length.out = 20), n, replace = T),
          slope_TPI_100_z = sample(seq(min(one_ind$slope_TPI_100_z),max(one_ind$slope_TPI_100_z), length.out = 20), n, replace = T),
          aspect_TPI_100_z = sample(seq(min(one_ind$aspect_TPI_100_z),max(one_ind$aspect_TPI_100_z), length.out = 20), n, replace = T),
          TRI_100_z = sample(seq(min(one_ind$TRI_100_z),max(one_ind$TRI_100_z), length.out = 20), n, replace = T),
-         TPI_100_z = sample(seq(min(one_ind$TPI_100_z),max(one_ind$TPI_100_z), length.out = 20), n, replace = T)) #%>% 
-  #full_join(one_ind)
+         TPI_100_z = sample(seq(min(one_ind$TPI_100_z),max(one_ind$TPI_100_z), length.out = 20), n, replace = T))
+
+# new_data <- one_ind %>%
+#   group_by(stratum) %>% 
+#   slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
+#   ungroup() %>% 
+#   slice_sample(n = n, replace = F) %>% 
+#   mutate(used = NA,  #regular intervals for all variables, so we can make a raster later on
+#          days_since_emig_n = sample(seq(min(one_ind$days_since_emig_n),max(one_ind$days_since_emig_n), length.out = 20), n, replace = T), 
+#          days_since_emig_n_z = sample(seq(min(one_ind$days_since_emig_n_z),max(one_ind$days_since_emig_n_z), length.out = 20), n, replace = T), #more levels for time than the other variables
+#          dem_100_z = sample(seq(min(one_ind$dem_100_z),max(one_ind$dem_100_z), length.out = 20), n, replace = T),
+#          slope_TPI_100_z = sample(seq(min(one_ind$slope_TPI_100_z),max(one_ind$slope_TPI_100_z), length.out = 20), n, replace = T),
+#          aspect_TPI_100_z = sample(seq(min(one_ind$aspect_TPI_100_z),max(one_ind$aspect_TPI_100_z), length.out = 20), n, replace = T),
+#          TRI_100_z = sample(seq(min(one_ind$TRI_100_z),max(one_ind$TRI_100_z), length.out = 20), n, replace = T),
+#          TPI_100_z = sample(seq(min(one_ind$TPI_100_z),max(one_ind$TPI_100_z), length.out = 20), n, replace = T)) #%>% 
+#   #full_join(one_ind)
 
 #predictions for only the habitat selection model
 preds <- predict(ssf_HS, newdata = new_data, type = "risk")
@@ -321,6 +372,9 @@ plot(interpr, legend.only = T, horizontal = F, col = colpal, legend.args = list(
                       col.ticks = NA,
                       line = -0.8, cex.axis = 0.7))
 
+
+
+
 ############# model and interaction plots for the full model for all individuals: just for exploration. without random effects. for exploration purposes only #####
 #model with only habitat selection 
 form1b <- used ~ dem_100_z * days_since_emig_n_z + 
@@ -357,7 +411,7 @@ preds_pr <- new_data_all %>%
   rowwise %>% 
   mutate(probs = preds/(preds+1))
 
-# STEP 6: ssf output plots: the interaction plots ----------------------------------------------------------------
+
 #create a raster of the prediction
 
 
