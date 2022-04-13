@@ -120,8 +120,7 @@ all_data <- cmpl_ann %>%
 # STEP 5: ssf modeling ----------------------------------------------------------------
 
 #Apr13 note: prediction rasters don't need to have the same origin and resolution. That can be fixed using terra::resample ftn.
-#model formula for all indiviudals will be the same
-#slope on its own is a percentage, dont use it. use unevenness in the slope. aspect on its own is also weird. use unevenness in aspect. treat days since as a continous variable
+#model formula for all individuals will be the same
 #model with only habitat selection 
 formula <- used ~ dem_100_z * days_since_emig_n_z + 
   slope_TPI_100_z * days_since_emig_n_z + 
@@ -132,13 +131,23 @@ formula <- used ~ dem_100_z * days_since_emig_n_z +
 
 n <- 200 #define n for new data generation
 
+#extract center and scale values for time variable, to be used for back transformation. The y-axis attributes will be extracted in the lapply call
+x_axis_attr_scale <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:scale')
+x_axis_attr_center <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:center')
+
 #for all individuals
 lapply(split(all_data, all_data$individual.local.identifier), function(ind){
   #the model
   ssf <- clogit(formula, data = ind)
   #save model output
   save(ssf, file = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ind_model_outputs_Apr13/", 
-                              ind$individual.local.identifier[1], ".RData"))
+                          ind$individual.local.identifier[1], ".RData"))
+  #save coeff plot
+  png(paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ind_model_outputs_Apr13/", 
+             ind$individual.local.identifier[1], "_coeffs.png"), width = 7, height = 5, units = "in", res = 300)
+  plot_summs(ssf)
+  dev.off()
+  
   #generate new data
   new_data <- ind %>%
     group_by(stratum) %>% 
@@ -161,126 +170,43 @@ lapply(split(all_data, all_data$individual.local.identifier), function(ind){
     rowwise %>% 
     mutate(probs = preds/(preds+1))
   
+  #create a raster of the prediction
+  y_axis_var <- c("dem_100_z", "slope_TPI_100_z", "aspect_TPI_100_z", "TRI_100_z", "TPI_100_z")
+  x_axis_var <- "days_since_emig_n_z"
   
+  lapply(y_axis_var, function(var){
+    
+    #extract scale and center values needed to back transform the scaled values. do this using the whole dataset.
+    var_scale <- attr(all_data[,colnames(all_data) == var],'scaled:scale')
+    var_center <- attr(all_data[,colnames(all_data) == var],'scaled:center')
+    
+    #summarize values, so each (x,y) combo has one probability value
+    avg_pred <- preds_pr %>% 
+      group_by_at(c(var,x_axis_var)) %>%  #group by days since emigration and var
+      summarise(avg_pres = mean(probs)) %>% 
+      ungroup() %>% 
+      mutate(dplyr::select(.,all_of(var)) * var_scale + var_center, #back-transform the values for plotting
+             dplyr::select(.,all_of(x_axis_var)) * x_axis_attr_scale + x_axis_attr_center ) %>% #these columns replace the original columns 1 and 2
+      #rename(x_backtr = 1, #days since fledging
+      #       i_backtr = 2) %>%  #y axis variables
+      as.data.frame()
+    
+    #create a raster
+    coordinates(avg_pred) <- c(x_axis_var, var)
+    gridded(avg_pred) <- TRUE
+    r <- raster(avg_pred)
+    
+    #save rater
+    save(r, file = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ind_model_outputs_Apr13/prediction_rasters/", 
+                          ind$individual.local.identifier[1], "_", var, ".RData"))
+    
+  })
   
 })
 
-#select one individual to get the workflow straight: "Almen19 (eobs 7001)" or "Droslöng17 (eobs 5704)"
-
-one_ind <- all_data %>% 
-  filter(individual.local.identifier == "Droslöng17 (eobs 5704)")
 
 
-
-ssf_full <- clogit(form1a, data = one_ind) #in the clogit model, scaling the days makes the results easier to understand 
-summary(ssf_full) 
-plot_summs(ssf_full)
-
-ssf_all_inds <- clogit(form1a, data = all_data) 
-plot_summs(ssf_all_inds)
-
-#model without interaction term for movement variables
-form1aa <- used ~  cos(turning_angle) + log(step_length) + 
-  dem_100_z * days_since_emig_n_z + 
-  slope_TPI_100_z * days_since_emig_n_z + 
-  aspect_TPI_100_z * days_since_emig_n_z  + 
-  TRI_100_z * days_since_emig_n_z + 
-  TPI_100_z * days_since_emig_n_z + 
-  strata(stratum)
-
-ssf_all_inds2 <- clogit(form1aa, data = all_data) 
-plot_summs(ssf_all_inds2)
-
-#model with only habitat selection 
-form1b <- used ~ dem_100_z * days_since_emig_n_z + 
-  slope_TPI_100_z * days_since_emig_n_z + 
-  aspect_TPI_100_z * days_since_emig_n_z  + 
-  TRI_100_z * days_since_emig_n_z + 
-  TPI_100_z * days_since_emig_n_z + 
-  strata(stratum)
-
-ssf_HS <- clogit(form1b, data = one_ind) 
-plot_summs(ssf_HS)
-
-HS_all_inds <- clogit(form1b, data = all_data) 
-plot_summs(HS_all_inds)
-
-plot_summs(ssf_all_inds, ssf_all_inds2, HS_all_inds)
-plot_summs(ssf_full,ssf_HS)
-
-
-#create new data for predictions. use predefined intervals, so all rasters end up with the same cell size and can be overlayed
-n <- 100
-new_data <- one_ind %>%
-  group_by(stratum) %>% 
-  slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
-  ungroup() %>% 
-  slice_sample(n = n, replace = F) %>% 
-  mutate(used = NA,  #regular intervals for all variables, so we can make a raster later on, but also fixed, so I can overlay rasters for all individuals
-         days_since_emig_n = sample(seq(min(one_ind$days_since_emig_n),max(one_ind$days_since_emig_n), by = 7), n, replace = T), 
-         days_since_emig_n_z = sample(seq(-1.323678, max(one_ind$days_since_emig_n_z), by = 0.2), n, replace = T), 
-         dem_100_z = sample(seq(min(one_ind$dem_100_z),max(one_ind$dem_100_z), length.out = 20), n, replace = T),
-         slope_TPI_100_z = sample(seq(min(one_ind$slope_TPI_100_z),max(one_ind$slope_TPI_100_z), length.out = 20), n, replace = T),
-         aspect_TPI_100_z = sample(seq(min(one_ind$aspect_TPI_100_z),max(one_ind$aspect_TPI_100_z), length.out = 20), n, replace = T),
-         TRI_100_z = sample(seq(min(one_ind$TRI_100_z),max(one_ind$TRI_100_z), length.out = 20), n, replace = T),
-         TPI_100_z = sample(seq(min(one_ind$TPI_100_z),max(one_ind$TPI_100_z), length.out = 20), n, replace = T))
-
-# new_data <- one_ind %>%
-#   group_by(stratum) %>% 
-#   slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
-#   ungroup() %>% 
-#   slice_sample(n = n, replace = F) %>% 
-#   mutate(used = NA,  #regular intervals for all variables, so we can make a raster later on
-#          days_since_emig_n = sample(seq(min(one_ind$days_since_emig_n),max(one_ind$days_since_emig_n), length.out = 20), n, replace = T), 
-#          days_since_emig_n_z = sample(seq(min(one_ind$days_since_emig_n_z),max(one_ind$days_since_emig_n_z), length.out = 20), n, replace = T), #more levels for time than the other variables
-#          dem_100_z = sample(seq(min(one_ind$dem_100_z),max(one_ind$dem_100_z), length.out = 20), n, replace = T),
-#          slope_TPI_100_z = sample(seq(min(one_ind$slope_TPI_100_z),max(one_ind$slope_TPI_100_z), length.out = 20), n, replace = T),
-#          aspect_TPI_100_z = sample(seq(min(one_ind$aspect_TPI_100_z),max(one_ind$aspect_TPI_100_z), length.out = 20), n, replace = T),
-#          TRI_100_z = sample(seq(min(one_ind$TRI_100_z),max(one_ind$TRI_100_z), length.out = 20), n, replace = T),
-#          TPI_100_z = sample(seq(min(one_ind$TPI_100_z),max(one_ind$TPI_100_z), length.out = 20), n, replace = T)) #%>% 
-#   #full_join(one_ind)
-
-#predictions for only the habitat selection model
-preds <- predict(ssf_HS, newdata = new_data, type = "risk")
-preds_pr <- new_data %>% 
-  mutate(preds = preds) %>% 
-  rowwise %>% 
-  mutate(probs = preds/(preds+1))
-
-# STEP 6: ssf output plots: the interaction plots ----------------------------------------------------------------
-#create a raster of the prediction
-
-
-y_axis_var <- c("dem_100_z", "slope_TPI_100_z", "aspect_TPI_100_z", "TRI_100_z", "TPI_100_z")
-x_axis_var <- "days_since_emig_n_z"
-
-#extract center and scale values for time variable, to be used for back transformation. The y-axis attributes will be extracted in the for loop
-x_axis_attr_scale <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:scale')
-x_axis_attr_center <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:center')
-
-lapply(y_axis_var, function(i){
-  
-#extract scale and center values needed to back transform the scaled values. do this using the whole dataset.
-i_scale <- attr(all_data[,colnames(all_data) == i],'scaled:scale')
-i_center <- attr(all_data[,colnames(all_data) == i],'scaled:center')
-
-#summarize values, so each (x,y) combo has one probability value
-avg_pred <- preds_pr %>% 
-  group_by_at(c(i,x_axis_var)) %>%  #group by days since emigration and i
-  summarise(avg_pres = mean(probs)) %>% 
-  ungroup() %>% 
-  mutate(dplyr::select(.,all_of(i)) * i_scale + i_center, #back-transform the values for plotting
-         dplyr::select(.,all_of(x_axis_var)) * x_axis_attr_scale + x_axis_attr_center ) %>% #these columns replace the original columns 1 and 2
-  #rename(x_backtr = 1, #days since fledging
-  #       i_backtr = 2) %>%  #y axis variables
-  as.data.frame()
-
-#create a raster
-coordinates(avg_pred) <- c(x_axis_var, i)
-gridded(avg_pred) <- TRUE
-r <- raster(avg_pred)
-
-
+#interpolate after overlaying all the individuals' rasters for each variable
 #interpolate. for visualization purposes
 surf.1 <- Tps(as.matrix(as.data.frame(r,xy = T)[,c(1,2)],col = 2), as.data.frame(r,xy = T)[,3])
 
