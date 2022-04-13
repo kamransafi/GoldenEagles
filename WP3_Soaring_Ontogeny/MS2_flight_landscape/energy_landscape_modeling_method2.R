@@ -131,6 +131,10 @@ formula <- used ~ dem_100_z * days_since_emig_n_z +
 
 n <- 200 #define n for new data generation
 
+#name the variables
+y_axis_var <- c("dem_100_z", "slope_TPI_100_z", "aspect_TPI_100_z", "TRI_100_z", "TPI_100_z")
+x_axis_var <- "days_since_emig_n_z"
+
 #extract center and scale values for time variable, to be used for back transformation. The y-axis attributes will be extracted in the lapply call
 x_axis_attr_scale <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:scale')
 x_axis_attr_center <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:center')
@@ -154,14 +158,14 @@ lapply(split(all_data, all_data$individual.local.identifier), function(ind){
     slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
     ungroup() %>% 
     slice_sample(n = n, replace = F) %>% 
-    mutate(used = NA,  #regular intervals for all variables, so we can make a raster later on, but also fixed, so I can overlay rasters for all individuals
-           days_since_emig_n = sample(seq(min(ind$days_since_emig_n),max(ind$days_since_emig_n), length.out = 40), n, replace = T), 
-           days_since_emig_n_z = sample(seq(min(ind$days_since_emig_n_z), max(ind$days_since_emig_n_z), length.out = 40), n, replace = T), 
+    mutate(used = NA,  #regular intervals for all variables, so we can make a raster later on
+           days_since_emig_n = sample(seq(min(ind$days_since_emig_n),max(ind$days_since_emig_n), length.out = 20), n, replace = T), 
+           days_since_emig_n_z = sample(seq(min(ind$days_since_emig_n_z),max(ind$days_since_emig_n_z), length.out = 20), n, replace = T), #more levels for time than the other variables
            dem_100_z = sample(seq(min(ind$dem_100_z),max(ind$dem_100_z), length.out = 20), n, replace = T),
            slope_TPI_100_z = sample(seq(min(ind$slope_TPI_100_z),max(ind$slope_TPI_100_z), length.out = 20), n, replace = T),
            aspect_TPI_100_z = sample(seq(min(ind$aspect_TPI_100_z),max(ind$aspect_TPI_100_z), length.out = 20), n, replace = T),
            TRI_100_z = sample(seq(min(ind$TRI_100_z),max(ind$TRI_100_z), length.out = 20), n, replace = T),
-           TPI_100_z = sample(seq(min(ind$TPI_100_z),max(ind$TPI_100_z), length.out = 20), n, replace = T))
+           TPI_100_z = sample(seq(min(ind$TPI_100_z),max(ind$TPI_100_z), length.out = 20), n, replace = T)) 
   
   #predict using the model
   preds <- predict(ssf, newdata = new_data, type = "risk")
@@ -169,10 +173,6 @@ lapply(split(all_data, all_data$individual.local.identifier), function(ind){
     mutate(preds = preds) %>% 
     rowwise %>% 
     mutate(probs = preds/(preds+1))
-  
-  #create a raster of the prediction
-  y_axis_var <- c("dem_100_z", "slope_TPI_100_z", "aspect_TPI_100_z", "TRI_100_z", "TPI_100_z")
-  x_axis_var <- "days_since_emig_n_z"
   
   lapply(y_axis_var, function(var){
     
@@ -200,193 +200,8 @@ lapply(split(all_data, all_data$individual.local.identifier), function(ind){
     save(r, file = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ind_model_outputs_Apr13/prediction_rasters/", 
                           ind$individual.local.identifier[1], "_", var, ".RData"))
     
+    
   })
   
 })
 
-
-
-#interpolate after overlaying all the individuals' rasters for each variable
-#interpolate. for visualization purposes
-surf.1 <- Tps(as.matrix(as.data.frame(r,xy = T)[,c(1,2)],col = 2), as.data.frame(r,xy = T)[,3])
-
-grd <- expand.grid(x = seq(from = extent(r)[1],to = extent(r)[2],by = 2),
-                   y = seq(from = extent(r)[3],to = extent(r)[4],by = 2))
-
-grd$coords <- matrix(c(grd$x,grd$y), ncol = 2)
-
-surf.1.pred <- predict.Krig(surf.1,grd$coords)
-interpdf <- data.frame(grd$coords, surf.1.pred)
-
-colnames(interpdf) <- c("x_backtr","i_backtr","prob_pres")
-
-coordinates(interpdf) <- ~ x_backtr + i_backtr
-gridded(interpdf) <- TRUE
-interpr <- raster(interpdf)
-
-#save the raster
-
-
-})
-
-X11()
-
-spplot(interpr)
-
-
-#create a color palette
-cuts <- c(0, 0.25,0.5,0.75,1) #set breaks
-pal <- colorRampPalette(c("aliceblue", "lightskyblue1", "khaki2", "sandybrown", "salmon2","tomato"))
-colpal <- pal(100)
-
-
-#manually determine the range of y axis for each variable
-if(i == "dem_100_z"){
-  y_axis_r <- c(68,3977)
-  y_axis_lab <- c(100, seq(500, 3500, 1000)) #keep all labels at n = 5 to keep everything neat
-} else if(i == "slope_100_z"){
-  y_axis_r <- c(0,70)
-  y_axis_lab <- seq(10, 50, 10)
-} else if(i == "aspect_100_z"){
-  y_axis_r <- c(4,355)
-  y_axis_lab <- c(5, 90, 180, 270, 350)
-}
-
-
-#range of x axis
-x_axis_r <- c(1, 829)
-#labels of x axis
-x_axis_lab <- seq(100,800, 100)
-
-
-#plot
-X11(width = 5, height = 4)
-
-par(cex = 0.7,
-    oma = c(1,3.5,1,1),
-    mar = c(1, 1, 1, 1.5),
-    bty = "n",
-    mgp = c(1,0.5,0)
-)
-
-
-raster::plot(interpr, col = colpal, axes = F, box = F, legend = F, ext = extent(c(x_axis_r[1], x_axis_r[2], y_axis_r[1], y_axis_r[2]))) #crop to the extent of observed data
-
-#add axes
-axis(side = 1, at = x_axis_lab, #x_axis
-     labels = x_axis_lab,
-     tick = T , col = NA, col.ticks = 1, # NULL would mean to use the defult color specified by "fg" in par
-     tck = -.015, line = -2.7, cex.axis = 0.7) #tick marks smaller than default by this proportion
-
-axis(side = 2, at = y_axis_lab, labels = y_axis_lab, 
-     tick = T ,col = NA, col.ticks = 1, tck = -.015, las = 2, cex.axis = 0.7)
-
-lines(x = c(-21.9, -21.9), y = c(-9.9,13.9)) #x and y axis lines
-#abline(h =-10)
-
-#axis titles
-mtext(strsplit(x_axis_var, split = "z")[[1]], 1, line = -4, cex = 0.9, font = 3)
-mtext(strsplit(i, split = "z")[[1]], 2, line = 1.2, cex = 0.9)
-
-#add legend
-plot(interpr, legend.only = T, horizontal = F, col = colpal, legend.args = list("Probability of use", side = 4, font = 1, line = 1.5, cex = 0.7),
-     legend.shrink = 0.4,
-     #smallplot= c(0.12,0.7, 0.06,0.09),
-     axis.args = list(at = seq(0,1,0.25), #same arguments as any axis, to determine the length of the bar and tick marks and labels
-                      labels = seq(0,1,0.25), 
-                      col = NA, #make sure box type in par is set to n, otherwise axes will be drawn on the legend :p
-                      col.ticks = NA,
-                      line = -0.8, cex.axis = 0.7))
-
-
-
-
-############# model and interaction plots for the full model for all individuals: just for exploration. without random effects. for exploration purposes only #####
-#model with only habitat selection 
-form1b <- used ~ dem_100_z * days_since_emig_n_z + 
-  slope_TPI_100_z * days_since_emig_n_z + 
-  aspect_TPI_100_z * days_since_emig_n_z  + 
-  TRI_100_z * days_since_emig_n_z + 
-  TPI_100_z * days_since_emig_n_z + 
-  strata(stratum)
-
-HS_all_inds <- clogit(form1b, data = all_data) 
-plot_summs(HS_all_inds)
-
-
-#create new data for predictions
-n <- 100
-new_data_all <- all_data %>%
-  group_by(stratum) %>% 
-  slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
-  ungroup() %>% 
-  slice_sample(n = n, replace = F) %>% 
-  mutate(used = NA,  #regular intervals for all variables, so we can make a raster later on
-         days_since_emig_n = sample(seq(min(all_data$days_since_emig_n),max(all_data$days_since_emig_n), length.out = 20), n, replace = T), 
-         days_since_emig_n_z = sample(seq(min(all_data$days_since_emig_n_z),max(all_data$days_since_emig_n_z), length.out = 20), n, replace = T), #more levels for time than the other variables
-         dem_100_z = sample(seq(min(all_data$dem_100_z),max(all_data$dem_100_z), length.out = 20), n, replace = T),
-         slope_TPI_100_z = sample(seq(min(all_data$slope_TPI_100_z),max(all_data$slope_TPI_100_z), length.out = 20), n, replace = T),
-         aspect_TPI_100_z = sample(seq(min(all_data$aspect_TPI_100_z),max(all_data$aspect_TPI_100_z), length.out = 20), n, replace = T),
-         TRI_100_z = sample(seq(min(all_data$TRI_100_z),max(all_data$TRI_100_z), length.out = 20), n, replace = T),
-         TPI_100_z = sample(seq(min(all_data$TPI_100_z),max(all_data$TPI_100_z), length.out = 20), n, replace = T)) 
-
-#predictions for only the habitat selection model
-preds <- predict(HS_all_inds, newdata = new_data_all, type = "risk")
-preds_pr <- new_data_all %>% 
-  mutate(preds = preds) %>% 
-  rowwise %>% 
-  mutate(probs = preds/(preds+1))
-
-
-#create a raster of the prediction
-
-
-y_axis_var <- c("dem_100_z", "slope_TPI_100_z", "aspect_TPI_100_z", "TRI_100_z", "TPI_100_z")
-x_axis_var <- "days_since_emig_n_z"
-
-#extract center and scale values for time variable, to be used for back transformation. The y-axis attributes will be extracted in the for loop
-x_axis_attr_scale <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:scale')
-x_axis_attr_center <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:center')
-
-
-  #extract scale and center values needed to back transform the scaled values. do this using the whole dataset.
-  i_scale <- attr(all_data[,colnames(all_data) == i],'scaled:scale')
-  i_center <- attr(all_data[,colnames(all_data) == i],'scaled:center')
-  
-  #summarize values, so each (x,y) combo has one probability value
-  avg_pred <- preds_pr %>% 
-    group_by_at(c(i,x_axis_var)) %>%  #group by days since emigration and i
-    summarise(avg_pres = mean(probs)) %>% 
-    ungroup() %>% 
-    mutate(dplyr::select(.,all_of(i)) * i_scale + i_center, #back-transform the values for plotting
-           dplyr::select(.,all_of(x_axis_var)) * x_axis_attr_scale + x_axis_attr_center ) %>% #these columns replace the original columns 1 and 2
-    #rename(x_backtr = 1, #days since fledging
-    #       i_backtr = 2) %>%  #y axis variables
-    as.data.frame()
-  
-  #create a raster
-  coordinates(avg_pred) <- c(x_axis_var, i)
-  gridded(avg_pred) <- TRUE
-  r <- raster(avg_pred)
-  
-  
-  #interpolate. for visualization purposes
-  surf.1 <- Tps(as.matrix(as.data.frame(r,xy = T)[,c(1,2)],col = 2), as.data.frame(r,xy = T)[,3])
-  
-  grd <- expand.grid(x = seq(from = extent(r)[1],to = extent(r)[2],by = 2),
-                     y = seq(from = extent(r)[3],to = extent(r)[4],by = 2))
-  
-  grd$coords <- matrix(c(grd$x,grd$y), ncol = 2)
-  
-  surf.1.pred <- predict.Krig(surf.1,grd$coords)
-  interpdf <- data.frame(grd$coords, surf.1.pred)
-  
-  colnames(interpdf) <- c("x_backtr","i_backtr","prob_pres")
-  
-  coordinates(interpdf) <- ~ x_backtr + i_backtr
-  gridded(interpdf) <- TRUE
-  interpr <- raster(interpdf)
-  
-X11()
-spplot(interpr)  
-  
