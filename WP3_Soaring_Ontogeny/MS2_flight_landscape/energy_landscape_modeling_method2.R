@@ -144,10 +144,10 @@ lapply(split(all_data, all_data$individual.local.identifier), function(ind){
   #the model
   ssf <- clogit(formula, data = ind)
   #save model output
-  save(ssf, file = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ind_model_outputs_Apr13/", 
-                          ind$individual.local.identifier[1], ".RData"))
+  saveRDS(ssf, file = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ind_model_outputs_Apr13/RDS_files/", 
+                          ind$individual.local.identifier[1], "_model.rds"))
   #save coeff plot
-  png(paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ind_model_outputs_Apr13/", 
+  png(paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ind_model_outputs_Apr13/RDS_files/", 
              ind$individual.local.identifier[1], "_coeffs.png"), width = 7, height = 5, units = "in", res = 300)
   plot_summs(ssf)
   dev.off()
@@ -197,11 +197,56 @@ lapply(split(all_data, all_data$individual.local.identifier), function(ind){
     r <- raster(avg_pred)
     
     #save rater
-    save(r, file = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ind_model_outputs_Apr13/prediction_rasters/", 
-                          ind$individual.local.identifier[1], "_", var, ".RData"))
+    saveRDS(r, file = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ind_model_outputs_Apr13/RDS_files/", 
+                          ind$individual.local.identifier[1], "_", var, "_pred.rds"))
     
     
   })
   
 })
+
+# STEP 6: merge interaction plots ----------------------------------------------------------------
+
+#all rasters have the same name, so use this function to be able to assign new name to them
+
+lapply(y_axis_var, function(x){
+  rasters <- list.files("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ind_model_outputs_Apr13/RDS_files/", pattern = x, full.names = TRUE) %>% 
+    map(readRDS)
+  
+  #decide on which raster to resample all other ones to
+
+  
+  #extract resolutions
+  cell_size <- lapply(rasters, res) %>% 
+    reduce(rbind) %>% 
+    as.data.frame() %>% 
+    rename(days = 1, var = 2) %>% 
+    summarize(avg = mean(var),
+              md = Mode(var)) %>% 
+    pull(md)
+  
+  #extract min value for y
+  days_origin <- lapply(rasters, function(x) extent(x)[1]) %>% 
+    reduce(rbind) %>% 
+    as.data.frame() %>% 
+    summarize(min(V1)) %>% 
+    pull()
+  
+  #resample rasters to the same origin and resolution
+  lapply(rasters, function(x){
+    r <- as(x,"SpatRaster") %>% 
+      resample()
+    })
+  
+  
+  
+  
+  
+  
+})
+
+
+#TO DO:
+#why do I have negative values for days in the prediction rasters???.....
+
 
