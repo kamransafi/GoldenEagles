@@ -12,6 +12,7 @@ library(raster)
 library(survival)
 library(ggregplot) #to plot coeffs of INLA
 library(jtools) #to plot coeffs of clogit
+library(terra)
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
@@ -129,6 +130,7 @@ formula <- used ~ dem_100_z * days_since_emig_n_z +
   TPI_100_z * days_since_emig_n_z + 
   strata(stratum)
 
+
 n <- 200 #define n for new data generation
 
 #name the variables
@@ -174,25 +176,25 @@ lapply(split(all_data, all_data$individual.local.identifier), function(ind){
     rowwise %>% 
     mutate(probs = preds/(preds+1))
   
-  lapply(y_axis_var, function(var){
+  lapply(y_axis_var, function(y_var){
     
     #extract scale and center values needed to back transform the scaled values. do this using the whole dataset.
-    var_scale <- attr(all_data[,colnames(all_data) == var],'scaled:scale')
-    var_center <- attr(all_data[,colnames(all_data) == var],'scaled:center')
+    var_scale <- attr(all_data[,colnames(all_data) == y_var],'scaled:scale')
+    var_center <- attr(all_data[,colnames(all_data) == y_var],'scaled:center')
     
     #summarize values, so each (x,y) combo has one probability value
     avg_pred <- preds_pr %>% 
-      group_by_at(c(var,x_axis_var)) %>%  #group by days since emigration and var
+      group_by_at(c(y_var,x_axis_var)) %>%  #group by days since emigration and y_var
       summarise(avg_pres = mean(probs)) %>% 
       ungroup() %>% 
-      mutate(dplyr::select(.,all_of(var)) * var_scale + var_center, #back-transform the values for plotting
+      mutate(dplyr::select(.,all_of(y_var)) * var_scale + var_center, #back-transform the values for plotting
              dplyr::select(.,all_of(x_axis_var)) * x_axis_attr_scale + x_axis_attr_center ) %>% #these columns replace the original columns 1 and 2
       #rename(x_backtr = 1, #days since fledging
       #       i_backtr = 2) %>%  #y axis variables
       as.data.frame()
     
     #create a raster
-    coordinates(avg_pred) <- c(x_axis_var, var)
+    coordinates(avg_pred) <- c(x_axis_var, y_var)
     gridded(avg_pred) <- TRUE
     r <- raster(avg_pred)
     
@@ -209,41 +211,58 @@ lapply(split(all_data, all_data$individual.local.identifier), function(ind){
 
 #all rasters have the same name, so use this function to be able to assign new name to them
 
-lapply(y_axis_var, function(x){
+y_vars <- c("dem_100", "slope_TPI_100", "aspect_TPI_100", "TRI_100", "TPI_100")
+
+lapply(y_vars, function(x){
   rasters <- list.files("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ind_model_outputs_Apr13/RDS_files/", pattern = x, full.names = TRUE) %>% 
     map(readRDS)
   
+  #resample to wgs, just so they look nice and have a crs
+  ls_r <- lapply(rasters, function(r){
+    crs(r) <-  "+proj=longlat +datum=WGS84 +no_defs"
+    return(as(r,"SpatRaster"))
+  })
+  
   #decide on which raster to resample all other ones to
 
+  # #extract resolutions
+  # cell_size <- lapply(rasters, res) %>% 
+  #   reduce(rbind) %>% 
+  #   as.data.frame() %>% 
+  #   rename(days = 1, var = 2) %>% 
+  #   summarize(avg = mean(var),
+  #             md = Mode(var),
+  #             min = min(days)) %>% #min time res is 14 days. let's go with the raster that had this res.
+  #   pull(min)
+  # 
+  # base <- rasters[[which(sapply(rasters, function(y) res(y)[1] == cell_size))]] %>%  #extract raster with the low days resolution as the base for resampling the others
+  #   as(.,"SpatRaster")
+  #   terra::extend(ext(1,823, round(min(all_data[,x])), round(max(all_data[,x]))))#assign arbitrary extent
+  # 
+  # #extract min value for y... min values of x are negative, but they are NA, I think....
+  # days_origin <- lapply(rasters, function(x) extent(x)[1]) %>% 
+  #   reduce(rbind) %>% 
+  #   as.data.frame() %>% 
+  #   summarize(min(V1)) %>% 
+  #   pull()
   
-  #extract resolutions
-  cell_size <- lapply(rasters, res) %>% 
-    reduce(rbind) %>% 
-    as.data.frame() %>% 
-    rename(days = 1, var = 2) %>% 
-    summarize(avg = mean(var),
-              md = Mode(var)) %>% 
-    pull(md)
-  
-  #extract min value for y
-  days_origin <- lapply(rasters, function(x) extent(x)[1]) %>% 
-    reduce(rbind) %>% 
-    as.data.frame() %>% 
-    summarize(min(V1)) %>% 
-    pull()
+  #set the second raster as the base
+  base <- ls_r[[2]]
   
   #resample rasters to the same origin and resolution
-  lapply(rasters, function(x){
-    r <- as(x,"SpatRaster") %>% 
-      resample()
-    })
+  ls_r_r <- lapply(ls_r, function(r){
+    rs <- r %>% 
+      resample(base, method = "near")
+  })
   
-  
-  
-  
-  
+  #average all into one raster layer
+  avg_r <- ls_r_r %>% 
+    reduce(c) %>% 
+    app(fun = "mean")
   
 })
+
+
 
 
 #TO DO:
