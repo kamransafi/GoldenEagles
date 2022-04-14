@@ -260,6 +260,8 @@ lapply(y_vars, function(x){
     reduce(c) %>% 
     app(fun = "mean")
   
+  #interpolate?
+  
 })
 
 
