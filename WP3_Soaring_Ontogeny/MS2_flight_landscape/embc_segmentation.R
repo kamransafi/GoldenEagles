@@ -86,6 +86,7 @@ data_stage <- lapply(ind_ls, function(x){
 }) %>% 
   reduce(rbind)
 
+save(data_stage, file = "data_w_lifestage.RData")
 
 #extract post-emigration data
 post_em <- data_stage %>% 
