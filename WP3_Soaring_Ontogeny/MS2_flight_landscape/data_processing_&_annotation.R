@@ -371,3 +371,4 @@ cmpl_ann <- lapply(split(topo_ann, topo_ann$individual.local.identifier), functi
   reduce(rbind)
 
 save(cmpl_ann, file = "alt_50_20_min_25_ind_static_time_ann.RData")
+

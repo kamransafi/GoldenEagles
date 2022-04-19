@@ -223,29 +223,6 @@ lapply(y_vars, function(x){
     return(as(r,"SpatRaster"))
   })
   
-  #decide on which raster to resample all other ones to
-
-  # #extract resolutions
-  # cell_size <- lapply(rasters, res) %>% 
-  #   reduce(rbind) %>% 
-  #   as.data.frame() %>% 
-  #   rename(days = 1, var = 2) %>% 
-  #   summarize(avg = mean(var),
-  #             md = Mode(var),
-  #             min = min(days)) %>% #min time res is 14 days. let's go with the raster that had this res.
-  #   pull(min)
-  # 
-  # base <- rasters[[which(sapply(rasters, function(y) res(y)[1] == cell_size))]] %>%  #extract raster with the low days resolution as the base for resampling the others
-  #   as(.,"SpatRaster")
-  #   terra::extend(ext(1,823, round(min(all_data[,x])), round(max(all_data[,x]))))#assign arbitrary extent
-  # 
-  # #extract min value for y... min values of x are negative, but they are NA, I think....
-  # days_origin <- lapply(rasters, function(x) extent(x)[1]) %>% 
-  #   reduce(rbind) %>% 
-  #   as.data.frame() %>% 
-  #   summarize(min(V1)) %>% 
-  #   pull()
-  
   #set the second raster as the base
   base <- ls_r[[2]]
   
@@ -258,9 +235,36 @@ lapply(y_vars, function(x){
   #average all into one raster layer
   avg_r <- ls_r_r %>% 
     reduce(c) %>% 
-    app(fun = "mean")
+    app(fun = "mean", na.rm = T)
   
-  #interpolate?
+
+  #interpolate. for visualization purposes
+  surf.1 <- Tps(as.matrix(as.data.frame(avg_r, xy = T)[, c(1,2)], col = 2), as.data.frame(avg_r, xy = T)[,3])
+  
+  grd <- expand.grid(x = seq(from = ext(avg_r)[1],to = ext(avg_r)[2],by = 2),
+                     y = seq(from = ext(avg_r)[3],to = ext(avg_r)[4],by = 2))
+  
+  grd$coords <- matrix(c(grd$x,grd$y),ncol=2)
+  
+  surf.1.pred <- predict.Krig(surf.1,grd$coords)
+  interpdf <- data.frame(grd$coords, surf.1.pred)
+  
+  colnames(interpdf) <- c("x_backtr","i_backtr","prob_pres")
+  
+  coordinates(interpdf) <- ~ x_backtr + i_backtr
+  gridded(interpdf) <- TRUE
+  interpr <- raster(interpdf)
+  
+  saveRDS(interpr, file = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ind_model_outputs_Apr13/prediction_raster_avg_Apr19/", 
+                             x, "_avg_pred.rds"))
+  
+  proj4string(interpr) <- wgs
+  
+  #save raster plot
+  png(paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ind_model_outputs_Apr13/prediction_raster_avg_Apr19/", 
+             x, "_avg_pred.png"), width = 7, height = 5, units = "in", res = 300)
+  plot(interpr, main = x)
+  dev.off()
   
 })
 
@@ -268,6 +272,6 @@ lapply(y_vars, function(x){
 
 
 #TO DO:
-#why do I have negative values for days in the prediction rasters???.....
+#why do I have negative values for days in the prediction rasters???..... the actual intensity of use values are NAs
 
 

@@ -238,4 +238,9 @@ colnames(df)[c(3,4)] <- c("location-long","location-lat")
 
 write.csv(df, paste0("alt_", n_alt, "_", hr, "_min_25_ind.csv"))
 
+# STEP 3: open and process annotated file ----------------------------------------------------------------
+
+ann <- read.csv("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/data/annotations/Apr_18_22/alt_50_60_min_25_ind.csv-3274898828578094969.csv")
+
+
 
