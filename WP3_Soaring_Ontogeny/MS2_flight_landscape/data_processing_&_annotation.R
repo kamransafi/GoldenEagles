@@ -364,11 +364,13 @@ cmpl_ann <- lapply(split(topo_ann, topo_ann$individual.local.identifier), functi
   
   x <- x %>% 
     mutate(days_since_emig = difftime(timestamp,ind_dates$emigration_timestamp, units = c("days")),
-           days_since_fled = difftime(timestamp,ind_dates$fledging_timestamp, units = c("days")))
+           days_since_fled = difftime(timestamp,ind_dates$fledging_timestamp, units = c("days")),
+           weeks_since_emig = difftime(timestamp,ind_dates$emigration_timestamp, units = c("weeks")),
+           weeks_since_fled = difftime(timestamp,ind_dates$fledging_timestamp, units = c("weeks")))
   
   x
 }) %>% 
   reduce(rbind)
 
 save(cmpl_ann, file = "alt_50_20_min_25_ind_static_time_ann.RData")
-
+save(cmpl_ann, file = "alt_50_20_min_25_ind_static_time_ann_weeks.RData")
