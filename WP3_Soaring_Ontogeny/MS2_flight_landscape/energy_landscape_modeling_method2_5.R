@@ -2,6 +2,8 @@
 #follows on from embc_segmentation.R and data_processing_&_annotation.R
 #the first attempt will only include static variables. reasons: 1) movebank annotation isn't working and 2) res of static variables is higher
 #This version tries the method of fitting one model per week using the iSSA framework (selection-free movement kernel + habitat selection kernel)
+#update Apr 20: there are upto 80 weeks since emigration (mean 40). not all inds have data for all weeks. So, making weekly models is not a good idea. So, repeat method2,
+#but with weeks since instead of days since. ALSO, try weeks since fledging.... ALSO, include month as a proxy for weather conditions
 #Apr 20. 2022. Elham Nourani. Konstanz, DE
 
 library(tidyverse)
@@ -16,13 +18,13 @@ library(terra)
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
-#open annotated data (static variables and time since fledging and emigration)
-load("alt_50_20_min_25_ind_static_time_ann.RData") #cmpl_ann
+#open annotated data (static variables and days & weeks since fledging and emigration)
+load("alt_50_20_min_25_ind_static_time_ann_weeks.RData") #cmpl_ann
 
 cmpl_ann <- cmpl_ann %>% 
-  mutate(days_since_emig_n = ceiling(as.numeric(days_since_emig)), #round up
+  mutate(days_since_emig_n = ceiling(as.numeric(days_since_emig)),#round up
+         weeks_since_emig_n = ceiling(as.numeric(weeks_since_emig)),#round up
          stratum = paste(individual.local.identifier, burst_id, step_id, sep = "_")) #forgot to include stratum id in the previous code ) %>%  
-
 
 Mode <- function(x, na.rm = FALSE) {
   if(na.rm){
@@ -35,32 +37,33 @@ Mode <- function(x, na.rm = FALSE) {
 
 # STEP 1: data exploration ----------------------------------------------------------------
 
-#number of weeks available for each individual
-cmpl_ann %>% 
+weeks_per_ind <- cmpl_ann %>% 
   group_by(individual.local.identifier) %>% 
-  summarize(max_day = max(ceiling(as.numeric(days_since_emig)))) %>% #round up days since emigration. we don't want zeros
-  ggplot(aes(x = individual.local.identifier, y = max_day)) +
-  geom_col()
+  summarize(n_weeks = n_distinct(weeks_since_emig_n)) #the median is 40, the 3rd quart is 60
 
-cmpl_ann %>% 
-  group_by(individual.local.identifier) %>% 
-  summarize(max_day = max(ceiling(as.numeric(days_since_emig)))) %>% 
-  summarize(mode = Mode(max_day), # 537
-            mean = mean(max_day)) #444
+#how many points and strata are there per week per indiiividual?
+n_per_week <- cmpl_ann %>% 
+  group_by(individual.local.identifier,weeks_since_emig_n) %>% 
+  summarize(n_pts = n(),
+            n_str = n_distinct(stratum))
 
+#for example, how many unique strata are there in the second week since emig? There is a small number and   0 for some individuals....how about including weeks since emig in method 2 instead of days since?
+n_per_week %>% 
+  filter(weeks_since_emig_n == 3) %>% 
+  summarise(n_str = sum(n_str))
 
 #terrain ~ days since emigration ..... no patterns in the plots
 
-plot(cmpl_ann[cmpl_ann$used == 1, c("days_since_emig", "dem_100")])
-plot(cmpl_ann[cmpl_ann$used == 1, c("days_since_emig", "slope_100")])
-plot(cmpl_ann[cmpl_ann$used == 1, c("days_since_emig", "aspect_100")])
-plot(cmpl_ann[cmpl_ann$used == 1, c("days_since_emig", "slope_TPI_100")])
-plot(cmpl_ann[cmpl_ann$used == 1, c("days_since_emig", "TPI_100")])
-plot(cmpl_ann[cmpl_ann$used == 1, c("days_since_emig", "TRI_100")])
-plot(cmpl_ann[cmpl_ann$used == 1, c("days_since_emig", "aspect_TPI_100")])
+plot(cmpl_ann[cmpl_ann$used == 1, c("weeks_since_emig_n", "dem_100")])
+plot(cmpl_ann[cmpl_ann$used == 1, c("weeks_since_emig_n", "slope_100")])
+plot(cmpl_ann[cmpl_ann$used == 1, c("weeks_since_emig_n", "aspect_100")])
+plot(cmpl_ann[cmpl_ann$used == 1, c("weeks_since_emig_n", "slope_TPI_100")])
+plot(cmpl_ann[cmpl_ann$used == 1, c("weeks_since_emig_n", "TPI_100")])
+plot(cmpl_ann[cmpl_ann$used == 1, c("weeks_since_emig_n", "TRI_100")])
+plot(cmpl_ann[cmpl_ann$used == 1, c("weeks_since_emig_n", "aspect_TPI_100")])
 
 
-ggplot(cmpl_ann[cmpl_ann$used == 1,], aes(as.numeric(days_since_emig), aspect_TPI_100)) +
+ggplot(cmpl_ann[cmpl_ann$used == 1,], aes(as.numeric(weeks_since_emig_n), dem_100)) +
   geom_point() +
   stat_smooth(aes(group = individual.local.identifier), method = "lm") +
   theme_minimal() +
@@ -69,53 +72,51 @@ ggplot(cmpl_ann[cmpl_ann$used == 1,], aes(as.numeric(days_since_emig), aspect_TP
 
 # STEP 2: summary plots ----------------------------------------------------------------
 
-#one set of boxplots for select days: 10, 50 , 100, 500
+#one set of boxplots for a few weeks
 
 data_int <- cmpl_ann %>%
-  filter(days_since_emig_n %in% c(1, 10, 30 , 100, 300)) %>% 
-  mutate(days_f = as.factor(days_since_emig_n))
+  filter(weeks_since_emig_n %in% c(1, 5,10, 25, 30)) %>% 
+  mutate(weeks_f = as.factor(weeks_since_emig_n))
 
 
 variables <- c("dem_100", "slope_100", "aspect_100", "TRI_100", "TPI_100", "slope_TPI_100", "aspect_TPI_100" )
 
 X11(width = 6, height = 9)
 
-png("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/box_plots.png", width = 6, height = 9, units = "in", res = 300)
+png("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/box_plots_weeks.png", width = 6, height = 9, units = "in", res = 300)
 
 par(mfrow= c(4,2), 
     oma = c(0,0,3,0), 
     las = 1,
     mgp = c(0,1,0))
 for(i in 1:length(variables)){
-  boxplot(data_int[,variables[i]] ~ data_int[,"days_f"], data = data_int, boxfill = NA, border = NA, main = variables[i], xlab = "", ylab = "")
+  boxplot(data_int[,variables[i]] ~ data_int[,"weeks_f"], data = data_int, boxfill = NA, border = NA, main = variables[i], xlab = "", ylab = "")
   if(i == 1){
     legend("topleft", legend = c("used","available"), fill = c(alpha("darkgoldenrod1", 0.9),"gray"), bty = "n", cex = 0.8)
   }
-  boxplot(data_int[data_int$used == 1, variables[i]] ~ data_int[data_int$used == 1,"days_f"], outcol = alpha("black", 0.2),
+  boxplot(data_int[data_int$used == 1, variables[i]] ~ data_int[data_int$used == 1,"weeks_f"], outcol = alpha("black", 0.2),
           yaxt = "n", xaxt = "n", add = T, boxfill = alpha("darkgoldenrod1", 0.9),  lwd = 0.7, outpch = 20, outcex = 0.8,
-          boxwex = 0.25, at = 1:length(unique(data_int[data_int$used == 1, "days_f"])) - 0.15)
-  boxplot(data_int[data_int$used == 0, variables[i]] ~ data_int[data_int$used == 0, "days_f"], outcol = alpha("black", 0.2),
+          boxwex = 0.25, at = 1:length(unique(data_int[data_int$used == 1, "weeks_f"])) - 0.15)
+  boxplot(data_int[data_int$used == 0, variables[i]] ~ data_int[data_int$used == 0, "weeks_f"], outcol = alpha("black", 0.2),
           yaxt = "n", xaxt = "n", add = T, boxfill = "grey", lwd = 0.7, outpch = 20, outcex = 0.8,
-          boxwex = 0.25, at = 1:length(unique(data_int[data_int$used == 1 , "days_f"])) + 0.15)
+          boxwex = 0.25, at = 1:length(unique(data_int[data_int$used == 1 , "weeks_f"])) + 0.15)
   
 }
 dev.off()
 
 
-#also consider making the plots for periods of time and not only one day
+#also consider making the plots for periods of time and not only one day..indeed :p
 
 # STEP 3: check for collinearity ----------------------------------------------------------------
 
 cmpl_ann %>% 
   dplyr::select(c("dem_100", "slope_100", "aspect_100", "TRI_100", "TPI_100", "slope_TPI_100", "aspect_TPI_100", "days_since_emig_n")) %>% 
-  correlate() %>% 
-  stretch() %>% 
-  filter(abs(r) > 0.6) #slope and TRI are correlated (.98)
+  correlate() #slope and TRI are correlated (.98)
 
 # STEP 4: standardize variables ----------------------------------------------------------------
 
 all_data <- cmpl_ann %>% 
-  mutate_at(c("dem_100", "slope_100", "aspect_100", "TRI_100", "TPI_100", "slope_TPI_100", "aspect_TPI_100", "days_since_emig_n"),
+  mutate_at(c("dem_100", "slope_100", "aspect_100", "TRI_100", "TPI_100", "slope_TPI_100", "aspect_TPI_100", "weeks_since_emig_n"),
             list(z = ~(scale(.)))) 
 
 # STEP 5: ssf modeling ----------------------------------------------------------------
@@ -123,11 +124,11 @@ all_data <- cmpl_ann %>%
 #Apr13 note: prediction rasters don't need to have the same origin and resolution. That can be fixed using terra::resample ftn.
 #model formula for all individuals will be the same
 #model with only habitat selection 
-formula <- used ~ dem_100_z * days_since_emig_n_z + 
-  slope_TPI_100_z * days_since_emig_n_z + 
-  aspect_TPI_100_z * days_since_emig_n_z  + 
-  TRI_100_z * days_since_emig_n_z + 
-  TPI_100_z * days_since_emig_n_z + 
+formula <- used ~ dem_100_z * weeks_since_emig_n_z + 
+  slope_TPI_100_z * weeks_since_emig_n_z + 
+  aspect_TPI_100_z * weeks_since_emig_n_z  + 
+  TRI_100_z * weeks_since_emig_n_z + 
+  TPI_100_z * weeks_since_emig_n_z + 
   strata(stratum)
 
 
@@ -135,22 +136,25 @@ n <- 200 #define n for new data generation
 
 #name the variables
 y_axis_var <- c("dem_100_z", "slope_TPI_100_z", "aspect_TPI_100_z", "TRI_100_z", "TPI_100_z")
-x_axis_var <- "days_since_emig_n_z"
+x_axis_var <- "weeks_since_emig_n_z"
 
 #extract center and scale values for time variable, to be used for back transformation. The y-axis attributes will be extracted in the lapply call
 x_axis_attr_scale <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:scale')
 x_axis_attr_center <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:center')
+
+path <- paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ind_model_outputs",
+               strsplit(as.character(Sys.Date()), "22")[[1]][2])
+dir.create(path)
 
 #for all individuals
 lapply(split(all_data, all_data$individual.local.identifier), function(ind){
   #the model
   ssf <- clogit(formula, data = ind)
   #save model output
-  saveRDS(ssf, file = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ind_model_outputs_Apr13/RDS_files/", 
-                          ind$individual.local.identifier[1], "_model.rds"))
+  saveRDS(ssf, file = paste0(path, "/", ind$individual.local.identifier[1], "_model.rds"))
+  
   #save coeff plot
-  png(paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ind_model_outputs_Apr13/RDS_files/", 
-             ind$individual.local.identifier[1], "_coeffs.png"), width = 7, height = 5, units = "in", res = 300)
+  png(paste0(path, "/", ind$individual.local.identifier[1], "_coeffs.png"), width = 7, height = 5, units = "in", res = 300)
   plot_summs(ssf)
   dev.off()
   
@@ -161,8 +165,8 @@ lapply(split(all_data, all_data$individual.local.identifier), function(ind){
     ungroup() %>% 
     slice_sample(n = n, replace = F) %>% 
     mutate(used = NA,  #regular intervals for all variables, so we can make a raster later on
-           days_since_emig_n = sample(seq(min(ind$days_since_emig_n),max(ind$days_since_emig_n), length.out = 20), n, replace = T), 
-           days_since_emig_n_z = sample(seq(min(ind$days_since_emig_n_z),max(ind$days_since_emig_n_z), length.out = 20), n, replace = T), #more levels for time than the other variables
+           weeks_since_emig_n = sample(seq(min(ind$weeks_since_emig_n),max(ind$weeks_since_emig_n), length.out = 20), n, replace = T), 
+           weeks_since_emig_n_z = sample(seq(min(ind$weeks_since_emig_n_z),max(ind$weeks_since_emig_n_z), length.out = 20), n, replace = T), #more levels for time than the other variables
            dem_100_z = sample(seq(min(ind$dem_100_z),max(ind$dem_100_z), length.out = 20), n, replace = T),
            slope_TPI_100_z = sample(seq(min(ind$slope_TPI_100_z),max(ind$slope_TPI_100_z), length.out = 20), n, replace = T),
            aspect_TPI_100_z = sample(seq(min(ind$aspect_TPI_100_z),max(ind$aspect_TPI_100_z), length.out = 20), n, replace = T),
@@ -199,9 +203,16 @@ lapply(split(all_data, all_data$individual.local.identifier), function(ind){
     r <- raster(avg_pred)
     
     #save rater
-    saveRDS(r, file = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ind_model_outputs_Apr13/RDS_files/", 
-                          ind$individual.local.identifier[1], "_", var, "_pred.rds"))
+    saveRDS(r, file = paste0(path, "/", ind$individual.local.identifier[1], "_", y_var, "_pred.rds"))
     
+    #save as image
+    proj4string( r) <- wgs
+    
+    #save raster plot
+    png(paste0(path, "/", 
+               y_var, "_pred.png"), width = 7, height = 5, units = "in", res = 300)
+    plot(r, main = y_var)
+    dev.off()
     
   })
   
@@ -214,7 +225,7 @@ lapply(split(all_data, all_data$individual.local.identifier), function(ind){
 y_vars <- c("dem_100", "slope_TPI_100", "aspect_TPI_100", "TRI_100", "TPI_100")
 
 lapply(y_vars, function(x){
-  rasters <- list.files("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ind_model_outputs_Apr13/RDS_files/", pattern = x, full.names = TRUE) %>% 
+  rasters <- list.files(path, pattern = paste0(x ,".+rds"), full.names = TRUE) %>% #list only the rds files
     map(readRDS)
   
   #resample to wgs, just so they look nice and have a crs
@@ -255,15 +266,13 @@ lapply(y_vars, function(x){
   gridded(interpdf) <- TRUE
   interpr <- raster(interpdf)
   
-  saveRDS(interpr, file = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ind_model_outputs_Apr13/prediction_raster_avg_Apr19/", 
-                             x, "_avg_pred.rds"))
+  saveRDS(interpr, file = paste0(path, "/avg_raster_preds/", x, "_avg_pred.rds"))
   
   proj4string(interpr) <- wgs
   
   #save raster plot
-  png(paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ind_model_outputs_Apr13/prediction_raster_avg_Apr19/", 
-             x, "_avg_pred.png"), width = 7, height = 5, units = "in", res = 300)
-  plot(interpr, main = x)
+  png(paste0(path, "/avg_raster_preds/", x, "_avg_pred.png"), width = 7, height = 5, units = "in", res = 300)
+  plot(interpr, xlim = c(1,60), main = x)
   dev.off()
   
 })
