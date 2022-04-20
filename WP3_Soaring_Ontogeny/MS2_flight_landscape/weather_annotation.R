@@ -240,7 +240,52 @@ write.csv(df, paste0("alt_", n_alt, "_", hr, "_min_25_ind.csv"))
 
 # STEP 3: open and process annotated file ----------------------------------------------------------------
 
-ann <- read.csv("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/data/annotations/Apr_18_22/alt_50_60_min_25_ind.csv-3274898828578094969.csv")
+ann <- read.csv("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/data/annotations/Apr_18_22/alt_50_60_min_25_ind.csv-3274898828578094969.csv") %>% 
+  rename(u_wind = ECMWF.ERA5.PL.U.Wind,
+         v_wind = ECMWF.ERA5.PL.V.Wind) %>% 
+  mutate(wind_support= wind_support(u = u_wind, v = v_wind, heading = heading),
+         cross_wind= cross_wind(u = u_wind, v = v_wind, heading = heading),
+         wind_speed = sqrt(u_wind^2 + v_wind^2),
+         abs_cross_wind = abs(cross_wind(u = u_wind, v = v_wind, heading = heading)))
 
+# STEP 4: annotate with day since emigration ----------------------------------------------------------------
+#code copied from data_processing_&_annotation.R
 
+#open emigration information
+## Hester's files on matching the names
+load("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/data/from_Hester/eagle_names.RData") #eagle_names
+
+#open file with info on fledging and emigration timing (from Svea)
+dates <- read.csv("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/data/Goldeneagles_emigration_time_10_2021.csv",
+                  stringsAsFactors = F, fileEncoding = "latin1") %>%  
+  rowwise() %>% 
+  mutate(fledging_timestamp = paste(paste(strsplit(date_fledging, "\\.") %>% map_chr(., 3), #yr 
+                                          strsplit(date_fledging, "\\.") %>% map_chr(., 2), #mnth
+                                          strsplit(date_fledging, "\\.") %>% map_chr(., 1), sep = "-"),  #day
+                                    time_fledging, sep = " "),
+         emigration_timestamp = ifelse(is.na(date_emigration), NA , 
+                                       paste(paste(strsplit(date_emigration, "\\.") %>% map_chr(., 3), #yr 
+                                                   strsplit(date_emigration, "\\.") %>% map_chr(., 2), #mnth
+                                                   strsplit(date_emigration, "\\.") %>% map_chr(., 1), sep = "-"),  #day
+                                             time_emigration, sep = " "))) %>% 
+  ungroup() %>% 
+  mutate(fledging_timestamp = as.POSIXct(strptime(fledging_timestamp,format = "%Y-%m-%d %H:%M:%S"),tz = "UTC"),
+         emigration_timestamp = as.POSIXct(strptime(emigration_timestamp,format = "%Y-%m-%d %H:%M:%S"),tz = "UTC")) %>% 
+  full_join(eagle_names, by = c("id" = "age_name")) %>% 
+  as.data.frame()
+
+dyn_ann <- lapply(split(ann, ann$individual.local.identifier), function(x){
+  
+  ind_dates <- dates %>% 
+    filter(local_identifier == unique(x$individual.local.identifier))
+  
+  x <- x %>% 
+    mutate(days_since_emig = difftime(timestamp,ind_dates$emigration_timestamp, units = c("days")),
+           days_since_fled = difftime(timestamp,ind_dates$fledging_timestamp, units = c("days")))
+  
+  x
+}) %>% 
+  reduce(rbind)
+
+saveRDS(dyn_ann, file =  "alt_50_60_min_25_ind_dyn_time_ann.RData")
 
