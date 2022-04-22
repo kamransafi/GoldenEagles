@@ -116,8 +116,9 @@ cmpl_ann %>%
 # STEP 4: standardize variables ----------------------------------------------------------------
 
 all_data <- cmpl_ann %>% 
-  mutate_at(c("dem_100", "slope_100", "aspect_100", "TRI_100", "TPI_100", "slope_TPI_100", "aspect_TPI_100", "weeks_since_emig_n"),
-            list(z = ~(scale(.)))) 
+  mutate_at(c("dem_100", "slope_100", "aspect_100", "TRI_100", "TPI_100", "slope_TPI_100", "aspect_TPI_100", "weeks_since_emig_n", "eobs.temperature"),
+            list(z = ~(scale(.)))) %>% 
+  mutate(month = month(timestamp))
 
 # STEP 5: ssf modeling ----------------------------------------------------------------
 
@@ -131,6 +132,15 @@ formula <- used ~ dem_100_z * weeks_since_emig_n_z +
   TPI_100_z * weeks_since_emig_n_z + 
   strata(stratum)
 
+#add month or temperature to control for env conditions. also remove aspect tpi
+formula2 <- used ~ dem_100_z * weeks_since_emig_n_z + log(step_length) * eobs.temperature_z + 
+  slope_TPI_100_z * weeks_since_emig_n_z + 
+  TRI_100_z * weeks_since_emig_n_z + 
+  TPI_100_z * weeks_since_emig_n_z + 
+  strata(stratum)
+
+ssf2 <- clogit(formula2, data = all_data)
+plot_summs(ssf2)
 
 n <- 200 #define n for new data generation
 
