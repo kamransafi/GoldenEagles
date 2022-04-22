@@ -7,6 +7,11 @@ setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
 library(tidyverse)
 library(lubridate)
+library(sf)
+library(amt) #to estimate mcp using a sf object
+
+wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
+
 
 #STEP 1: open data and match with Svea's timestamps --------------------------------------------------------
 
@@ -50,15 +55,41 @@ saveRDS(data, file = "GPS_data_dates_matched.rds")
 set.seed(777)
 sample <- data %>% 
   filter(individual.local.identifier %in% sample(unique(individual.local.identifier),3, replace = F)) %>%  #randomly select 3 individuals
-  group_by(individual.local.identifier ) %>% 
+  group_by(individual.local.identifier) %>% 
   arrange(timestamp) %>% 
-  rowwise() %>% 
-  filter(diffitme(timestamp, head(timestamp, 1), unit = "days") <= 50 ) #only keep the first 50 days of data
+  #rowwise() %>% 
+  mutate(data_days = difftime(timestamp, head(timestamp, 1), unit = "days")) %>% 
+  filter(data_days <= 50) %>%  #only keep the first 50 days of data
+  ungroup()
 
+saveRDS(sample, file = "sample_for_fledging_code.rds")
 
-
+#use parallel package.
 lapply(split(sample, sample$individual.local.identifier), function(ind){ #for each individual,
   
-  lapply(split(ind, ))
+  potential_nest <- ind %>% #extract first point recorded for the individual as the potential nest site
+    arrange(timestamp) %>% 
+    slice(1)
+  
+  lapply(split(ind, ceiling(ind$data_days)), function(day){ #for each day
+    
+    #estimate MCP
+    day_mcp <- day %>% 
+      st_as_sf(coods = c("location.lon", "location.lat"), crs = wgs) %>% #convert data into sf object
+      mcp(percentile = 95)
+
+    #check for overlap between the MCP and the nest
+    day_overlap <- day %>% 
+      
+    
+    overlap <- potential_nest %>% 
+      st_intersection(day_mcp) #extract a T or F
+    
+    return(data.frame(ind = ind,
+                      day = day,
+               overlap = overlap))
+    
+    
+  })
   
 } )
