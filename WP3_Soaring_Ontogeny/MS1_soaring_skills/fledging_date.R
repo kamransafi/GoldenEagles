@@ -60,6 +60,8 @@ sample <- data %>%
   #rowwise() %>% 
   mutate(data_days = difftime(timestamp, head(timestamp, 1), unit = "days")) %>% 
   filter(data_days <= 50) %>%  #only keep the first 50 days of data
+  mutate(data_days_rnd = as.numeric(ceiling(data_days))) %>% #round up the day values
+  drop_na("location.long") %>% 
   ungroup()
 
 saveRDS(sample, file = "sample_for_fledging_code.rds")
@@ -71,12 +73,15 @@ lapply(split(sample, sample$individual.local.identifier), function(ind){ #for ea
     arrange(timestamp) %>% 
     slice(1)
   
-  lapply(split(ind, ceiling(ind$data_days)), function(day){ #for each day
+  ind <- ind %>% 
+    filter(data_days_rnd >= 1) #get rid of day 0
+  
+  lapply(split(ind, ind$data_days_rnd), function(day){ #for each day
     
     #estimate MCP
     day_mcp <- day %>% 
-      st_as_sf(coods = c("location.lon", "location.lat"), crs = wgs) %>% #convert data into sf object
-      mcp(percentile = 95)
+      st_as_sf(coods = c("location.long", "location.lat"), crs = 4326) %>% #convert data into sf object
+      hr_mcp(percentile = 95)
 
     #check for overlap between the MCP and the nest
     day_overlap <- day %>% 
