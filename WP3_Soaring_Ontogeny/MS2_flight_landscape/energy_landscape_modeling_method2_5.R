@@ -4,9 +4,11 @@
 #This version tries the method of fitting one model per week using the iSSA framework (selection-free movement kernel + habitat selection kernel)
 #update Apr 20: there are upto 80 weeks since emigration (mean 40). not all inds have data for all weeks. So, making weekly models is not a good idea. So, repeat method2,
 #but with weeks since instead of days since. ALSO, try weeks since fledging.... ALSO, include month as a proxy for weather conditions
+#update May 5: add landform categories to the models... or try....
 #Apr 20. 2022. Elham Nourani. Konstanz, DE
 
 library(tidyverse)
+library(lubridate)
 library(corrr)
 library(INLA)
 library(fields)
@@ -16,6 +18,7 @@ library(ggregplot) #to plot coeffs of INLA
 library(jtools) #to plot coeffs of clogit
 library(terra)
 
+wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
 #open annotated data (static variables and days & weeks since fledging and emigration)
@@ -294,3 +297,48 @@ lapply(y_vars, function(x){
 #why do I have negative values for days in the prediction rasters???..... the actual intensity of use values are NAs
 
 
+
+# STEP 7: merge interaction plots ----------------------------------------------------------------
+
+load("alt_50_20_min_25_ind_static_time_ann_weeks.RData") #cmpl_ann
+
+cmpl_ann <- cmpl_ann %>% 
+  mutate(days_since_emig_n = ceiling(as.numeric(days_since_emig)),#round up
+         weeks_since_emig_n = ceiling(as.numeric(weeks_since_emig)),#round up
+         stratum = paste(individual.local.identifier, burst_id, step_id, sep = "_")) #forgot to include stratum id in the previous code ) %>%  
+
+all_data <- cmpl_ann %>% 
+  mutate_at(c("dem_100", "slope_100", "aspect_100", "TRI_100", "TPI_100", "slope_TPI_100", "aspect_TPI_100", "weeks_since_emig_n", "eobs.temperature"),
+            list(z = ~(scale(.)))) %>% 
+  mutate(month = month(timestamp))
+
+
+#open the landform layer
+ll <- rast("/home/enourani/Desktop/LandformClassification/meybeck05/w001001.adf") %>% 
+  as.factor()
+lf <- rast("/home/enourani/Desktop/LandformClassification/iwahashi2/w001001.adf") %>% 
+  as.factor()
+
+#open landform legend
+meta_d <- read_excel("/home/enourani/Desktop/LandformClassification/legend/LEGEND.xlsx", sheet = "Meybeck", range = "A1:B16")
+meta_i <- read_excel("/home/enourani/Desktop/LandformClassification/legend/LEGEND.xlsx", sheet = "Iwahashi", range = "A1:B17")
+
+#extract landform values at tracking points
+data_lf <- all_data %>% 
+  st_as_sf(coords = c("location.long", "location.lat"), crs = wgs) %>% 
+  mutate(extract(x = ll, y = st_coordinates(.))) %>% #extract landforms: Meybeck
+  full_join(meta_d, by = c("COUNT_" = "ID")) %>% 
+  rename(landform_class_M = COUNT_,
+         landform_legend_M = Legend) %>% 
+  mutate(extract(x = lf, y = st_coordinates(.))) %>% #extract landforms: Iwahashi
+  full_join(meta_i, by = c("COUNT_" = "ID")) %>% 
+  rename(landform_class_I = COUNT_,
+         landform_legend_I = Legend) 
+
+
+#ssf analysis. use landform Iwahashi, there is a more even distribution of values across character levels
+formula1 <- used ~ as.factor(landform_class_I) * weeks_since_emig_n_z +
+  strata(stratum)
+
+ssf1 <- clogit(formula1, data = data_lf)
+plot_summs(ssf1)

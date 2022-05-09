@@ -301,7 +301,7 @@ load("alt_50_20_min_25_ind.RData") #used_av_track
 
 load("/home/enourani/ownCloud/Work/GIS_files/EU_DEM/eu_dem_v11_E40N20/dem_wgs") #dem_wgs spatial res: 25 m
 
-dem <- raster("/home/enourani/ownCloud/Work/GIS_files/EU_DEM/eu_dem_v11_E40N20/eu_dem_v11_E40N20.TIF")
+dem <- raster("/home/enourani/ownCloud/Work/GIS_files/EU_DEM/eu_dem_v11_E40N20/eu_dem_vdem_10011_E40N20.TIF")
 slope <- terrain(dem, opt = "slope", unit = "degrees", filename = "slope.tif")
 aspect <- terrain(dem, opt = "aspect", unit = "degrees", filename = "aspect.tif")
 TRI <- terrain(dem, opt = "tri", unit = "degrees", filename = "TRI.tif")
@@ -324,12 +324,15 @@ TPI_100 <- raster::aggregate(x = TPI, fact = 4, filename = "TPI_100.tif")
 topo <- stack(list("dem_100.tif", "slope_100.tif", "aspect_100.tif", "slope_TPI_100.tif",  "aspect_TPI_100.tif", "TRI_100.tif", "TPI_100.tif"))
 topo_wgs <- projectRaster(topo, res = 0.001, crs = wgs)
 
-save(topo_wgs, file = "all_topo_100m_wgs.RData")
+save(topo_wgs, file = "all_topo_100m_wgs.RData") #permission issues <eyeroll>
+#save(topo_wgs, file = "/home/enourani/Desktop/golden_eagle_static_layers/all_topo_100m_wgs.RData")
 
 #extract values
 topo_ann <- cbind(used_av_track, extract(x = topo_wgs, y = used_av_track[,c("location.long","location.lat")], method = "bilinear"))
 
 save(topo_ann, file = "alt_50_20_min_25_ind_static_ann.RData")
+
+
 
 # STEP 6: annotation: days since fledging and emigration ----------------------------------------------------------------
 
