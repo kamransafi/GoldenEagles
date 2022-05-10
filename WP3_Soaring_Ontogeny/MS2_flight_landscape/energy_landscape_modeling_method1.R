@@ -180,24 +180,21 @@ new_data <- all_data %>%
   full_join(all_data)
 
 
-#model formula. slope and TRI are correlated
-formulaM <- used ~ -1 + dem_100_z * days_since_emig_n_z + #variables based on Martina's preprint: dem, tri, slope_tpi. But slope tpi seems useless
+#model formula. slope and TRI are correlated. This version includes on TRI and dem. Martina's preprint suggests TRI, dem and slope tpi, but the latter was insig
+formulaM <- used ~ -1 + 
+  dem_100_z * days_since_emig_n_z +
   TRI_100_z * days_since_emig_n_z + 
- # TPI_100_z * days_since_emig_n_z + 
- # slope_TPI_100_z * days_since_emig_n_z + 
- # aspect_TPI_100_z * days_since_emig_n_z +
   f(stratum, model = "iid", 
-    hyper = list(theta = list(initial = log(1e-6),fixed = T))) #+ run without random effects first 
-# f(ind1, dem_100_z, model = "iid",
-#   hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) + 
-# f(ind2, slope_100_z,  model = "iid",
-#   hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) +
-# f(ind3, slope_TPI_100_z, model = "iid",
-#   hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
-
+    hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
+  f(ind1, dem_100_z, model = "iid",
+    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) + 
+  f(ind2, TRI_100_z,  model = "iid",
+    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
+  
+  
 #model
 (b <- Sys.time())
-M_marti_b <- inla(formulaM, family = "Poisson", 
+M_marti_c <- inla(formulaM, family = "Poisson", 
           control.fixed = list(
             mean = mean.beta,
             prec = list(default = prec.beta)),
@@ -205,14 +202,13 @@ M_marti_b <- inla(formulaM, family = "Poisson",
           num.threads = 10,
           control.predictor = list(compute = TRUE, link = 1), 
           control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
-Sys.time() - b  #1.76 min
+Sys.time() - b  #without random effects: 1.76 min. with random effects: 16.7 min
 
-save(M, file = "inla_model_1_norandom.RData")
-save(M, file = "inla_model_1tpi_norandom.RData")
-saveRDS(M, file = "inla_model_norandom_TRI.rds")
+save(M_marti_c, file = "inla_model_w_random.RData")
 
 
-Efxplot(list(M,M_marti, M_marti_b)) # all of them are very similar in terms of cpo and Mlik
+
+Efxplot(list(M_marti, M_marti_b, M_marti_c)) # all of them are very similar in terms of cpo and Mlik
 
 #Model for predictions
 (b <- Sys.time())
@@ -226,8 +222,8 @@ M_pred3 <- inla(formulaM, family = "Poisson",
                control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
 Sys.time() - b #500 missing values: 7.47236 mins
 
-save(M_pred, file = "inla_model_pred1_norandom.RData")
-save(M_pred3, file = "inla_model_pred3_norandom_1000NAs.RData")
+save(M_pred3, file = "inla_model_predw_random.RData")
+
 
 
 #try link = 1
@@ -251,7 +247,7 @@ save(M_pred2, file = "inla_model_pred2_norandom.RData")
 #extract predicted values
 used_na <- which(is.na(new_data$used))
 
-y_axis_var <- c("dem_100_z", "slope_100_z", "aspect_100_z")
+y_axis_var <- c("dem_100_z", "TRI_100_z")
 x_axis_var <- "days_since_emig_n_z"
 
 
@@ -324,7 +320,7 @@ for (i in y_axis_var){
   
   #manually determine the range of y axis for each variable
   if(i == "dem_100_z"){
-    y_axis_r <- c(68,3977)
+    y_axis_r <- c(68,4100)
     y_axis_lab <- c(100, seq(500, 3500, 1000)) #keep all labels at n = 5 to keep everything neat
   } else if(i == "slope_100_z"){
     y_axis_r <- c(0,70)
@@ -336,9 +332,9 @@ for (i in y_axis_var){
   
   
   #range of x axis
-  x_axis_r <- c(1, 829)
+  x_axis_r <- c(1, 763)
   #labels of x axis
-  x_axis_lab <- seq(100,800, 100)
+  x_axis_lab <- seq(100, 500, 700)
   
   
   #plot
