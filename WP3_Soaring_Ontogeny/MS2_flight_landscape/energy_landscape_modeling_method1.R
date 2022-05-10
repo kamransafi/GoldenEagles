@@ -11,6 +11,7 @@ library(raster)
 library(survival)
 library(ggregplot)
 library(terra)
+library(gstat) #for interpolations
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
@@ -248,6 +249,8 @@ save(M_pred3, file = "inla_model_predw_random.RData")
 # STEP 6: ssf output plots: the interaction plots ----------------------------------------------------------------
 
 load("inla_model_predw_random.RData") #M_pred3
+new_data <- readRDS("alt_50_20_min_25_ind_static_inlaready_wmissing.rds")
+load("alt_50_20_min_25_ind_static_inlaready.RData")
 
 #extract predicted values
 used_na <- which(is.na(new_data$used))
@@ -282,38 +285,49 @@ for (i in y_axis_var){
     ungroup() %>% 
     mutate(dplyr::select(.,all_of(i)) * i_scale + i_center, #back-transform the values for plotting
            dplyr::select(.,all_of(x_axis_var)) * x_axis_attr_scale + x_axis_attr_center ) %>% #these columns replace the original columns 1 and 2
-    rename(x_backtr = 1, #days since fledging
-           y_backtr = 2) %>%  #y axis variables
+    rename(x = 1, #days since fledging
+           y = 2) %>%  #y axis variables
     as.data.frame()
   
   #create a raster
   r <- rast(avg_pred, crs = "+proj=longlat +datum=WGS84")
   
+  # #interpolation using empty raster
+  # empty_r <- rast(extent = ext(r), ncol = 191, nrow = 1086, crs = "+proj=longlat +datum=WGS84") #based on the interpolation using tps
+  # r_interp <- terra::interpolate(empty_r, r)
+  # 
+  # 
+  #interpolation using the nearest neighbor method. Tps got rid of rare large values!
+ 
+  gs <- gstat(formula = avg_pres ~ 1, locations =~ x + y, data = avg_pred, nmax = 5, set = list(idp = 0)) #nmax is the number of neighbors; idp = all neighbors equally weighted
+  nn <- interpolate(r, gs, debug.level = 0)
+  
+  
   #create empty raster for interpolation
-  surface <- Tps(as.matrix(as.data.frame(r,xy = T)[,c(1,2)],col = 2), as.data.frame(r,xy = T)[,3])
-  grd <- expand.grid(x = seq(from = ext(r)[1],to = ext(r)[2],by = 2),
-                     y = seq(from = ext(r)[3],to = ext(r)[4],by = 2))
-  
-  #make sure elevation starts at 0. this messes up the proportions for some reason.
-  # if(i == "dem_100_z"){
-  #   grd <- expand.grid(x = seq(from = ext(r)[1],to = ext(r)[2],by = 2),
-  #                      y = seq(from = 0,to = ext(r)[4],by = 2))
-  # }
-  
-  grd$coords <- matrix(c(grd$x,grd$y), ncol=2)
-  
-  preds <- predict.Krig(surface,grd$coords)
-  interpdf <- data.frame(grd$coords, preds)
-  
-  colnames(interpdf) <- c("x_backtr","y_backtr","prob_pres")
-  
-  interpr <- rast(interpdf, crs = "+proj=longlat +datum=WGS84")
-  
-  
+  # surface <- Tps(as.matrix(as.data.frame(r,xy = T)[,c(1,2)],col = 2), as.data.frame(r,xy = T)[,3])
+  # grd <- expand.grid(x = seq(from = ext(r)[1],to = ext(r)[2],by = 4),
+  #                    y = seq(from = ext(r)[3],to = ext(r)[4],by = 4))
+  # 
+  # #make sure elevation starts at 0. this messes up the proportions for some reason.
+  # # if(i == "dem_100_z"){
+  # #   grd <- expand.grid(x = seq(from = ext(r)[1],to = ext(r)[2],by = 2),
+  # #                      y = seq(from = 0,to = ext(r)[4],by = 2))
+  # # }
+  # 
+  # grd$coords <- matrix(c(grd$x,grd$y), ncol=2)
+  # 
+  # preds <- predict.Krig(surface,grd$coords)
+  # interpdf <- data.frame(grd$coords, preds)
+  # 
+  # colnames(interpdf) <- c("x_backtr","y_backtr","prob_pres")
+  # 
+  # interpr <- rast(interpdf, crs = "+proj=longlat +datum=WGS84")
+  # 
+  # 
   #create a color palette
   cuts <- c(0, 0.25,0.5,0.75,1) #set breaks
   pal <- colorRampPalette(c("aliceblue", "lightskyblue1", "khaki2", "sandybrown", "salmon2","tomato"))
-  colpal <- pal(100)
+  colpal <- pal(80)
   
   #plot
   X11(width = 5, height = 4)
@@ -321,11 +335,11 @@ for (i in y_axis_var){
   par(cex = 0.7,
       oma = c(1,2,0, 4),
       mar = c(1, 2, 2, 5),
-      bty = "n"#,
-      #mgp = c(1,0.5,0)
+      tcl = -0.5,
+      bty = "n"
   )
   
-  plot(interpr, col = colpal, axes = F, box = F, legend = F) 
+  plot(nn,1, col = colpal, axes = F, box = F, legend = T, plg = list(at = c(0.25,0.35,0.45), labels = c(0.25,0.35,0.45))) #plg includes legend options
   
   #add axes
   axis(side = 1, at = x_axis_lab, #x_axis
@@ -337,26 +351,20 @@ for (i in y_axis_var){
        tick = T ,col = NA, col.ticks = 1, tck = -.015, las = 2, cex.axis = 0.7)
   
   #x and y axis lines
-  abline(v = ext(interpr)[1])
-  abline(h = ext(interpr)[3])
+  abline(v = ext(nn)[1])
+  abline(h = ext(nn)[3])
   
   #axis titles
-  mtext(labels %>% filter(var == i) %>% pull(label), 2, line = 2.5, cex = 0.9, font = 3)
+  mtext(labels %>% filter(var == i) %>% pull(label), 2, line = 3, cex = 0.9, font = 3)
   mtext(labels %>% filter(var == x_axis_var) %>% pull(label), 1, line = 2.5, cex = 0.9, font = 3)
   
-  #add legend
-  plot(interpr, legend.only = T, horizontal = T, col = colpal, 
-       legend.args = list("right", title = "Intensity of use", font = 1, line = 0, cex = 0.5),
-       legend.shrink = 0.4,
-       #smallplot= c(0.12,0.7, 0.06,0.09),
-       axis.args = list(at = seq(0,1,0.25), #same arguments as any axis, to determine the length of the bar and tick marks and labels
-                        labels = seq(0,1,0.25), 
-                        col = NA, #make sure box type in par is set to n, otherwise axes will be drawn on the legend :p
-                        col.ticks = NA,
-                        line = 0, cex.axis = 0.7))
-  
+  #add legend title
+  graphics::text(labels = "Probability of use", x = , line = 2.5, cex = 0.9, font = 3)
 }
 
+
+saveRDS(nn, file = "inla_pred_w_random_tri.rds")
+saveRDS(nn, file = "inla_pred_w_random_dem.rds")
 
 
 #try the plot with ggplot
@@ -364,7 +372,7 @@ for (i in y_axis_var){
   geom_raster(data = wind_df %>% filter(unique_hour == i), aes(x = lon, y = lat, fill = wind_speed))
 
 
- gplot(interpr) +
+ gplot(nn) +
    geom_tile(aes(fill = value)) +
    scale_fill_gradientn(colours = colpal, limits = c(0.2,0.7), name = "Intensity of use")
  
