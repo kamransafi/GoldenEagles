@@ -8,6 +8,8 @@ library(corrr)
 library(INLA)
 library(fields)
 library(raster)
+library(survival)
+library(ggregplot)
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
@@ -117,11 +119,24 @@ all_data <- cmpl_ann %>%
 
 # quick and dirty using clogit. for what time period???
 
-library(survival)
-form1a <- used ~ dem_100_z * days_since_emig_n_z + slope_100_z * days_since_emig_n_z + aspect_100_z * days_since_emig_n_z + 
-  slope_TPI_100_z * days_since_emig_n_z + aspect_TPI_100_z * days_since_emig_n_z  +  strata(stratum)
+form1a <- used ~ dem_100_z * days_since_emig_n_z + 
+  #aspect_100_z * days_since_emig_n_z + #AIC with aspect = 47442.4; without aspect:  47444.29 (both without individual!!)
+  TRI_100_z * days_since_emig_n_z + 
+  TPI_100_z * days_since_emig_n_z + 
+  slope_TPI_100_z * days_since_emig_n_z + 
+  aspect_TPI_100_z * days_since_emig_n_z  + 
+  strata(stratum)
+
 ssf_full <- clogit(form1a, data = all_data)
-summary(ssf_full) #so, include at least altitude, slope, slope_TPI and aspect_TPI in the model
+summary(ssf_full) #so, include at least dem, TRI, TPI, slope_TPI and aspect_TPI in the model
+
+#just as a try, include a 3-way interaction
+form1b <- used ~ dem_100_z * days_since_emig_n_z * as.factor(ind1) +
+  TPI_100_z * days_since_emig_n_z  * as.factor(ind1) + 
+  strata(stratum)
+
+ssf_test <- clogit(form1b, data = all_data)
+summary(ssf_test) #lol. it works, but too much hassle to do for all variables and get anything useful out of
 
 # INLA formula using interaction terms for time and predictor variables.
 # control for month of year or temperature....
@@ -159,24 +174,30 @@ new_data <- all_data %>%
          dem_100_z = sample(seq(min(all_data$dem_100_z),max(all_data$dem_100_z), length.out = 10), n, replace = T), #regular intervals for wind support and delta t, so we can make a raster later on
          slope_100_z = sample(seq(min(all_data$slope_100_z),max(all_data$slope_100_z), length.out = 10), n, replace = T),
          slope_TPI_100_z = sample(seq(min(all_data$slope_TPI_100_z),max(all_data$slope_TPI_100_z), length.out = 10), n, replace = T),
-         aspect_100_z = sample(seq(min(all_data$aspect_100_z),max(all_data$aspect_100_z), length.out = 10), n, replace = T)) %>% 
+         aspect_100_z = sample(seq(min(all_data$aspect_100_z),max(all_data$aspect_100_z), length.out = 10), n, replace = T),
+         TRI_100_z = sample(seq(min(all_data$TRI_100_z),max(all_data$TRI_100_z), length.out = 10), n, replace = T),
+         TPI_100_z = sample(seq(min(all_data$TPI_100_z),max(all_data$TPI_100_z), length.out = 10), n, replace = T)) %>% 
   full_join(all_data)
 
 
 #model formula. slope and TRI are correlated
-formulaM <- used ~ -1 + dem_100_z * days_since_emig_n_z + slope_100_z * days_since_emig_n_z + slope_TPI_100_z * days_since_emig_n_z +
+formulaM <- used ~ -1 + dem_100_z * days_since_emig_n_z + #variables based on Martina's preprint: dem, tri, slope_tpi. But slope tpi seems useless
+  TRI_100_z * days_since_emig_n_z + 
+ # TPI_100_z * days_since_emig_n_z + 
+ # slope_TPI_100_z * days_since_emig_n_z + 
+ # aspect_TPI_100_z * days_since_emig_n_z +
   f(stratum, model = "iid", 
     hyper = list(theta = list(initial = log(1e-6),fixed = T))) #+ run without random effects first 
-  # f(ind1, dem_100_z, model = "iid",
-  #   hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) + 
-  # f(ind2, slope_100_z,  model = "iid",
-  #   hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) +
-  # f(ind3, slope_TPI_100_z, model = "iid",
-  #   hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
+# f(ind1, dem_100_z, model = "iid",
+#   hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) + 
+# f(ind2, slope_100_z,  model = "iid",
+#   hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) +
+# f(ind3, slope_TPI_100_z, model = "iid",
+#   hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
 
 #model
 (b <- Sys.time())
-M <- inla(formulaM, family = "Poisson", 
+M_marti_b <- inla(formulaM, family = "Poisson", 
           control.fixed = list(
             mean = mean.beta,
             prec = list(default = prec.beta)),
@@ -184,14 +205,14 @@ M <- inla(formulaM, family = "Poisson",
           num.threads = 10,
           control.predictor = list(compute = TRUE, link = 1), 
           control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
-Sys.time() - b  #5.515833 mins
+Sys.time() - b  #1.76 min
 
 save(M, file = "inla_model_1_norandom.RData")
 save(M, file = "inla_model_1tpi_norandom.RData")
+saveRDS(M, file = "inla_model_norandom_TRI.rds")
 
 
-library(ggregplot)
-Efxplot(list(M,M_pred3))
+Efxplot(list(M,M_marti, M_marti_b)) # all of them are very similar in terms of cpo and Mlik
 
 #Model for predictions
 (b <- Sys.time())
