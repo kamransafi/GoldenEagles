@@ -146,7 +146,7 @@ formula4 <- used ~ log(step_length) * days_since_emig_n_z * wind_support_z + #th
 
 ssf_all4 <- clogit(formula4, data = all_data)
 
-plot_summs(list(ssf_all2, ssf_all3))
+plot_summs(list(ssf_all2, ssf_all3, ssf_all4))
 
 
 
