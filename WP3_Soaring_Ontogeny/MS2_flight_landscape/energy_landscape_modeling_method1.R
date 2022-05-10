@@ -10,8 +10,10 @@ library(fields)
 library(raster)
 library(survival)
 library(ggregplot)
+library(terra)
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
+wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
 
 #open annotated data (static variables and time since fledging and emigration)
 load("alt_50_20_min_25_ind_static_time_ann.RData") #cmpl_ann
@@ -179,6 +181,8 @@ new_data <- all_data %>%
          TPI_100_z = sample(seq(min(all_data$TPI_100_z),max(all_data$TPI_100_z), length.out = 10), n, replace = T)) %>% 
   full_join(all_data)
 
+saveRDS(new_data,"alt_50_20_min_25_ind_static_inlaready_wmissing.rds")
+
 
 #model formula. slope and TRI are correlated. This version includes on TRI and dem. Martina's preprint suggests TRI, dem and slope tpi, but the latter was insig
 formulaM <- used ~ -1 + 
@@ -226,39 +230,33 @@ save(M_pred3, file = "inla_model_predw_random.RData")
 
 
 
-#try link = 1
-(b <- Sys.time())
-M_pred2 <- inla(formulaM, family = "Poisson", 
-               control.fixed = list(
-                 mean = mean.beta,
-                 prec = list(default = prec.beta)),
-               data = new_data, 
-               num.threads = 10,
-               control.predictor = list(compute = TRUE, link = 1), #this means that NA values will be predicted.
-               control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
-Sys.time() - b #1.069171 mins without random effects. 7.47236 mins
-
-save(M_pred2, file = "inla_model_pred2_norandom.RData")
+# #try link = 1
+# (b <- Sys.time())
+# M_pred2 <- inla(formulaM, family = "Poisson", 
+#                control.fixed = list(
+#                  mean = mean.beta,
+#                  prec = list(default = prec.beta)),
+#                data = new_data, 
+#                num.threads = 10,
+#                control.predictor = list(compute = TRUE, link = 1), #this means that NA values will be predicted.
+#                control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
+# Sys.time() - b #1.069171 mins without random effects. 7.47236 mins
+# 
+# save(M_pred2, file = "inla_model_pred2_norandom.RData")
 
 
 # STEP 6: ssf output plots: the interaction plots ----------------------------------------------------------------
 
-#interaction plots
+load("inla_model_predw_random.RData") #M_pred3
+
 #extract predicted values
 used_na <- which(is.na(new_data$used))
 
 y_axis_var <- c("dem_100_z", "TRI_100_z")
 x_axis_var <- "days_since_emig_n_z"
 
-
-#extract information for rows that had NAs as response variables
-# preds <- data.frame(dem_100_z = new_data[is.na(new_data$used) ,"dem_100_z"],
-#                     slope_100_z = new_data[is.na(new_data$used) ,"slope_100_z"],
-#                     aspect_100_z = new_data[is.na(new_data$used) ,"aspect_100_z"],
-#                     days_since_emig_n_z = new_data[is.na(new_data$used) ,"days_since_emig_n_z"],
-#                     preds = M_pred$summary.fitted.values[used_na,"mean"]) %>%
-#   mutate(prob_pres = exp(preds)/(1+exp(preds))) #this should be between 0-1
-
+labels <- data.frame(var = c("dem_100_z", "TRI_100_z","days_since_emig_n_z"),
+                     label = c("Altitude (m.asl)", "Terrain ruggedness index", "Days since dispersal"))
 
 #extract probability of presence for missing values
 fitted_values <- data.frame(days_since_emig_n_z = new_data[is.na(new_data$used) ,"days_since_emig_n_z"],
@@ -285,31 +283,31 @@ for (i in y_axis_var){
     mutate(dplyr::select(.,all_of(i)) * i_scale + i_center, #back-transform the values for plotting
            dplyr::select(.,all_of(x_axis_var)) * x_axis_attr_scale + x_axis_attr_center ) %>% #these columns replace the original columns 1 and 2
     rename(x_backtr = 1, #days since fledging
-           i_backtr = 2) %>%  #y axis variables
+           y_backtr = 2) %>%  #y axis variables
     as.data.frame()
   
   #create a raster
-  coordinates(avg_pred) <-~ x_backtr + i_backtr 
-  gridded(avg_pred) <- TRUE
-  r <- raster(avg_pred)
+  r <- rast(avg_pred, crs = "+proj=longlat +datum=WGS84")
   
+  #create empty raster for interpolation
+  surface <- Tps(as.matrix(as.data.frame(r,xy = T)[,c(1,2)],col = 2), as.data.frame(r,xy = T)[,3])
+  grd <- expand.grid(x = seq(from = ext(r)[1],to = ext(r)[2],by = 2),
+                     y = seq(from = ext(r)[3],to = ext(r)[4],by = 2))
   
-  #interpolate. for visualization purposes
-  surf.1 <- Tps(as.matrix(as.data.frame(r,xy = T)[,c(1,2)],col = 2), as.data.frame(r,xy = T)[,3])
+  #make sure elevation starts at 0. this messes up the proportions for some reason.
+  # if(i == "dem_100_z"){
+  #   grd <- expand.grid(x = seq(from = ext(r)[1],to = ext(r)[2],by = 2),
+  #                      y = seq(from = 0,to = ext(r)[4],by = 2))
+  # }
   
-  grd <- expand.grid(x = seq(from = extent(r)[1],to = extent(r)[2],by = 2),
-                     y = seq(from = extent(r)[3],to = extent(r)[4],by = 2))
+  grd$coords <- matrix(c(grd$x,grd$y), ncol=2)
   
-  grd$coords <- matrix(c(grd$x,grd$y),ncol=2)
+  preds <- predict.Krig(surface,grd$coords)
+  interpdf <- data.frame(grd$coords, preds)
   
-  surf.1.pred <- predict.Krig(surf.1,grd$coords)
-  interpdf <- data.frame(grd$coords, surf.1.pred)
+  colnames(interpdf) <- c("x_backtr","y_backtr","prob_pres")
   
-  colnames(interpdf) <- c("x_backtr","i_backtr","prob_pres")
-  
-  coordinates(interpdf) <- ~ x_backtr + i_backtr
-  gridded(interpdf) <- TRUE
-  interpr <- raster(interpdf)
+  interpr <- rast(interpdf, crs = "+proj=longlat +datum=WGS84")
   
   
   #create a color palette
@@ -317,66 +315,58 @@ for (i in y_axis_var){
   pal <- colorRampPalette(c("aliceblue", "lightskyblue1", "khaki2", "sandybrown", "salmon2","tomato"))
   colpal <- pal(100)
   
-  
-  #manually determine the range of y axis for each variable
-  if(i == "dem_100_z"){
-    y_axis_r <- c(68,4100)
-    y_axis_lab <- c(100, seq(500, 3500, 1000)) #keep all labels at n = 5 to keep everything neat
-  } else if(i == "slope_100_z"){
-    y_axis_r <- c(0,70)
-    y_axis_lab <- seq(10, 50, 10)
-  } else if(i == "aspect_100_z"){
-    y_axis_r <- c(4,355)
-    y_axis_lab <- c(5, 90, 180, 270, 350)
-  }
-  
-  
-  #range of x axis
-  x_axis_r <- c(1, 763)
-  #labels of x axis
-  x_axis_lab <- seq(100, 500, 700)
-  
-  
   #plot
   X11(width = 5, height = 4)
   
   par(cex = 0.7,
-      oma = c(0,3.5,0,0),
-      mar = c(0, 0, 0, 1.5),
-      bty = "n",
-      mgp = c(1,0.5,0)
+      oma = c(1,2,0, 4),
+      mar = c(1, 2, 2, 5),
+      bty = "n"#,
+      #mgp = c(1,0.5,0)
   )
   
-  
-  raster::plot(interpr, col = colpal, axes = F, box = F, legend = F, ext = extent(c(x_axis_r[1], x_axis_r[2], y_axis_r[1], y_axis_r[2]))) #crop to the extent of observed data
+  plot(interpr, col = colpal, axes = F, box = F, legend = F) 
   
   #add axes
   axis(side = 1, at = x_axis_lab, #x_axis
        labels = x_axis_lab,
        tick = T , col = NA, col.ticks = 1, # NULL would mean to use the defult color specified by "fg" in par
-       tck = -.015, line = -2.7, cex.axis = 0.7) #tick marks smaller than default by this proportion
+       tck = -.015, line = 0, cex.axis = 0.7) #tick marks smaller than default by this proportion
   
   axis(side = 2, at = y_axis_lab, labels = y_axis_lab, 
        tick = T ,col = NA, col.ticks = 1, tck = -.015, las = 2, cex.axis = 0.7)
   
-  lines(x = c(-21.9, -21.9), y = c(-9.9,13.9)) #x and y axis lines
-  #abline(h =-10)
+  #x and y axis lines
+  abline(v = ext(interpr)[1])
+  abline(h = ext(interpr)[3])
   
   #axis titles
-  mtext(strsplit(x_axis_var, split = "z")[[1]], 1, line = -4, cex = 0.9, font = 3)
-  mtext(strsplit(i, split = "z")[[1]], 2, line = 1.2, cex = 0.9)
+  mtext(labels %>% filter(var == i) %>% pull(label), 2, line = 2.5, cex = 0.9, font = 3)
+  mtext(labels %>% filter(var == x_axis_var) %>% pull(label), 1, line = 2.5, cex = 0.9, font = 3)
   
   #add legend
-  plot(interpr, legend.only = T, horizontal = F, col = colpal, legend.args = list("Probability of use", side = 4, font = 1, line = 1.5, cex = 0.7),
+  plot(interpr, legend.only = T, horizontal = T, col = colpal, 
+       legend.args = list("right", title = "Intensity of use", font = 1, line = 0, cex = 0.5),
        legend.shrink = 0.4,
        #smallplot= c(0.12,0.7, 0.06,0.09),
        axis.args = list(at = seq(0,1,0.25), #same arguments as any axis, to determine the length of the bar and tick marks and labels
                         labels = seq(0,1,0.25), 
                         col = NA, #make sure box type in par is set to n, otherwise axes will be drawn on the legend :p
                         col.ticks = NA,
-                        line = -0.8, cex.axis = 0.7))
+                        line = 0, cex.axis = 0.7))
   
 }
 
 
 
+#try the plot with ggplot
+ ggplot() +
+  geom_raster(data = wind_df %>% filter(unique_hour == i), aes(x = lon, y = lat, fill = wind_speed))
+
+
+ gplot(interpr) +
+   geom_tile(aes(fill = value)) +
+   scale_fill_gradientn(colours = colpal, limits = c(0.2,0.7), name = "Intensity of use")
+ 
+ 
+ 
