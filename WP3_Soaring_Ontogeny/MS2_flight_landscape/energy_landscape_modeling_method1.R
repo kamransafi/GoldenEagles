@@ -12,6 +12,7 @@ library(survival)
 library(ggregplot)
 library(terra)
 library(gstat) #for interpolations
+library(rasterVis)
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
@@ -329,8 +330,27 @@ for (i in y_axis_var){
   pal <- colorRampPalette(c("aliceblue", "lightskyblue1", "khaki2", "sandybrown", "salmon2","tomato"))
   colpal <- pal(80)
   
+  #manually determine the range of y axis for each variable
+  if(i == "dem_100_z"){
+    y_axis_r <- c(0,4100)
+    y_axis_lab <- c(100, seq(500, 3500, 1000)) #keep all labels at n = 5 to keep everything neat
+  } else if(i == "TRI_100_z"){
+    y_axis_r <- c(0,142)
+    y_axis_lab <- seq(10, 140, 20)
+  }
+  
+  
+  #range of x axis
+  x_axis_r <- c(1, 829)
+  #labels of x axis
+  x_axis_lab <- seq(100, 800, 100)
+  
+  
   #plot
-  X11(width = 5, height = 4)
+  #X11(width = 5, height = 4)
+  
+  png(paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_preds_static_w_rnd_",i, ".png"), 
+      width = 5, height = 4, units = "in", res = 300)
   
   par(cex = 0.7,
       oma = c(1,2,0, 4),
@@ -360,11 +380,11 @@ for (i in y_axis_var){
   
   #add legend title
   graphics::text(labels = "Probability of use", x = , line = 2.5, cex = 0.9, font = 3)
+  
+  saveRDS(nn, file = paste0("inla_pred_w_random_", i,".rds"))
+  
 }
 
-
-saveRDS(nn, file = "inla_pred_w_random_tri.rds")
-saveRDS(nn, file = "inla_pred_w_random_dem.rds")
 
 
 #try the plot with ggplot
