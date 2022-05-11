@@ -378,6 +378,18 @@ cmpl_ann <- lapply(split(topo_ann, topo_ann$individual.local.identifier), functi
 save(cmpl_ann, file = "alt_50_20_min_25_ind_static_time_ann.RData")
 save(cmpl_ann, file = "alt_50_20_min_25_ind_static_time_ann_weeks.RData")
 
+#mid step: save as csv for annotating with temperature to account for weather conditions.
+
+cmpl_ann_w <- cmpl_ann %>% 
+  mutate(timestamp = paste(as.character(timestamp),"000",sep = ".")) %>% 
+    as.data.frame()
+
+#row numbers are over a million, so do separate into two dfs for annotation
+colnames(cmpl_ann_w)[c(3,4)] <- c("location-long","location-lat") #rename columns to match movebank format
+
+write.csv(cmpl_ann_w, "inla_input_for_annotation.csv")
+
+
 # STEP 7: annotation: landform classes ----------------------------------------------------------------
 #landform layers downloaded from: https://esdac.jrc.ec.europa.eu/content/global-landform-classification
 

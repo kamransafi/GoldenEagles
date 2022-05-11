@@ -5,6 +5,7 @@
 
 library(tidyverse)
 library(corrr)
+library(jtools) #to plot coeffs of clogit
 library(INLA)
 library(fields)
 library(raster)
@@ -12,7 +13,8 @@ library(survival)
 library(ggregplot)
 library(terra)
 library(gstat) #for interpolations
-library(rasterVis)
+library(rastervis) #remotes::install_github("oscarperpinan/rastervis")
+
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
@@ -121,18 +123,15 @@ all_data <- cmpl_ann %>%
 
 # STEP 5: ssf modeling ----------------------------------------------------------------
 
-# quick and dirty using clogit. for what time period???
-
+# quick and dirty using clogit.
 form1a <- used ~ dem_100_z * days_since_emig_n_z + 
-  #aspect_100_z * days_since_emig_n_z + #AIC with aspect = 47442.4; without aspect:  47444.29 (both without individual!!)
   TRI_100_z * days_since_emig_n_z + 
-  TPI_100_z * days_since_emig_n_z + 
-  slope_TPI_100_z * days_since_emig_n_z + 
-  aspect_TPI_100_z * days_since_emig_n_z  + 
+  #TPI_100_z * days_since_emig_n_z + 
   strata(stratum)
 
-ssf_full <- clogit(form1a, data = all_data)
-summary(ssf_full) #so, include at least dem, TRI, TPI, slope_TPI and aspect_TPI in the model
+ssf <- clogit(form1a, data = all_data)
+summary(ssf)
+plot_summs(ssf)
 
 #just as a try, include a 3-way interaction
 form1b <- used ~ dem_100_z * days_since_emig_n_z * as.factor(ind1) +
@@ -156,10 +155,10 @@ all_data <- all_data %>%
          days_f3 = factor(days_since_emig_n),
          days_f4 = factor(days_since_emig_n))
 
-save(all_data, file = "alt_50_20_min_25_ind_static_inlaready.RData")
+save(all_data, file = "alt_50_20_min_25_ind_static_inlaready.RData") #temperature added
 
 
-load("alt_50_20_min_25_ind_static_inlaready.RData")
+load("alt_50_20_min_25_ind_static_inlaready.RData") 
 
 mean.beta <- 0
 prec.beta <- 1e-4 
@@ -292,39 +291,10 @@ for (i in y_axis_var){
   
   #create a raster
   r <- rast(avg_pred, crs = "+proj=longlat +datum=WGS84")
-  
-  # #interpolation using empty raster
-  # empty_r <- rast(extent = ext(r), ncol = 191, nrow = 1086, crs = "+proj=longlat +datum=WGS84") #based on the interpolation using tps
-  # r_interp <- terra::interpolate(empty_r, r)
-  # 
-  # 
-  #interpolation using the nearest neighbor method. Tps got rid of rare large values!
  
   gs <- gstat(formula = avg_pres ~ 1, locations =~ x + y, data = avg_pred, nmax = 5, set = list(idp = 0)) #nmax is the number of neighbors; idp = all neighbors equally weighted
   nn <- interpolate(r, gs, debug.level = 0)
-  
-  
-  #create empty raster for interpolation
-  # surface <- Tps(as.matrix(as.data.frame(r,xy = T)[,c(1,2)],col = 2), as.data.frame(r,xy = T)[,3])
-  # grd <- expand.grid(x = seq(from = ext(r)[1],to = ext(r)[2],by = 4),
-  #                    y = seq(from = ext(r)[3],to = ext(r)[4],by = 4))
-  # 
-  # #make sure elevation starts at 0. this messes up the proportions for some reason.
-  # # if(i == "dem_100_z"){
-  # #   grd <- expand.grid(x = seq(from = ext(r)[1],to = ext(r)[2],by = 2),
-  # #                      y = seq(from = 0,to = ext(r)[4],by = 2))
-  # # }
-  # 
-  # grd$coords <- matrix(c(grd$x,grd$y), ncol=2)
-  # 
-  # preds <- predict.Krig(surface,grd$coords)
-  # interpdf <- data.frame(grd$coords, preds)
-  # 
-  # colnames(interpdf) <- c("x_backtr","y_backtr","prob_pres")
-  # 
-  # interpr <- rast(interpdf, crs = "+proj=longlat +datum=WGS84")
-  # 
-  # 
+
   #create a color palette
   cuts <- c(0, 0.25,0.5,0.75,1) #set breaks
   pal <- colorRampPalette(c("aliceblue", "lightskyblue1", "khaki2", "sandybrown", "salmon2","tomato"))
@@ -353,13 +323,12 @@ for (i in y_axis_var){
       width = 5, height = 4, units = "in", res = 300)
   
   par(cex = 0.7,
-      oma = c(1,2,0, 4),
-      mar = c(1, 2, 2, 5),
-      tcl = -0.5,
-      bty = "n"
+      oma = c(1,2,0, 1),
+      mar = c(1, 2, 2, 0),
+      bty = "l"
   )
   
-  plot(nn,1, col = colpal, axes = F, box = F, legend = T, plg = list(at = c(0.25,0.35,0.45), labels = c(0.25,0.35,0.45))) #plg includes legend options
+  plot(nn,1, col = colpal, axes = F, box = F, legend = T, plg = list(at = c(0.20,0.30,0.40), labels = c(0.20,0.30,0.40))) #plg includes legend options
   
   #add axes
   axis(side = 1, at = x_axis_lab, #x_axis
@@ -379,22 +348,24 @@ for (i in y_axis_var){
   mtext(labels %>% filter(var == x_axis_var) %>% pull(label), 1, line = 2.5, cex = 0.9, font = 3)
   
   #add legend title
-  graphics::text(labels = "Probability of use", x = , line = 2.5, cex = 0.9, font = 3)
+  mtext("Probability of use", cex = 0.9, side = 4, outer = T, line = -3, font = 3)
+       
+  dev.off()
   
   saveRDS(nn, file = paste0("inla_pred_w_random_", i,".rds"))
   
 }
 
 
-
-#try the plot with ggplot
- ggplot() +
-  geom_raster(data = wind_df %>% filter(unique_hour == i), aes(x = lon, y = lat, fill = wind_speed))
-
-
- gplot(nn) +
-   geom_tile(aes(fill = value)) +
-   scale_fill_gradientn(colours = colpal, limits = c(0.2,0.7), name = "Intensity of use")
- 
- 
- 
+# 
+# #try the plot with ggplot
+#  ggplot() +
+#   geom_raster(data = wind_df %>% filter(unique_hour == i), aes(x = lon, y = lat, fill = wind_speed))
+# 
+# 
+#  gplot(nn) +
+#    geom_tile(aes(fill = value)) +
+#    scale_fill_gradientn(colours = colpal, limits = c(0.2,0.7), name = "Intensity of use")
+#  
+#  
+#  
