@@ -11,9 +11,7 @@ library(mapview)
 # ----------- STEP 1: open data with soaring flight assignments -----------------
 
 #build a binomial logistic regression, with thermal soaring as 0 and slope soaring as 1
-#or, even better, make a multinomial model
-
-#open terrain layers and put onto one stack. there was no difference between flight types regarding terrain at 100 meters. try the higher res
+#or, even better, make a multinomial model#open terrain layers and put onto one stack. there was no difference between flight types regarding terrain at 100 meters. try the higher res
 ls <- list.files("/home/enourani/Desktop/golden_eagle_static_layers", pattern = ".tif", full.names = T)
 High_res <- ls[grep(ls, pattern = "100", invert = T)]
 
