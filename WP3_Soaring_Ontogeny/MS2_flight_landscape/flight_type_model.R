@@ -15,7 +15,7 @@ library(mapview)
 ls <- list.files("/home/enourani/Desktop/golden_eagle_static_layers", pattern = ".tif", full.names = T)
 High_res <- ls[grep(ls, pattern = "100", invert = T)]
 
-dem <- rast("/home/enourani/ownCloud/Work/GIS_files/EU_DEM/eu_dem_v11_E40N20/eu_dem_vdem_10011_E40N20.TIF")
+dem <- rast("/home/enourani/ownCloud/Work/GIS_files/EU_DEM/eu_dem_v11_E40N20/eu_dem_v11_E40N20.TIF")
 
 stck <- lapply(High_res, rast) %>% 
   rast()

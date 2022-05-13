@@ -229,8 +229,6 @@ Sys.time() - b #500 missing values: 7.47236 mins
 
 save(M_pred3, file = "inla_model_predw_random.RData")
 
-
-
 # #try link = 1
 # (b <- Sys.time())
 # M_pred2 <- inla(formulaM, family = "Poisson", 
@@ -315,7 +313,6 @@ for (i in y_axis_var){
   #labels of x axis
   x_axis_lab <- seq(100, 800, 100)
   
-  
   #plot
   #X11(width = 5, height = 4)
   
@@ -356,16 +353,45 @@ for (i in y_axis_var){
   
 }
 
+# STEP 7: suitability maps ----------------------------------------------------------------
 
-# 
-# #try the plot with ggplot
-#  ggplot() +
-#   geom_raster(data = wind_df %>% filter(unique_hour == i), aes(x = lon, y = lat, fill = wind_speed))
-# 
-# 
-#  gplot(nn) +
-#    geom_tile(aes(fill = value)) +
-#    scale_fill_gradientn(colours = colpal, limits = c(0.2,0.7), name = "Intensity of use")
-#  
-#  
-#  
+#create vector of study area border
+
+#open dem
+dem <- rast("/home/enourani/Desktop/golden_eagle_static_layers/dem_100.tif")
+tri <- rast("/home/enourani/Desktop/golden_eagle_static_layers/TRI_100.tif")
+
+stck <- c(dem,tri) 
+  
+
+#open topograptri#open topography layers
+load("/home/enourani/Desktop/golden_eagle_static_layers/all_topo_100m_wgs.RData") #topo_wgs
+
+#open Apline permitere layer
+Alps <- st_read("/home/enourani/ownCloud/Work/GIS_files/Alpine_perimeter/Alpine_Convention_Perimeter_2018_v2.shp") %>% 
+  st_transform(crs(stck)) %>% 
+  as("SpatVector")
+
+#mask topo layers with border of the Alps. it cuts the western corner a bit.... consider downloading the other tile as well....
+topo_Alps <- stck %>% 
+  mask(Alps) %>% 
+  project("+proj=longlat +datum=WGS84 +no_defs")
+
+saveRDS(topo_Alps, file = "Alps_dem_tri_wgs.rds")
+
+#open eagle data
+load("alt_50_20_min_25_ind_static_time_ann.RData") #cmpl_ann
+
+cmpl_ann <- cmpl_ann %>% 
+  mutate(days_since_emig_n = ceiling(as.numeric(days_since_emig)), #round up
+         stratum = paste(individual.local.identifier, burst_id, step_id, sep = "_")) #forgot to include stratum id in the previous code ) %>%  
+
+border <- cmpl_ann %>% 
+  filter(used == 1) %>% 
+  st_as_sf(coords = c("location.long", "location.lat"), crs = wgs)
+
+mapview(Alps) + mapview(border)
+
+
+
+
