@@ -67,9 +67,8 @@ alps_topo <- stck2 %>%
 
 saveRDS(alps_topo, file = "alps_dem_tri.rds")
 
-#mask topo layers with border of the Alps. it cuts the western corner a bit.... consider downloading the other tile as well....
-topo_Alps <- stck %>% 
-  mask(Alps) %>% 
+#convert to wgs
+alps_topo_wgs <- alps_topo %>% 
   project("+proj=longlat +datum=WGS84 +no_defs")
 
-saveRDS(topo_Alps, file = "Alps_dem_tri_wgs.rds")
+saveRDS(alps_topo_wgs, file = "Alps_dem_tri_wgs.rds")

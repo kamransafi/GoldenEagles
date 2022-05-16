@@ -355,29 +355,23 @@ for (i in y_axis_var){
 
 # STEP 7: suitability maps ----------------------------------------------------------------
 
-#create vector of study area border
+#I need to make predictions with the INLA model for the entire Alpine region. i.e. I need to append enough rows with NA values to the dataset 
+#options: 1) do it in batches, 2) only make predictions for unique combos of dem and tri, then associate the prediction to the rest of the cells
+#with the same values. 3) run on the cluster.
 
-#open dem
-dem <- rast("/home/enourani/Desktop/golden_eagle_static_layers/dem_100.tif")
-tri <- rast("/home/enourani/Desktop/golden_eagle_static_layers/TRI_100.tif")
+#open topo stack for the Alps (layers for east and west Alps were merged in Alps_topo_layers_prep.R)
+alps_topo_wgs <- readRDS("Alps_dem_tri_wgs.rds")
 
-stck <- c(dem,tri) 
-  
+#how many rows do we have: 17,539,565
+alps_topo_df <- alps_topo_wgs %>% 
+  as.data.frame(xy = T)
 
-#open topograptri#open topography layers
-load("/home/enourani/Desktop/golden_eagle_static_layers/all_topo_100m_wgs.RData") #topo_wgs
+saveRDS(alps_topo_df, file = "Alps_dem_tri_wgs_df.rds")
 
-#open Apline permitere layer
-Alps <- st_read("/home/enourani/ownCloud/Work/GIS_files/Alpine_perimeter/Alpine_Convention_Perimeter_2018_v2.shp") %>% 
-  st_transform(crs(stck)) %>% 
-  as("SpatVector")
+#unique dem-tri combos: 17,435,266 lol
+alps_topo_df %>% 
+  group_by(dem_100,TRI_100)
 
-#mask topo layers with border of the Alps. it cuts the western corner a bit.... consider downloading the other tile as well....
-topo_Alps <- stck %>% 
-  mask(Alps) %>% 
-  project("+proj=longlat +datum=WGS84 +no_defs")
-
-saveRDS(topo_Alps, file = "Alps_dem_tri_wgs.rds")
 
 #open eagle data
 load("alt_50_20_min_25_ind_static_time_ann.RData") #cmpl_ann
@@ -386,11 +380,6 @@ cmpl_ann <- cmpl_ann %>%
   mutate(days_since_emig_n = ceiling(as.numeric(days_since_emig)), #round up
          stratum = paste(individual.local.identifier, burst_id, step_id, sep = "_")) #forgot to include stratum id in the previous code ) %>%  
 
-border <- cmpl_ann %>% 
-  filter(used == 1) %>% 
-  st_as_sf(coords = c("location.long", "location.lat"), crs = wgs)
-
-mapview(Alps) + mapview(border)
 
 
 
