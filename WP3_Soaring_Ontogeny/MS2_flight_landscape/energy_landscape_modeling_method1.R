@@ -353,34 +353,6 @@ for (i in y_axis_var){
   
 }
 
-# STEP 7: suitability maps ----------------------------------------------------------------
-
-#I need to make predictions with the INLA model for the entire Alpine region. i.e. I need to append enough rows with NA values to the dataset 
-#options: 1) do it in batches, 2) only make predictions for unique combos of dem and tri, then associate the prediction to the rest of the cells
-#with the same values. 3) run on the cluster.
-
-#open topo stack for the Alps (layers for east and west Alps were merged in Alps_topo_layers_prep.R)
-alps_topo_wgs <- readRDS("Alps_dem_tri_wgs.rds")
-
-#how many rows do we have: 17,539,565
-alps_topo_df <- alps_topo_wgs %>% 
-  as.data.frame(xy = T)
-
-saveRDS(alps_topo_df, file = "Alps_dem_tri_wgs_df.rds")
-
-#unique dem-tri combos: 17,435,266 lol
-alps_topo_df %>% 
-  group_by(dem_100,TRI_100)
-
-
-#open eagle data
-load("alt_50_20_min_25_ind_static_time_ann.RData") #cmpl_ann
-
-cmpl_ann <- cmpl_ann %>% 
-  mutate(days_since_emig_n = ceiling(as.numeric(days_since_emig)), #round up
-         stratum = paste(individual.local.identifier, burst_id, step_id, sep = "_")) #forgot to include stratum id in the previous code ) %>%  
-
-
 
 
 
