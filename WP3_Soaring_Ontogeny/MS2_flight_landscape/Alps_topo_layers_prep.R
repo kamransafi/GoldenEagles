@@ -37,21 +37,35 @@ as_uneven_100 <- raster::aggregate(x = as_uneven, fact = 4, filename = "/home/en
 TRI_100 <- raster::aggregate(x = TRI, fact = 4, filename = "/home/enourani/Desktop/golden_eagle_static_layers/French_Alps/TRI_100.tif")
 TPI_100 <- raster::aggregate(x = TPI, fact = 4, filename = "/home/enourani/Desktop/golden_eagle_static_layers/French_Alps/TPI_100.tif")
 
-#mask for alpine region only
-#open dem
-dem <- rast("/home/enourani/Desktop/golden_eagle_static_layers/French_Alps/dem_100.tif")
-tri <- rast("/home/enourani/Desktop/golden_eagle_static_layers/French_Alps/TRI_100.tif")
-
-stck <- c(dem,tri) 
-
-
-#open topograptri#open topography layers
-load("/home/enourani/Desktop/golden_eagle_static_layers/all_topo_100m_wgs.RData") #topo_wgs
-
+#mask for alpine region only. the final SSF only has dem and tri, so for now, only include these two variables
 #open Apline permitere layer
 Alps <- st_read("/home/enourani/ownCloud/Work/GIS_files/Alpine_perimeter/Alpine_Convention_Perimeter_2018_v2.shp") %>% 
   st_transform(crs(stck)) %>% 
   as("SpatVector")
+
+
+#open dem and tri
+dem <- rast("/home/enourani/Desktop/golden_eagle_static_layers/French_Alps/dem_100.tif")
+tri <- rast("/home/enourani/Desktop/golden_eagle_static_layers/French_Alps/TRI_100.tif")
+
+stck <- c(dem,tri) %>% 
+  mask(Alps)
+
+#open east Alps layers
+dem2 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/dem_100.tif")
+tri2 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/TRI_100.tif")
+
+stck2 <- c(dem2,tri2) %>% 
+  mask(Alps)
+
+rm(dem,dem2,tri,tri2)
+
+
+#mosaic the two stacks
+alps_topo <- stck2 %>% 
+  merge(stck)
+
+saveRDS(alps_topo, file = "alps_dem_tri.rds")
 
 #mask topo layers with border of the Alps. it cuts the western corner a bit.... consider downloading the other tile as well....
 topo_Alps <- stck %>% 
