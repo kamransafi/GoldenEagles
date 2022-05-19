@@ -4,6 +4,7 @@
 #Feb 22. 2022. Elham Nourani. Konstanz, DE
 
 library(tidyverse)
+library(magrittr)
 library(corrr)
 library(jtools) #to plot coeffs of clogit
 library(INLA)
@@ -20,13 +21,14 @@ setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
 
 #open annotated data (static variables and time since fledging and emigration)
-load("alt_50_20_min_25_ind_static_time_ann.RData") #cmpl_ann
+load("alt_50_20_min_25_ind_static_time_ann_weeks.RData") #ann_cmpl
 
 cmpl_ann <- cmpl_ann %>% 
-  mutate(days_since_emig_n = ceiling(as.numeric(days_since_emig)), #round up
-         stratum = paste(individual.local.identifier, burst_id, step_id, sep = "_")) #forgot to include stratum id in the previous code ) %>%  
+  mutate(days_since_emig_n = ceiling(as.numeric(days_since_emig)),#round up
+         weeks_since_emig_n = ceiling(as.numeric(weeks_since_emig)), #120 unique weeks
+         stratum = paste(individual.local.identifier, burst_id, step_id, sep = "_"))
 
-
+ 
 Mode <- function(x, na.rm = FALSE) {
   if(na.rm){
     x = x[!is.na(x)]
@@ -118,28 +120,11 @@ cmpl_ann %>%
 # STEP 4: standardize variables ----------------------------------------------------------------
 
 all_data <- cmpl_ann %>% 
-  mutate_at(c("dem_100", "slope_100", "aspect_100", "TRI_100", "TPI_100", "slope_TPI_100", "aspect_TPI_100", "days_since_emig_n"),
+  mutate_at(c("dem_100", "TRI_100", "days_since_emig_n", "weeks_since_emig_n"),
             list(z = ~(scale(.)))) 
 
+#see previous versions for exploration using clogit
 # STEP 5: ssf modeling ----------------------------------------------------------------
-
-# quick and dirty using clogit.
-form1a <- used ~ dem_100_z * days_since_emig_n_z + 
-  TRI_100_z * days_since_emig_n_z + 
-  #TPI_100_z * days_since_emig_n_z + 
-  strata(stratum)
-
-ssf <- clogit(form1a, data = all_data)
-summary(ssf)
-plot_summs(ssf)
-
-#just as a try, include a 3-way interaction
-form1b <- used ~ dem_100_z * days_since_emig_n_z * as.factor(ind1) +
-  TPI_100_z * days_since_emig_n_z  * as.factor(ind1) + 
-  strata(stratum)
-
-ssf_test <- clogit(form1b, data = all_data)
-summary(ssf_test) #lol. it works, but too much hassle to do for all variables and get anything useful out of
 
 # INLA formula using interaction terms for time and predictor variables.
 # control for month of year or temperature....
@@ -155,7 +140,7 @@ all_data <- all_data %>%
          days_f3 = factor(days_since_emig_n),
          days_f4 = factor(days_since_emig_n))
 
-save(all_data, file = "alt_50_20_min_25_ind_static_inlaready.RData") #temperature added
+saveRDS(all_data, file = "alt_50_20_min_25_ind_static_inlaready_wks.rds")
 
 
 load("alt_50_20_min_25_ind_static_inlaready.RData") 
@@ -173,22 +158,18 @@ new_data <- all_data %>%
   ungroup() %>% 
   slice_sample(n = n, replace = F) %>% 
   mutate(used = NA,
-         days_since_emig_n = sample(seq(min(all_data$days_since_emig_n),max(all_data$days_since_emig_n), length.out = 10), n, replace = T), 
-         dem_100_z = sample(seq(min(all_data$dem_100_z),max(all_data$dem_100_z), length.out = 10), n, replace = T), #regular intervals for wind support and delta t, so we can make a raster later on
-         slope_100_z = sample(seq(min(all_data$slope_100_z),max(all_data$slope_100_z), length.out = 10), n, replace = T),
-         slope_TPI_100_z = sample(seq(min(all_data$slope_TPI_100_z),max(all_data$slope_TPI_100_z), length.out = 10), n, replace = T),
-         aspect_100_z = sample(seq(min(all_data$aspect_100_z),max(all_data$aspect_100_z), length.out = 10), n, replace = T),
-         TRI_100_z = sample(seq(min(all_data$TRI_100_z),max(all_data$TRI_100_z), length.out = 10), n, replace = T),
-         TPI_100_z = sample(seq(min(all_data$TPI_100_z),max(all_data$TPI_100_z), length.out = 10), n, replace = T)) %>% 
+         weeks_since_emig_n = sample(seq(min(all_data$weeks_since_emig_n),max(all_data$weeks_since_emig_n), length.out = 10), n, replace = T), 
+         dem_100_z = sample(seq(min(all_data$dem_100_z),max(all_data$dem_100_z), length.out = 10), n, replace = T), #regular intervals, so we can make a raster later on
+         TRI_100_z = sample(seq(min(all_data$TRI_100_z),max(all_data$TRI_100_z), length.out = 10), n, replace = T)) %>% 
   full_join(all_data)
 
-saveRDS(new_data,"alt_50_20_min_25_ind_static_inlaready_wmissing.rds")
+saveRDS(new_data,"alt_50_20_min_25_ind_static_inlaready_wmissing_wks.rds")
 
 
 #model formula. slope and TRI are correlated. This version includes on TRI and dem. Martina's preprint suggests TRI, dem and slope tpi, but the latter was insig
 formulaM <- used ~ -1 + 
-  dem_100_z * days_since_emig_n_z +
-  TRI_100_z * days_since_emig_n_z + 
+  dem_100_z * weeks_since_emig_n_z +
+  TRI_100_z * weeks_since_emig_n_z + 
   f(stratum, model = "iid", 
     hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
   f(ind1, dem_100_z, model = "iid",
@@ -209,11 +190,11 @@ M_marti_c <- inla(formulaM, family = "Poisson",
           control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
 Sys.time() - b  #without random effects: 1.76 min. with random effects: 16.7 min
 
-save(M_marti_c, file = "inla_model_w_random.RData")
+save(M_marti_c, file = "inla_model_w_random_wks.RData")
 
 
 
-Efxplot(list(M_marti, M_marti_b, M_marti_c)) # all of them are very similar in terms of cpo and Mlik
+Efxplot(M_marti_c) # all of them are very similar in terms of cpo and Mlik
 
 #Model for predictions
 (b <- Sys.time())
@@ -242,6 +223,59 @@ save(M_pred3, file = "inla_model_predw_random.RData")
 # Sys.time() - b #1.069171 mins without random effects. 7.47236 mins
 # 
 # save(M_pred2, file = "inla_model_pred2_norandom.RData")
+
+#make plot for coefficients ---------------------- REMOVE weeks since, because it is NA. it is 0 though... hum
+
+# posterior means of coefficients
+graph <- as.data.frame(summary(M_marti_c)$fixed)
+colnames(graph)[which(colnames(graph)%in%c("0.025quant","0.975quant"))]<-c("Lower","Upper")
+colnames(graph)[which(colnames(graph)%in%c("0.05quant","0.95quant"))]<-c("Lower","Upper")
+colnames(graph)[which(colnames(graph)%in%c("mean"))]<-c("Estimate")
+
+#graph$Model<-i
+graph$Factor <- rownames(graph)
+
+VarOrder <- rev(unique(graph$Factor))
+VarNames <- VarOrder
+
+graph$Factor <- factor(graph$Factor, levels = VarOrder)
+levels(graph$Factor) <- VarNames
+
+min <- min(graph$Lower,na.rm = T)
+max <- max(graph$Upper,na.rm = T)
+
+graph$Factor_n <- as.numeric(graph$Factor)
+
+#remove weeks since emigration. because it is NA
+#plot
+X11(width = 4.1, height = 2.7)
+par(cex = 0.7,
+    oma = c(0,3.7,0,0),
+    mar = c(3, 4.15, 0.5, 1),
+    bty = "l"
+)
+
+plot(0, type = "n", labels = FALSE, tck = 0, xlim = c(-0.05,0.05), ylim = c(0.7,4.3), xlab = "Estimate", ylab = "")
+
+#add vertical line for zero
+abline(v = 0, col = "grey30",lty = 2)
+#add points and error bars
+points(graph$Estimate, graph$Factor_n, col = "cornflowerblue", pch = 20, cex = 2)
+arrows(graph$Lower, graph$Factor_n,
+       graph$Upper, graph$Factor_n,
+       col = "cornflowerblue", code = 3, length = 0.03, angle = 90, lwd = 2) #angle of 90 to make the arrow head as straight as a line
+
+
+#add axes
+axis(side= 1, at = seq(-0.05, 0.05, by =  0.01), labels = seq(-0.05, 0.05, by =  0.01), 
+     tick=T ,col = NA, col.ticks = 1, tck=-.015)
+
+axis(side= 2, at = c(1:4),
+     labels = c("Weeks since dispersal:TRI","Weeks since dispersal: dem", "TRI", "dem"),
+     tick=T ,col = NA, col.ticks = 1, # NULL would mean to use the defult color specified by "fg" in par
+     tck=-.015 , #tick marks smaller than default by this proportion
+     las=2) # text perpendicular to axis label 
+
 
 
 # STEP 6: ssf output plots: the interaction plots ----------------------------------------------------------------
