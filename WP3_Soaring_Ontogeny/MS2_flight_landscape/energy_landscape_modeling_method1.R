@@ -15,7 +15,8 @@ library(ggregplot)
 library(terra)
 library(gstat) #for interpolations
 library(rastervis) #remotes::install_github("oscarperpinan/rastervis")
-
+library(patchwork) #patching up interaction plots
+library(oce) #color palette for interaction plots
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
@@ -143,10 +144,9 @@ all_data <- all_data %>%
 saveRDS(all_data, file = "alt_50_20_min_25_ind_static_inlaready_wks.rds")
 
 
-load("alt_50_20_min_25_ind_static_inlaready.RData") 
+all_data <- readRDS("alt_50_20_min_25_ind_static_inlaready_wks.rds")
 
-mean.beta <- 0
-prec.beta <- 1e-4 
+
 
 #add one new row to unique strata instead of entire empty copies of strata. assign day since emigration and terrain values on a regular grid
 set.seed(500)
@@ -158,13 +158,15 @@ new_data <- all_data %>%
   ungroup() %>% 
   slice_sample(n = n, replace = F) %>% 
   mutate(used = NA,
-         weeks_since_emig_n = sample(seq(min(all_data$weeks_since_emig_n),max(all_data$weeks_since_emig_n), length.out = 10), n, replace = T), 
+        # weeks_since_emig_n = sample(seq(min(all_data$weeks_since_emig_n),max(all_data$weeks_since_emig_n), length.out = 10), n, replace = T), 
+         weeks_since_emig_n_z = sample(seq(min(all_data$weeks_since_emig_n_z),max(all_data$weeks_since_emig_n_z), length.out = 10), n, replace = T),
          dem_100_z = sample(seq(min(all_data$dem_100_z),max(all_data$dem_100_z), length.out = 10), n, replace = T), #regular intervals, so we can make a raster later on
          TRI_100_z = sample(seq(min(all_data$TRI_100_z),max(all_data$TRI_100_z), length.out = 10), n, replace = T)) %>% 
   full_join(all_data)
 
 saveRDS(new_data,"alt_50_20_min_25_ind_static_inlaready_wmissing_wks.rds")
 
+new_data <- readRDS("alt_50_20_min_25_ind_static_inlaready_wmissing_wks.rds")
 
 #model formula. slope and TRI are correlated. This version includes on TRI and dem. Martina's preprint suggests TRI, dem and slope tpi, but the latter was insig
 formulaM <- used ~ -1 + 
@@ -177,7 +179,10 @@ formulaM <- used ~ -1 +
   f(ind2, TRI_100_z,  model = "iid",
     hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
   
-  
+mean.beta <- 0
+prec.beta <- 1e-4 
+
+
 #model
 (b <- Sys.time())
 M_marti_c <- inla(formulaM, family = "Poisson", 
@@ -192,8 +197,6 @@ Sys.time() - b  #without random effects: 1.76 min. with random effects: 16.7 min
 
 save(M_marti_c, file = "inla_model_w_random_wks.RData")
 
-
-
 Efxplot(M_marti_c) # all of them are very similar in terms of cpo and Mlik
 
 #Model for predictions
@@ -206,25 +209,11 @@ M_pred3 <- inla(formulaM, family = "Poisson",
                num.threads = 10,
                control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
                control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
-Sys.time() - b #500 missing values: 7.47236 mins
+Sys.time() - b #1000 missing values: 17 mins
 
-save(M_pred3, file = "inla_model_predw_random.RData")
+saveRDS(M_pred3, file = "inla_model_predw_random_wks.rds")
 
-# #try link = 1
-# (b <- Sys.time())
-# M_pred2 <- inla(formulaM, family = "Poisson", 
-#                control.fixed = list(
-#                  mean = mean.beta,
-#                  prec = list(default = prec.beta)),
-#                data = new_data, 
-#                num.threads = 10,
-#                control.predictor = list(compute = TRUE, link = 1), #this means that NA values will be predicted.
-#                control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
-# Sys.time() - b #1.069171 mins without random effects. 7.47236 mins
-# 
-# save(M_pred2, file = "inla_model_pred2_norandom.RData")
-
-#make plot for coefficients ---------------------- REMOVE weeks since, because it is NA. it is 0 though... hum
+#make plot for coefficients ---------------------- 
 
 # posterior means of coefficients
 graph <- as.data.frame(summary(M_marti_c)$fixed)
@@ -248,14 +237,18 @@ graph$Factor_n <- as.numeric(graph$Factor)
 
 #remove weeks since emigration. because it is NA
 #plot
-X11(width = 4.1, height = 2.7)
+X11(width = 4.7, height = 2.7)
+
+png("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/static_landscape_figs/coeffs.png", 
+    width = 4.7, height = 2.7, units = "in", res = 300)
+
 par(cex = 0.7,
     oma = c(0,3.7,0,0),
-    mar = c(3, 4.15, 0.5, 1),
+    mar = c(3, 8.5, 0.5, 1),
     bty = "l"
 )
 
-plot(0, type = "n", labels = FALSE, tck = 0, xlim = c(-0.05,0.05), ylim = c(0.7,4.3), xlab = "Estimate", ylab = "")
+plot(0, type = "n", labels = FALSE, tck = 0, xlim = c(-0.05,0.05), ylim = c(0.7,5.3), xlab = "Estimate", ylab = "")
 
 #add vertical line for zero
 abline(v = 0, col = "grey30",lty = 2)
@@ -270,31 +263,33 @@ arrows(graph$Lower, graph$Factor_n,
 axis(side= 1, at = seq(-0.05, 0.05, by =  0.01), labels = seq(-0.05, 0.05, by =  0.01), 
      tick=T ,col = NA, col.ticks = 1, tck=-.015)
 
-axis(side= 2, at = c(1:4),
-     labels = c("Weeks since dispersal:TRI","Weeks since dispersal: dem", "TRI", "dem"),
+axis(side= 2, at = c(1:5),
+     labels = c("Weeks since dispersal * TRI","Weeks since dispersal * DEM", "TRI", "Weeks since dispersal","DEM"),
      tick=T ,col = NA, col.ticks = 1, # NULL would mean to use the defult color specified by "fg" in par
      tck=-.015 , #tick marks smaller than default by this proportion
      las=2) # text perpendicular to axis label 
 
+dev.off()
 
 
 # STEP 6: ssf output plots: the interaction plots ----------------------------------------------------------------
 
-load("inla_model_predw_random.RData") #M_pred3
+M_pred3 <- readRDS("inla_model_predw_random_wks.rds") 
 new_data <- readRDS("alt_50_20_min_25_ind_static_inlaready_wmissing.rds")
-load("alt_50_20_min_25_ind_static_inlaready.RData")
+all_data <- readRDS("alt_50_20_min_25_ind_static_inlaready_wks.rds")
+
 
 #extract predicted values
 used_na <- which(is.na(new_data$used))
 
 y_axis_var <- c("dem_100_z", "TRI_100_z")
-x_axis_var <- "days_since_emig_n_z"
+x_axis_var <- "weeks_since_emig_n_z"
 
-labels <- data.frame(var = c("dem_100_z", "TRI_100_z","days_since_emig_n_z"),
-                     label = c("Altitude (m.asl)", "Terrain ruggedness index", "Days since dispersal"))
+labels <- data.frame(var = c("dem_100_z", "TRI_100_z","weeks_since_emig_n_z"),
+                     label = c("Altitude (m.asl)", "Terrain ruggedness index", "Weeks since dispersal"))
 
 #extract probability of presence for missing values
-fitted_values <- data.frame(days_since_emig_n_z = new_data[is.na(new_data$used) ,"days_since_emig_n_z"],
+fitted_values <- data.frame(weeks_since_emig_n_z = new_data[is.na(new_data$used) ,"weeks_since_emig_n_z"],
                             preds = M_pred3$summary.fitted.values[used_na,"mean"]) %>% 
   mutate(prob_pres = exp(preds)/(1+exp(preds))) #Inverse-logit transformation to get the probability (between 0 and 1)
 
@@ -322,15 +317,16 @@ for (i in y_axis_var){
     as.data.frame()
   
   #create a raster
-  r <- rast(avg_pred, crs = "+proj=longlat +datum=WGS84")
+  r <- rast(avg_pred, crs = "+proj=longlat +datum=WGS84") #use the ggplot code at the end to plot it
  
-  gs <- gstat(formula = avg_pres ~ 1, locations =~ x + y, data = avg_pred, nmax = 5, set = list(idp = 0)) #nmax is the number of neighbors; idp = all neighbors equally weighted
-  nn <- interpolate(r, gs, debug.level = 0)
+  #gs <- gstat(formula = avg_pres ~ 1, locations = ~ x + y, data = avg_pred, nmax = 5, set = list(idp = 0)) #nmax is the number of neighbors; idp = all neighbors equally weighted
+  #nn <- interpolate(r, gs, debug.level = 0)
 
   #create a color palette
-  cuts <- c(0, 0.25,0.5,0.75,1) #set breaks
-  pal <- colorRampPalette(c("aliceblue", "lightskyblue1", "khaki2", "sandybrown", "salmon2","tomato"))
-  colpal <- pal(80)
+  #cuts <- c(0, 0.25,0.5,0.75,1) #set breaks
+  #pal <- colorRampPalette(c("aliceblue", "lightskyblue1", "khaki2", "sandybrown", "salmon2","tomato"))
+  #colpal <- pal(80)
+  pal <- colorRampPalette(c( "lightskyblue1", "sandybrown", "salmon2","tomato"))
   
   #manually determine the range of y axis for each variable
   if(i == "dem_100_z"){
@@ -350,7 +346,7 @@ for (i in y_axis_var){
   #plot
   #X11(width = 5, height = 4)
   
-  png(paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_preds_static_w_rnd_",i, ".png"), 
+  png(paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_preds_static_w_rnd_wk_",i, ".png"), 
       width = 5, height = 4, units = "in", res = 300)
   
   par(cex = 0.7,
@@ -359,7 +355,7 @@ for (i in y_axis_var){
       bty = "l"
   )
   
-  plot(nn,1, col = colpal, axes = F, box = F, legend = T, plg = list(at = c(0.20,0.30,0.40), labels = c(0.20,0.30,0.40))) #plg includes legend options
+  plot(nn,1, col = colpal, axes = F, box = F, legend = T)#, plg = list(at = c(0.20,0.30,0.40), labels = c(0.20,0.30,0.40))) #plg includes legend options
   
   #add axes
   axis(side = 1, at = x_axis_lab, #x_axis
@@ -388,5 +384,61 @@ for (i in y_axis_var){
 }
 
 
+############## try with the same code as the proc b paper
+surf.1 <- Tps(as.matrix(as.data.frame(r,xy = T)[,c(1,2)],col = 2),as.data.frame(r,xy = T)[,3], method = "REML")
 
+grd <- expand.grid(x = seq(from = ext(r)[1],to = ext(r)[2],by = 8),
+                   y = seq(from = ext(r)[3],to = ext(r)[4],by = 8))
+
+grd$coords <- matrix(c(grd$x,grd$y),ncol=2)
+
+surf.1.pred <- predict.Krig(surf.1,grd$coords)
+interpdf <- data.frame(grd$coords,surf.1.pred)
+
+colnames(interpdf) <- c("weeks_since_dispersal","TRI","prob_pres")
+
+coordinates(interpdf) <- ~ weeks_since_dispersal + TRI
+gridded(interpdf) <- TRUE
+interpr <- raster(interpdf)
+X11()
+plot(interpr)
+
+
+#######use ggplot
+
+
+X11(width = 6, height = 4)
+
+p_rugg <- ggplot(data = as.data.frame(r, xy = T)) +
+  geom_tile(aes(x = x, y = y, fill = avg_pres)) +
+  scale_fill_gradientn(colours = oce::oceColorsPalette(80), limits = c(0,0.5), 
+                       na.value = "white", name = "Intensity of use") +
+  theme_minimal() +
+  labs(x = "Weeks since dispersal", y = "Ruggedness")
+
+ggsave(plot = p, filename = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_preds_static_w_rnd_wk_",i, ".png"), 
+       width = 6, height = 4, dpi = 300)
+
+
+
+X11(width = 6, height = 4)
+
+p_dem <- ggplot(data = as.data.frame(r_dem, xy = T)) +
+  geom_tile(aes(x = x, y = y, fill = avg_pres)) +
+  scale_fill_gradientn(colours = oce::oceColorsPalette(80), limits = c(0,0.5), 
+                       na.value = "white", name = "Intensity of use") +
+  theme_minimal() +
+  labs(x = "Weeks since dispersal", y = "Elevation (m)")
+
+ggsave(plot = p, filename = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_preds_static_w_rnd_wk_",i, ".png"), 
+    width = 6, height = 4, dpi = 300)
+
+
+#put both plots in one device
+X11(width = 10, height = 4)
+combined <- p_dem + p_rugg & theme(legend.position = "right")
+p_2 <- combined + plot_layout(guides = "collect")
+
+ggsave(plot = p_2, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_preds_static_w_rnd_wk_2vars.png", 
+       width = 10, height = 4, dpi = 300)
 
