@@ -319,97 +319,19 @@ for (i in y_axis_var){
   #create a raster
   r <- rast(avg_pred, crs = "+proj=longlat +datum=WGS84") #use the ggplot code at the end to plot it
  
-  #gs <- gstat(formula = avg_pres ~ 1, locations = ~ x + y, data = avg_pred, nmax = 5, set = list(idp = 0)) #nmax is the number of neighbors; idp = all neighbors equally weighted
-  #nn <- interpolate(r, gs, debug.level = 0)
-
-  #create a color palette
-  #cuts <- c(0, 0.25,0.5,0.75,1) #set breaks
-  #pal <- colorRampPalette(c("aliceblue", "lightskyblue1", "khaki2", "sandybrown", "salmon2","tomato"))
-  #colpal <- pal(80)
-  pal <- colorRampPalette(c( "lightskyblue1", "sandybrown", "salmon2","tomato"))
   
-  #manually determine the range of y axis for each variable
-  if(i == "dem_100_z"){
-    y_axis_r <- c(0,4100)
-    y_axis_lab <- c(100, seq(500, 3500, 1000)) #keep all labels at n = 5 to keep everything neat
-  } else if(i == "TRI_100_z"){
-    y_axis_r <- c(0,142)
-    y_axis_lab <- seq(10, 140, 20)
-  }
-  
-  
-  #range of x axis
-  x_axis_r <- c(1, 829)
-  #labels of x axis
-  x_axis_lab <- seq(100, 800, 100)
-  
-  #plot
-  #X11(width = 5, height = 4)
-  
-  png(paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_preds_static_w_rnd_wk_",i, ".png"), 
-      width = 5, height = 4, units = "in", res = 300)
-  
-  par(cex = 0.7,
-      oma = c(1,2,0, 1),
-      mar = c(1, 2, 2, 0),
-      bty = "l"
-  )
-  
-  plot(nn,1, col = colpal, axes = F, box = F, legend = T)#, plg = list(at = c(0.20,0.30,0.40), labels = c(0.20,0.30,0.40))) #plg includes legend options
-  
-  #add axes
-  axis(side = 1, at = x_axis_lab, #x_axis
-       labels = x_axis_lab,
-       tick = T , col = NA, col.ticks = 1, # NULL would mean to use the defult color specified by "fg" in par
-       tck = -.015, line = 0, cex.axis = 0.7) #tick marks smaller than default by this proportion
-  
-  axis(side = 2, at = y_axis_lab, labels = y_axis_lab, 
-       tick = T ,col = NA, col.ticks = 1, tck = -.015, las = 2, cex.axis = 0.7)
-  
-  #x and y axis lines
-  abline(v = ext(nn)[1])
-  abline(h = ext(nn)[3])
-  
-  #axis titles
-  mtext(labels %>% filter(var == i) %>% pull(label), 2, line = 3, cex = 0.9, font = 3)
-  mtext(labels %>% filter(var == x_axis_var) %>% pull(label), 1, line = 2.5, cex = 0.9, font = 3)
-  
-  #add legend title
-  mtext("Probability of use", cex = 0.9, side = 4, outer = T, line = -3, font = 3)
-       
-  dev.off()
-  
-  saveRDS(nn, file = paste0("inla_pred_w_random_", i,".rds"))
+  saveRDS(r, file = paste0("inla_pred_w_random_", i,".rds"))
   
 }
 
-
-############## try with the same code as the proc b paper
-surf.1 <- Tps(as.matrix(as.data.frame(r,xy = T)[,c(1,2)],col = 2),as.data.frame(r,xy = T)[,3], method = "REML")
-
-grd <- expand.grid(x = seq(from = ext(r)[1],to = ext(r)[2],by = 8),
-                   y = seq(from = ext(r)[3],to = ext(r)[4],by = 8))
-
-grd$coords <- matrix(c(grd$x,grd$y),ncol=2)
-
-surf.1.pred <- predict.Krig(surf.1,grd$coords)
-interpdf <- data.frame(grd$coords,surf.1.pred)
-
-colnames(interpdf) <- c("weeks_since_dispersal","TRI","prob_pres")
-
-coordinates(interpdf) <- ~ weeks_since_dispersal + TRI
-gridded(interpdf) <- TRUE
-interpr <- raster(interpdf)
-X11()
-plot(interpr)
-
-
 #######use ggplot
 
+r_dem <- readRDS("inla_pred_w_random_dem_100_z.rds")
+r_rug <- readRDS("inla_pred_w_random_TRI_100_z.rds")
 
 X11(width = 6, height = 4)
 
-p_rugg <- ggplot(data = as.data.frame(r, xy = T)) +
+p_rugg <- ggplot(data = as.data.frame(r_rug, xy = T)) +
   geom_tile(aes(x = x, y = y, fill = avg_pres)) +
   scale_fill_gradientn(colours = oce::oceColorsPalette(80), limits = c(0,0.5), 
                        na.value = "white", name = "Intensity of use") +

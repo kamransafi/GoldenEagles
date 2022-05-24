@@ -27,3 +27,27 @@ ind_sf <- two_days %>%  st_as_sf(coords = c("location.long", "location.lat"), cr
 mapview(ind_sf, zcol = date(two_days$timestamp))
 
 write.csv(two_days, "sample_golden_eagles.csv")
+
+data <- read.csv("sample_golden_eagles.csv") %>% 
+  st_as_sf(coords = c("location.long", "location.lat"), crs = wgs)
+
+#### open data from ETH and investigate
+
+
+time_ref_row <- read.table("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/COSMO_wind/sample_golden_eagles-2020-05-27.uvw", nrow = 1)
+
+time_ref <- as.POSIXct(strptime(paste(paste(str_sub(time_ref_row[,3], 1,4), str_sub(time_ref_row[,3], 5,6), str_sub(time_ref_row[,3], 7,8), sep = "-"), #the date
+                  paste(str_sub(time_ref_row[,3], 10,11), str_sub(time_ref_row[,3], 12,13), "00", sep = ":"), sep = " "), #the time
+                  format = "%Y-%m-%d %H:%M:%S"),tz = "UTC")
+
+wind <- read.table("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/COSMO_wind/sample_golden_eagles-2020-05-27.uvw", skip = 5)
+colnames(wind) <- c("time", "lon", "lat", "z", "u", "v","w")
+
+
+sf <- wind %>% 
+  mutate(hr_min = paste(str_split(time, "\\.", simplify = T)[, 1] %>% str_pad(2, "left", "0"), #hour
+         str_split(time, "\\.", simplify = T)[, 2] %>% str_pad(2, "right", "0"), sep = ":") %>%  hm()) %>% #minute
+  mutate(timestamp = time_ref + hr_min) %>% 
+  st_as_sf(coords = c("lon", "lat"), crs = wgs)
+
+mapview(sf, zcol = "w") + mapview(data, color = "gray")
