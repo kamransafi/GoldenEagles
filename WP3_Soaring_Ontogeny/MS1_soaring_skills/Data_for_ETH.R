@@ -32,7 +32,8 @@ data <- read.csv("sample_golden_eagles.csv") %>%
   st_as_sf(coords = c("location.long", "location.lat"), crs = wgs)
 
 #### open data from ETH and investigate
-
+#coordinates are rounded up, so the eth points end up overlapping. Match the order of points by time and append to original file
+#if only colbinding based on the order of rows, no need to convert the time column to timestamp ;)
 
 time_ref_row <- read.table("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/COSMO_wind/sample_golden_eagles-2020-05-27.uvw", nrow = 1)
 
@@ -43,11 +44,19 @@ time_ref <- as.POSIXct(strptime(paste(paste(str_sub(time_ref_row[,3], 1,4), str_
 wind <- read.table("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/COSMO_wind/sample_golden_eagles-2020-05-27.uvw", skip = 5)
 colnames(wind) <- c("time", "lon", "lat", "z", "u", "v","w")
 
-
-sf <- wind %>% 
+wind <- wind %>% 
   mutate(hr_min = paste(str_split(time, "\\.", simplify = T)[, 1] %>% str_pad(2, "left", "0"), #hour
-         str_split(time, "\\.", simplify = T)[, 2] %>% str_pad(2, "right", "0"), sep = ":") %>%  hm()) %>% #minute
-  mutate(timestamp = time_ref + hr_min) %>% 
-  st_as_sf(coords = c("lon", "lat"), crs = wgs)
+                        str_split(time, "\\.", simplify = T)[, 2] %>% str_pad(2, "right", "0"), sep = ":") %>%  hm()) %>% #minute
+  mutate(timestamp = time_ref + hr_min) 
+  
+wind_data <- read.csv("sample_golden_eagles.csv") %>% 
+  mutate(timestamp = as.POSIXct(strptime(timestamp, format = "%Y-%m-%d %H:%M:%S"),tz = "UTC")) %>% 
+  filter(date(timestamp) == date(time_ref)) %>% #extract the day of interest :p
+  bind_cols(wind %>% dplyr::select(5:7))
 
-mapview(sf, zcol = "w") + mapview(data, color = "gray")
+
+
+wind_sf <- wind_data %>% 
+  st_as_sf(coords = c("location.long", "location.lat"), crs = wgs)
+
+mapview(wind_sf, zcol = "w") + mapview(data, color = "gray")
