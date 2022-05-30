@@ -11,6 +11,7 @@ library(rgdal)
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
 
+# STEP 1: prepare sample data to send to eth ---------------------------------------
 #open data
 load("all_data_w_emig.RData") #data_w_info; from embc_segmentation.R
 
@@ -31,7 +32,7 @@ write.csv(two_days, "sample_golden_eagles.csv")
 data <- read.csv("sample_golden_eagles.csv") %>% 
   st_as_sf(coords = c("location.long", "location.lat"), crs = wgs)
 
-#### open data from ETH and investigate
+# STEP 2: investigate data from eth ---------------------------------------
 #coordinates are rounded up, so the eth points end up overlapping. Match the order of points by time and append to original file
 #if only colbinding based on the order of rows, no need to convert the time column to timestamp ;)
 
@@ -60,3 +61,5 @@ wind_sf <- wind_data %>%
   st_as_sf(coords = c("location.long", "location.lat"), crs = wgs)
 
 mapview(wind_sf, zcol = "w") + mapview(data, color = "gray")
+
+# STEP 3: estimate metrics using the data ---------------------------------------
