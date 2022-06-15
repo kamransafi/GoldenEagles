@@ -51,8 +51,7 @@ emig_dates <- lapply(split(data_70, data_70$individual.local.identifier), functi
                     proj = "+proj=longlat +datum=WGS84 +no_defs", data = post_fledging_15)
   
   # project to UTM so that the units are in meters and the radius is easy to set
-  # this UTM only works for Swiss birds
-  ind_15_mv <- spTransform(ind_15_mv, CRSobj = "+init=EPSG:21781")#"+proj=utm +zone=32+datum=WGS84")
+  ind_15_mv <- spTransform(ind_15_mv, CRSobj = "+init=EPSG:25832")#"UTM zone 32N. for Swiss birds, EPSG:21781 can be used.
   
   
   #tryCatch({
@@ -66,9 +65,6 @@ emig_dates <- lapply(split(data_70, data_70$individual.local.identifier), functi
   reduce(rbind)
 
 Sys.time() - b #8 min
-
-emig_dates
-
 
 
 #bind fledging and emigration dates
