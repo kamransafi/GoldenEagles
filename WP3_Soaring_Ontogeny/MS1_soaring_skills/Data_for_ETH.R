@@ -7,8 +7,11 @@ library(sf)
 library(lubridate)
 library(mapview)
 library(rgdal)
+library(move)
+
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
+source("/home/enourani/ownCloud/Work/Projects/wind_support_Kami.R")
 wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
 
 # STEP 1: prepare sample data to send to eth ---------------------------------------
@@ -34,7 +37,7 @@ data <- read.csv("sample_golden_eagles.csv") %>%
 
 # STEP 2: investigate data from eth ---------------------------------------
 #coordinates are rounded up, so the eth points end up overlapping. Match the order of points by time and append to original file
-#if only colbinding based on the order of rows, no need to convert the time column to timestamp ;)
+#if only col-binding based on the order of rows, no need to convert the time column to timestamp ;)
 
 time_ref_row <- read.table("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/COSMO_wind/sample_golden_eagles-2020-05-27.uvw", nrow = 1)
 
@@ -45,10 +48,10 @@ time_ref <- as.POSIXct(strptime(paste(paste(str_sub(time_ref_row[,3], 1,4), str_
 wind <- read.table("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/COSMO_wind/sample_golden_eagles-2020-05-27.uvw", skip = 5)
 colnames(wind) <- c("time", "lon", "lat", "z", "u", "v","w")
 
-wind <- wind %>% 
-  mutate(hr_min = paste(str_split(time, "\\.", simplify = T)[, 1] %>% str_pad(2, "left", "0"), #hour
-                        str_split(time, "\\.", simplify = T)[, 2] %>% str_pad(2, "right", "0"), sep = ":") %>%  hm()) %>% #minute
-  mutate(timestamp = time_ref + hr_min) 
+#wind <- wind %>% 
+#  mutate(hr_min = paste(str_split(time, "\\.", simplify = T)[, 1] %>% str_pad(2, "left", "0"), #hour
+#                        str_split(time, "\\.", simplify = T)[, 2] %>% str_pad(2, "right", "0"), sep = ":") %>%  hm()) %>% #minute
+#  mutate(timestamp = time_ref + hr_min) 
   
 wind_data <- read.csv("sample_golden_eagles.csv") %>% 
   mutate(timestamp = as.POSIXct(strptime(timestamp, format = "%Y-%m-%d %H:%M:%S"),tz = "UTC")) %>% 
@@ -63,3 +66,25 @@ wind_sf <- wind_data %>%
 mapview(wind_sf, zcol = "w") + mapview(data, color = "gray")
 
 # STEP 3: estimate metrics using the data ---------------------------------------
+
+#estimate wind speed, wind support and crosswind
+
+#convert to move object to estimate heading
+duplicated_times_to_remove <- unlist(lapply(getDuplicatedTimestamps(x = wind_data$id, timestamps = wind_data$timestamp), "[", 2))
+
+wind_data <- wind_data[-duplicated_times_to_remove,]
+
+mv <- move(x = wind_data$location.long, y = wind_data$location.lat, time = wind_data$timestamp, proj = wgs, animal = "id", data = wind_data)
+
+mv$heading <- c(angle(mv), NA)
+mv$gr_speed <- c(speed(mv), NA)   
+
+wind_data <- mv %>%
+  as("sf") %>% 
+  mutate(ws = wind_support(u = u, v = v, heading = heading),
+         cw = cross_wind(u = u, v = v, heading = heading),
+         wind_speed = sqrt(u^2 + v^2)) %>% 
+  mutate(airspeed = sqrt((gr_speed - ws)^2 + (cw)^2))
+
+
+

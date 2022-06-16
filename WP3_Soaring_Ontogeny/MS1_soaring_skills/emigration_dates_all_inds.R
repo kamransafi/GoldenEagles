@@ -15,7 +15,6 @@ setwd("/home/enourani/Desktop/Hester_GE/recurse")
 
 
 data <- read.csv("/home/enourani/Desktop/Golden_Eagle_data/all_GPS_jan13_22/LifeTrack Golden Eagle Alps.csv", encoding = "UTF-8") %>% 
-  #mutate(id = strsplit(individual.local.identifier, " ") %>% map_chr(., 1),
   mutate(timestamp = as.POSIXct(strptime(timestamp,format = "%Y-%m-%d %H:%M:%S"),tz = "UTC"))
 
 #fledging dates from Hester
