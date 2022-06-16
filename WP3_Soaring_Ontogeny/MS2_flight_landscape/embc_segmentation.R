@@ -113,18 +113,16 @@ post_em <- data_stage %>%
 
 save(post_em, file = "post_em_df_1min_70n.RData")
 
-#some summary stats
+#some summary stats: number of days spent in each stage for each individual
 data_stage %>% 
   arrange(individual.local.identifier, stage, timestamp) %>% 
   group_by(individual.local.identifier, stage) %>% 
   summarise(start = head(timestamp,1), end = tail(timestamp,1)) %>%
   mutate(duration = as.numeric(end - start))
 
-
-
 # STEP 3: estimate flight height ----------------------------------------------------------------
 
-load( "post_em_df_15min_70.RData") #post_em
+load("post_em_df_1min_70n.RData") #post_em
 
 #prepare DEM (merge east and west Alps)
 
@@ -146,33 +144,20 @@ writeRaster(Alps_topo, "Alps_east_west_dem.tif")
 alps_topo_wgs <- Alps_topo %>% 
   project("+proj=longlat +datum=WGS84 +no_defs")
 
-#open EU-DEM
-#dem <- raster("/home/enourani/ownCloud/Work/GIS_files/EU_DEM/eu_dem_v11_E40N20/eu_dem_v11_E40N20.TIF")
-
-#dem_wgs <- projectRaster(dem, crs = wgs) 
-
-#save(dem_wgs, file = "/home/enourani/ownCloud/Work/GIS_files/EU_DEM/eu_dem_v11_E40N20/dem_wgs.RData")
-
 #extract elevation values
-#load("/home/enourani/ownCloud/Work/GIS_files/EU_DEM/eu_dem_v11_E40N20/dem_wgs.RData")
 post_em$dem_alt <- extract(x = alps_topo_wgs, y = post_em[,c("location.long","location.lat")], method = "bilinear")[,2] 
 
-
 #calculate flight height as ellipsoid-dem
-post_em$flight_h <- post_em$height.above.ellipsoid - post_em$dem_alt
+post_em <- post_em %>% 
+  drop_na(c("location.lat", "height.above.ellipsoid")) %>% 
+  mutate(flight_h = height.above.ellipsoid - dem_alt) %>% 
+  drop_na(flight_h)# a few hundred data points of birds flying outside of the Alps boundary
 
-save(post_em, file = "post_em_df_dem_70ind.RData")
+save(post_em, file = "post_em_df_dem_1min_70ind.RData")
 
 # STEP 4: subset to 1 min intervals and estimate ground speed ----------------------------------------------------------------
 
-load("post_em_df_dem_70ind.RData") #post_em
-
-#remove duplicated timestamps
-rows_to_delete <- unlist(sapply(getDuplicatedTimestamps(x = post_em$individual.local.identifier, timestamps = post_em$timestamp,
-                                                        sensorType = "gps"),"[",-1)) #get all but the first row of each set of duplicate rows
-
-
-post_em <- post_em[-rows_to_delete,] 
+load("post_em_df_dem_1min_70ind.RData") #post_em
 
 post_em <- post_em %>% 
   arrange(individual.local.identifier,timestamp) %>% 
@@ -181,15 +166,9 @@ post_em <- post_em %>%
 #convert to a move object.
 mv <- move(x = post_em$location.long, y = post_em$location.lat, time = post_em$timestamp, proj = wgs, data = post_em, animal = post_em$individual.local.identifier)
 mv$speed <- unlist(lapply(speed(mv),c, NA ))
+mv$time_lag <- unlist(lapply(timeLag(mv, units = "mins"),  c, NA))
 
-save(mv, file = "post_em_mv_70_15min.RData") #move object with 15 min frequency and NA values
-
-#remove NA values of flight_h
-mv_no_na <- mv[!is.na(mv$flight_h),]
-
-#calculate ground speed and time interval between points
-mv_no_na$speed <- unlist(lapply(speed(mv_no_na),c, NA ))
-mv_no_na$time_lag <- unlist(lapply(timeLag(mv_no_na, units = "mins"),  c, NA))
+save(mv, file = "post_em_mv_70_1min.RData") #move object with 1 min frequency and no NA values (NAs were removed in the previous step)
 
 # STEP 5: EMbC segmentation ----------------------------------------------------------------
 
