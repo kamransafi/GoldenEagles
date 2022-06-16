@@ -19,17 +19,17 @@ wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
 meters_proj <- CRS("+proj=moll +ellps=WGS84")
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
-source("/home/enourani/ownCloud/Work/Projects/delta_t/R_files/global_seascape/functions.R")
+source("/home/enourani/ownCloud/Work/Projects/functions.R")
 
 
 # STEP 1: open data and filter out non-commuting flights ----------------------------------------------------------------
 
-load("embc_output.RData") #input
+bc_output <- readRDS("embc_output_70ind.rds")
 
-flight <- input %>% 
+flight <- bc_output %>% 
   filter(embc_clst_smth == 4) #use the smoothed values of clustering
 
-save(flight, file = "flight_only.RData")
+save(flight, file = "flight_only_70ind.RData")
 
 # #plot and see
 # flight_sf <- flight %>% 
@@ -40,7 +40,7 @@ save(flight, file = "flight_only.RData")
 # STEP 2: variogram to decide on data resolution ----------------------------------------------------------------
 
 #create move object
-load("flight_only.RData") #flight
+load("flight_only_70ind.RData") #flight
 mv <- move(x = flight$location.long, y = flight$location.lat, time = flight$timestamp, proj = wgs, data = flight, animal = flight$individual.local.identifier)
 tel <- as.telemetry(mv)
 sv <- lapply(tel, variogram)
@@ -57,10 +57,9 @@ plot(var,xlim=xlim,level=level)
 
 # STEP 3: step selection prep- generate alternative steps ----------------------------------------------------------------
 
-load("flight_only.RData") #flight
+load("flight_only_70ind.RData") #flight
 #create move object
 mv <- move(x = flight$location.long, y = flight$location.lat, time = flight$timestamp, proj = wgs, data = flight, animal = flight$individual.local.identifier)
-
 
 hr <- 20 #minutes; determine the sub-sampling interval
 tolerance <- 5 #minutes; tolerance for sub-sampling

@@ -16,36 +16,75 @@ meters_proj <- CRS("+proj=moll +ellps=WGS84")
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
-getmode <- function(v) {
-  uniqv <- unique(v)
-  uniqv[which.max(tabulate(match(v, uniqv)))]
-}
 
-# STEP 1: open data and resolve mismatches in individual names ----------------------------------------------------------------
+# STEP 1: open data ----------------------------------------------------------------
 
-#open file with all data
+#open file with all data (until jan 13. 2022)
 data <- read.csv("/home/enourani/Desktop/Golden_Eagle_data/all_GPS_jan13_22/LifeTrack Golden Eagle Alps.csv", encoding = "UTF-8") %>% 
-         mutate(timestamp = as.POSIXct(strptime(timestamp, format = "%Y-%m-%d %H:%M:%S"),tz = "UTC"))
+  mutate(timestamp = as.POSIXct(strptime(timestamp, format = "%Y-%m-%d %H:%M:%S"),tz = "UTC"))
 
-#15 min subset (get rid of super bursts)
-data_15 <- data %>% 
-    mutate(dt_15min = round_date(timestamp, "15 minutes")) %>% 
-    group_by(individual.local.identifier,dt_15min) %>% 
-    slice(1) %>% 
-    drop_na(location.long) %>% 
-    as.data.frame()
+#1 min subset (get rid of super bursts)
+data_1min <- data %>% 
+  mutate(dt_1min = round_date(timestamp, "1 minute")) %>% 
+  group_by(individual.local.identifier,dt_1min) %>% 
+  slice(1) %>%
+  as.data.frame()
+
+saveRDS(data_1min, file = "/home/enourani/Desktop/Golden_Eagle_data/all_GPS_jan13_22/LifeTrack Golden Eagle Alps_1min.rds")
+
+#download the new eagle data (start from jan 13 2022)
+load("mbnklogin.rdata") #Elhamlogin
+data_new <- getMovebankData(study = "LifeTrack Golden Eagle Alps", 
+                              removeDuplicatedTimestamps = T, timestamp_start = "202201130000000",
+                              login = Elhamlogin)
+
+time_lag <- unlist(lapply(timeLag(data_new, units = "mins"),  c, NA))
+
+#1 min subset (get rid of super bursts)
+data_new_1min <- as.data.frame(data_new) %>% 
+  mutate(dt_1min = round_date(timestamp, "1 minute")) %>% 
+  group_by(local_identifier,dt_1min) %>% 
+  slice(1) %>%
+  as.data.frame()
+
+saveRDS(data_new_1min, file = "/home/enourani/Desktop/Golden_Eagle_data/GPS_Jan13_Jun16_2022/LifeTrack Golden Eagle Alps_1min.rds")
+
+###### bind data together and remove duplicates
+
+cols <- c("timestamp","location.long", "location.lat", "individual.local.identifier",
+"tag.local.identifier","heading" , "height.above.ellipsoid")
+
+data_new_1min <- readRDS("/home/enourani/Desktop/Golden_Eagle_data/GPS_Jan13_Jun16_2022/LifeTrack Golden Eagle Alps_1min.rds") %>%
+rename(location.lat = location_lat,
+location.long = location_long,
+individual.local.identifier = local_identifier,
+height.above.ellipsoid= height_above_ellipsoid,
+tag.local.identifier = tag_local_identifier) %>%
+dplyr::select(cols)
+
+data_1min <- readRDS("/home/enourani/Desktop/Golden_Eagle_data/all_GPS_jan13_22/LifeTrack Golden Eagle Alps_1min.rds") %>%
+dplyr::select(cols)
+
+all_data <- bind_rows(data_1min2, data_new_1min2)
+
+#remove duplicated rows (mostly from data overlap on Jan 13 2022)
+rows_to_delete <- unlist(sapply(getDuplicatedTimestamps(x = all_data$individual.local.identifier, timestamps = all_data$timestamp,
+                                                        sensorType = "gps"),"[",-1)) #get all but the first row of each set of duplicate
 
 
-saveRDS(data_15, file = "/home/enourani/Desktop/Golden_Eagle_data/all_GPS_jan13_22/LifeTrack Golden Eagle Alps_15min.rds")
+all_data <- all_data[-rows_to_delete,] 
+
+saveRDS(all_data, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/GPSdata_78ind_UntilJune162022_1min.rds")
+
+### only keep data with emigration info
+all_data <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/GPSdata_78ind_UntilJune162022_1min.rds")
 
 #open file containing emigration dates
 load("/home/enourani/Desktop/Hester_GE/recurse/em_fl_dt_recurse_70ind.RData") #emig_fledg_dates
           
 #only keep individuals that we have emigration info
-data_w_info <- data_15 %>% 
+data_w_info <- all_data %>% 
   filter(individual.local.identifier %in% emig_fledg_dates$individual.local.identifier) #n = 70
-
-saveRDS(data_w_info, file = "/home/enourani/Desktop/Golden_Eagle_data/all_GPS_jan13_22/LifeTrack Golden Eagle Alps_15min_w_info.rds")
 
 # STEP 2: assign life stages: filter post-emigration ----------------------------------------------------------------
 
@@ -58,7 +97,7 @@ data_stage <- lapply(ind_ls, function(x){
   x <- x %>% 
     mutate(stage = ifelse(timestamp < d$fledging_dt, "pre-fledging",
                           ifelse(
-                            between(timestamp, d$fledging_dt, d$emigration_dt), "post_fledging", #this category includes the first day of fleding
+                            between(timestamp, d$fledging_dt, d$emigration_dt), "post_fledging", #this category includes the first day of fledging
                             ifelse(
                               timestamp >= d$emigration_dt,"post_emigration", NA))))
   
@@ -66,13 +105,21 @@ data_stage <- lapply(ind_ls, function(x){
 }) %>% 
   reduce(rbind)
 
-save(data_stage, file = "data_w_lifestage_15min_70.RData")
+save(data_stage, file = "data_w_lifestage_1min_70n.RData") #n = 70
 
 #extract post-emigration data
 post_em <- data_stage %>% 
   filter(stage == "post_emigration")
 
-save(post_em, file = "post_em_df_15min_70.RData")
+save(post_em, file = "post_em_df_1min_70n.RData")
+
+#some summary stats
+data_stage %>% 
+  arrange(individual.local.identifier, stage, timestamp) %>% 
+  group_by(individual.local.identifier, stage) %>% 
+  summarise(start = head(timestamp,1), end = tail(timestamp,1)) %>%
+  mutate(duration = as.numeric(end - start))
+
 
 
 # STEP 3: estimate flight height ----------------------------------------------------------------
@@ -241,4 +288,3 @@ proj4string(ln) <- wgs
 
 mapview(ln, color = "gray") + mapview(smpl, zcol = "embc_clst")
 
-mapview(dd, color = "gray") + mapview(smpl, zcol = "embc_clst_smth")
