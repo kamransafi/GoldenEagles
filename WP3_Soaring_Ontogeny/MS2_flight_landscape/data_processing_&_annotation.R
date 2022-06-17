@@ -16,7 +16,7 @@ library(fitdistrplus)
 library(raster)
 
 wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
-meters_proj <- CRS("+proj=moll +ellps=WGS84")
+meters_proj <- CRS("+proj=moll +ellps=WGS84") #replace this with utm N32
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 source("/home/enourani/ownCloud/Work/Projects/functions.R")
@@ -24,18 +24,12 @@ source("/home/enourani/ownCloud/Work/Projects/functions.R")
 
 # STEP 1: open data and filter out non-commuting flights ----------------------------------------------------------------
 
-bc_output <- readRDS("embc_output_70ind.rds")
+bc_output <- readRDS("embc_output_70ind.rds") #n = 57
 
 flight <- bc_output %>% 
   filter(embc_clst_smth == 4) #use the smoothed values of clustering
 
-save(flight, file = "flight_only_70ind.RData")
-
-# #plot and see
-# flight_sf <- flight %>% 
-#   st_as_sf(coords = c("location.long", "location.lat"), crs = wgs)
-# mapview(flight_sf, zcol = "individual.local.identifier")
-
+save(flight, file = "flight_only_70ind.RData") #n = 56
 
 # STEP 2: variogram to decide on data resolution ----------------------------------------------------------------
 
@@ -139,9 +133,9 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
     Filter(function(x) length(x) > 1, .) #remove segments with no observation
   
   Sys.time() - b 
-  stopCluster(mycl) 
+  stopCluster(mycl) #n = 53
   
-  save(sp_obj_ls, file = paste0("sl_", hr, "_min_25_ind.RData"))
+  save(sp_obj_ls, file = paste0("sl_", hr, "_min_70_ind.RData"))
   
   #--STEP 4: estimate step length and turning angle distributions
   #put everything in one df
@@ -260,13 +254,13 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
 used_av_track <- used_av_track %>% 
   mutate(stratum = paste(individual.local.identifier, burst_id, step_id, sep = "_"))
   
-save(used_av_track, file = paste0("alt_", n_alt, "_", hr, "_min_25_ind.RData")) #315843
+save(used_av_track, file = paste0("alt_", n_alt, "_", hr, "_min_70_ind.RData")) #772497; n = 53
 
 
 
 # STEP 4: summary stats ----------------------------------------------------------------
 
-load("alt_50_20_min_25_ind.RData") #used_av_track
+load("alt_50_20_min_70_ind.RData") #used_av_track
 
 used_av_track %>% 
   mutate(yr_mn = paste(year(timestamp), month(timestamp), sep = "_"),
@@ -292,32 +286,38 @@ barplot(names.arg = mn_summary$mn, height = mn_summary$data, col = as.factor(mn_
 
 # STEP 5: annotation: static ----------------------------------------------------------------
 
-load("alt_50_20_min_25_ind.RData") #used_av_track
+load("alt_50_20_min_70_ind.RData") #used_av_track
 
 #manually annotate with static variables: elevation, slope, ruggedness (difference between the maximum and the minimum value of a cell and its 8 surrounding cells),
 #unevenness in slope, aspect and elevation (TPI). (difference between the value of a cell and the mean value of its 8 surrounding cells)
 #martina aggregates all to 100 m resolution
 
-load("/home/enourani/ownCloud/Work/GIS_files/EU_DEM/eu_dem_v11_E40N20/dem_wgs") #dem_wgs spatial res: 25 m
+dem_east <- raster("/home/enourani/ownCloud/Work/GIS_files/EU_DEM/eu_dem_v11_E40N20/eu_dem_v11_E40N20.TIF")
+dem_west <- raster("/home/enourani/ownCloud/Work/GIS_files/EU_DEM/eu_dem_v11_E30N20/eu_dem_v11_E30N20.TIF")
 
-dem <- raster("/home/enourani/ownCloud/Work/GIS_files/EU_DEM/eu_dem_v11_E40N20/eu_dem_vdem_10011_E40N20.TIF")
-slope <- terrain(dem, opt = "slope", unit = "degrees", filename = "slope.tif")
-aspect <- terrain(dem, opt = "aspect", unit = "degrees", filename = "aspect.tif")
-TRI <- terrain(dem, opt = "tri", unit = "degrees", filename = "TRI.tif")
-TPI <- terrain(dem, opt = "TPI", unit = "degrees", filename = "TPI.tif")
+dem <- merge(dem_east,dem_west)
+
+writeRaster(dem, "EU_40N30N_dem_merged.TIF")
+
+dem <- raster("EU_40N30N_dem_merged.TIF")
+
+slope <- terrain(dem, opt = "slope", unit = "degrees")
+aspect <- terrain(dem, opt = "aspect", unit = "degrees")
+TRI <- terrain(dem, opt = "tri", unit = "degrees")
+TPI <- terrain(dem, opt = "TPI", unit = "degrees")
 
 #estimate slope and aspect unevenness
-sl_uneven <- terrain(slope, opt = "TPI", unit = "degrees", filename = "slope_TPI.tif")
-as_uneven <- terrain(aspect, opt = "TPI", unit = "degrees", filename = "aspect_TPI.tif")
+sl_uneven <- terrain(slope, opt = "TPI", unit = "degrees")
+as_uneven <- terrain(aspect, opt = "TPI", unit = "degrees")
 
 #aggregate raster cells to 100 m resolution
-dem_100 <- raster::aggregate(x = dem, fact = 4, filename = "dem_100.tif")
-slope_100 <- raster::aggregate(x = slope, fact = 4, filename = "slope_100.tif")
-aspect_100 <- raster::aggregate(x = aspect, fact = 4, filename = "aspect_100.tif")
-sl_uneven_100 <- raster::aggregate(x = sl_uneven, fact = 4, filename = "slope_TPI_100.tif")
-as_uneven_100 <- raster::aggregate(x = as_uneven, fact = 4, filename = "aspect_TPI_100.tif")
-TRI_100 <- raster::aggregate(x = TRI, fact = 4, filename = "TRI_100.tif")
-TPI_100 <- raster::aggregate(x = TPI, fact = 4, filename = "TPI_100.tif")
+dem_100 <- raster::aggregate(x = dem, fact = 4, filename = "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/dem_100.tif")
+slope_100 <- raster::aggregate(x = slope, fact = 4, filename = "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/slope_100.tif")
+aspect_100 <- raster::aggregate(x = aspect, fact = 4, filename = "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/aspect_100.tif")
+sl_uneven_100 <- raster::aggregate(x = sl_uneven, fact = 4, filename = "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/slope_TPI_100.tif")
+as_uneven_100 <- raster::aggregate(x = as_uneven, fact = 4, filename = "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/aspect_TPI_100.tif")
+TRI_100 <- raster::aggregate(x = TRI, fact = 4, filename = "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/TRI_100.tif")
+TPI_100 <- raster::aggregate(x = TPI, fact = 4, filename = "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/TPI_100.tif")
 
 #create a stack using raster paths
 topo <- stack(list("dem_100.tif", "slope_100.tif", "aspect_100.tif", "slope_TPI_100.tif",  "aspect_TPI_100.tif", "TRI_100.tif", "TPI_100.tif"))
