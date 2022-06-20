@@ -381,33 +381,4 @@ colnames(cmpl_ann_w)[c(26,27)] <- c("location-long","location-lat") #rename colu
 write.csv(cmpl_ann_w, "inla_input_for_annotation_70inds.csv")
 
 
-# STEP 7: annotation: landform classes ----------------------------------------------------------------
-#landform layers downloaded from: https://esdac.jrc.ec.europa.eu/content/global-landform-classification
-
-ll <- rast("/home/enourani/Desktop/LandformClassification/meybeck1km/w001001.adf") %>% 
-  as.factor()
-
-ll_jp <- rast("/home/enourani/Desktop/LandformClassification/iwahashi2/w001001.adf") %>% 
-  as.factor()
-
-#open landform legend
-meta_d <- read_excel("/home/enourani/Desktop/LandformClassification/legend/LEGEND.xlsx", sheet = "Meybeck", range = "A1:B16")
-meta_d_jp <- read_excel("/home/enourani/Desktop/LandformClassification/legend/LEGEND.xlsx", sheet = "Iwahashi", range = "A1:B17")
-
-load("alt_50_20_min_25_ind_static_time_ann_weeks.RData") 
-
-cmpl_ann <- cmpl_ann %>%   
-  st_as_sf(coords = c("location.long", "location.lat"), crs = wgs) %>% 
-  mutate(extract(x = ll, y = st_coordinates(.))) %>% #extract landforms
-  full_join(meta_d, by = c("COUNT_" = "ID")) %>%
-  rename(landform_class_M = COUNT_,
-         landform_legend_M = Legend) %>% 
-  mutate(extract(x = ll_jp, y = st_coordinates(.))) %>% #extract landforms
-  full_join(meta_d_jp, by = c("COUNT_" = "ID")) %>%
-  rename(landform_class_I = COUNT_,
-         landform_legend_I = Legend)
-  
-  
-saveRDS(cmpl_ann, file = "alt_50_20_min_25_ind_static_time_ann_weeks_landforms.RDS")
-
 
