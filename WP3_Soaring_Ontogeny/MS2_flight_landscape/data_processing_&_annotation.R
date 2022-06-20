@@ -320,16 +320,17 @@ TRI_100 <- raster::aggregate(x = TRI, fact = 4, filename = "/home/enourani/Deskt
 TPI_100 <- raster::aggregate(x = TPI, fact = 4, filename = "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/TPI_100.tif")
 
 #create a stack using raster paths
-topo <- stack(list("dem_100.tif", "slope_100.tif", "aspect_100.tif", "slope_TPI_100.tif",  "aspect_TPI_100.tif", "TRI_100.tif", "TPI_100.tif"))
-topo_wgs <- projectRaster(topo, res = 0.001, crs = wgs)
+topo <- stack(list("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/dem_100.tif", 
+                   "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/slope_100.tif", 
+                   "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/aspect_100.tif",
+                   "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/slope_TPI_100.tif",
+                   "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/aspect_TPI_100.tif",
+                   "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/TRI_100.tif", 
+                   "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/TPI_100.tif"))
 
-save(topo_wgs, file = "all_topo_100m_wgs.RData") #permission issues <eyeroll>
-#save(topo_wgs, file = "/home/enourani/Desktop/golden_eagle_static_layers/all_topo_100m_wgs.RData")
+#code got lost, but I reprojected the tracking data to match topo, then extract the values and projected the tracking data back to latlong
+#file is saved as: alt_50_20_min_70_ind_static_ann.RData
 
-#extract values
-topo_ann <- cbind(used_av_track, extract(x = topo_wgs, y = used_av_track[,c("location.long","location.lat")], method = "bilinear"))
-
-save(topo_ann, file = "alt_50_20_min_25_ind_static_ann.RData")
 
 
 
