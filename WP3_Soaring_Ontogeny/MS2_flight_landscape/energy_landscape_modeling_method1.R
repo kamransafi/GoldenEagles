@@ -65,23 +65,13 @@ plot(cmpl_ann[cmpl_ann$used == 1, c("weeks_since_emig_n", "TRI_100")])
 plot(cmpl_ann[cmpl_ann$used == 1, c("weeks_since_emig_n", "aspect_TPI_100")])
 
 
-ggplot(cmpl_ann[cmpl_ann$used == 1,], aes(as.numeric(weeks_since_emig_n), TRI_100)) +
+ggplot(cmpl_ann[cmpl_ann$used == 1 & cmpl_ann$weeks_since_emig_n <= 50,], aes(as.numeric(weeks_since_emig_n), slope_TPI_100)) +
   geom_point() +
   stat_smooth(aes(group = individual.local.identifier), method = "lm") +
+  #geom_smooth() +
   theme_minimal() +
   theme(legend.position = "none")
 
-ggplot(cmpl_ann[cmpl_ann$used == 1,], aes(as.numeric(weeks_since_emig_n), dem_100)) +
-  geom_point() +
-  stat_smooth(aes(group = individual.local.identifier), method = "lm") +
-  theme_minimal() +
-  theme(legend.position = "none")
-
-ggplot(cmpl_ann[cmpl_ann$used == 1,], aes(as.numeric(weeks_since_emig_n), slope_TPI_100)) +
-  geom_point() +
-  stat_smooth(aes(group = individual.local.identifier), method = "lm") +
-  theme_minimal() +
-  theme(legend.position = "none")
 
 # STEP 2: summary plots ----------------------------------------------------------------
 
@@ -136,18 +126,9 @@ all_data <- cmpl_ann %>%
 
 ## mid_step: investigate using clogit
 
-form_all <- used ~ dem_100_z * weeks_since_emig_n_z + slope_100_z * weeks_since_emig_n_z + 
-  aspect_100_z * weeks_since_emig_n_z + TRI_100_z * weeks_since_emig_n_z +
-  TPI_100_z * weeks_since_emig_n_z + slope_TPI_100_z * weeks_since_emig_n_z + 
-  aspect_TPI_100_z * weeks_since_emig_n_z + weeks_since_emig_n_z * weeks_since_emig_n_z + 
-  strata(stratum)
-ssfa <- clogit(form_all, data = all_data)
-summary(ssfa)
-plot_summs(ssfa)
-
 form1a <- used ~ dem_100_z * weeks_since_emig_n + 
+  slope_TPI_100_z * weeks_since_emig_n_z + 
   TRI_100_z * weeks_since_emig_n + 
-  #TPI_100_z * days_since_emig_n_z + 
   strata(stratum)
 ssf <- clogit(form1a, data = all_data)
 summary(ssf)
@@ -162,12 +143,12 @@ all_data <- all_data %>%
          ind2 = factor(individual.local.identifier),
          ind3 = factor(individual.local.identifier),
          ind4 = factor(individual.local.identifier),
-         days_f1 = factor(days_since_emig_n),
-         days_f2 = factor(days_since_emig_n),
-         days_f3 = factor(days_since_emig_n),
-         days_f4 = factor(days_since_emig_n))
+         wks_f1 = factor(weeks_since_emig_n),
+         wks_f2 = factor(weeks_since_emig_n),
+         wks_f3 = factor(weeks_since_emig_n),
+         wks_f4 = factor(weeks_since_emig_n))
 
-saveRDS(all_data, file = "alt_50_20_min_25_ind_static_inlaready_wks.rds")
+saveRDS(all_data, file = "alt_50_20_min_48_ind_static_inlaready_wks.rds")
 
 
 all_data <- readRDS("alt_50_20_min_25_ind_static_inlaready_wks.rds")
@@ -177,7 +158,7 @@ all_data <- readRDS("alt_50_20_min_25_ind_static_inlaready_wks.rds")
 #add one new row to unique strata instead of entire empty copies of strata. assign day since emigration and terrain values on a regular grid
 set.seed(500)
 
-n <- 1000
+n <- 500
 new_data <- all_data %>%
   group_by(stratum) %>% 
   slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
@@ -187,10 +168,12 @@ new_data <- all_data %>%
         # weeks_since_emig_n = sample(seq(min(all_data$weeks_since_emig_n),max(all_data$weeks_since_emig_n), length.out = 10), n, replace = T), 
          weeks_since_emig_n_z = sample(seq(min(all_data$weeks_since_emig_n_z),max(all_data$weeks_since_emig_n_z), length.out = 10), n, replace = T),
          dem_100_z = sample(seq(min(all_data$dem_100_z),max(all_data$dem_100_z), length.out = 10), n, replace = T), #regular intervals, so we can make a raster later on
-         TRI_100_z = sample(seq(min(all_data$TRI_100_z),max(all_data$TRI_100_z), length.out = 10), n, replace = T)) %>% 
+         TRI_100_z = sample(seq(min(all_data$TRI_100_z),max(all_data$TRI_100_z), length.out = 10), n, replace = T),
+        slope_TPI_100_z =  sample(seq(min(all_data$slope_TPI_100_z),max(all_data$slope_TPI_100_z), length.out = 10), n, replace = T)) %>% 
   full_join(all_data)
 
-saveRDS(new_data,"alt_50_20_min_25_ind_static_inlaready_wmissing_wks.rds")
+saveRDS(new_data,"alt_50_20_min_48_ind_static_inlaready_wmissing_wks.rds")
+saveRDS(new_data,"alt_50_20_min_48_ind_static_inlaready_wmissing500_wks.rds")
 
 new_data <- readRDS("alt_50_20_min_25_ind_static_inlaready_wmissing_wks.rds")
 
@@ -198,12 +181,15 @@ new_data <- readRDS("alt_50_20_min_25_ind_static_inlaready_wmissing_wks.rds")
 formulaM <- used ~ -1 + 
   dem_100_z * weeks_since_emig_n_z +
   TRI_100_z * weeks_since_emig_n_z + 
+  slope_TPI_100_z * weeks_since_emig_n_z + 
   f(stratum, model = "iid", 
     hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
   f(ind1, dem_100_z, model = "iid",
     hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) + 
   f(ind2, TRI_100_z,  model = "iid",
-    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
+    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) + 
+  f(ind3, slope_TPI_100_z,  model = "iid",
+    hyper=list(theta = list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
   
 mean.beta <- 0
 prec.beta <- 1e-4 
@@ -235,9 +221,9 @@ M_pred3 <- inla(formulaM, family = "Poisson",
                num.threads = 10,
                control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
                control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
-Sys.time() - b #1000 missing values: 17 mins
+Sys.time() - b #500 missing values: 17 mins
 
-saveRDS(M_pred3, file = "inla_model_predw_random_wks.rds")
+saveRDS(M_pred3, file = "inla_model_predw_random_wks_48n.rds")
 
 #make plot for coefficients ---------------------- 
 

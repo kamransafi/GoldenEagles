@@ -15,15 +15,23 @@ wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
 meters_proj <- CRS("+proj=moll +ellps=WGS84")
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
-source("/home/enourani/ownCloud/Work/Projects/delta_t/R_files/global_seascape/functions.R")
+source("/home/enourani/ownCloud/Work/Projects/functions.R")
 
 # STEP 1: step selection prep- generate alternative steps ----------------------------------------------------------------
 
-load("flight_only.RData") #flight
+load("flight_only_70ind.RData") #flight; from embc_segmentation.R #n = 56
+
+#remove problematic individuals (i.e. adults)
+load("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/em_fl_dt_recurse_70ind.RData") #emig_fledg_dates
+inds_to_remove <- emig_fledg_dates %>% 
+  mutate(post_fledging_duration = difftime(emigration_dt,fledging_dt, units = "days")) %>% 
+  filter(post_fledging_duration <= 30 )
+
+flight <- flight %>%
+  filter(!(individual.local.identifier %in% inds_to_remove$individual.local.identifier)) #n_distinct = 49
 
 #create move object
 mv <- move(x = flight$location.long, y = flight$location.lat, time = flight$timestamp, proj = wgs, data = flight, animal = flight$individual.local.identifier)
-
 
 hr <- 60 #minutes; determine the sub-sampling interval
 tolerance <- 10 #minutes; tolerance for sub-sampling
@@ -102,10 +110,10 @@ sp_obj_ls <- parLapply(mycl, split(mv), function(track){ #for each individual (i
 }) %>% 
   Filter(function(x) length(x) > 1, .) #remove segments with no observation
 
-Sys.time() - b #44.96999 secs
+Sys.time() - b #2.4 mins
 stopCluster(mycl) 
 
-save(sp_obj_ls, file = paste0("sl_", hr, "_min_25_ind.RData"))
+save(sp_obj_ls, file = paste0("sl_", hr, "_min_70_ind.RData"))
 
 #--STEP 4: estimate step length and turning angle distributions
 #put everything in one df
@@ -217,14 +225,14 @@ used_av_track <- parLapply(mycl, sp_obj_ls, function(track){ #for each track
 }) %>% 
   reduce(rbind)
 
-Sys.time() - b #12 sec
+Sys.time() - b #40 sec
 stopCluster(mycl) 
 
 
 used_av_track <- used_av_track %>% 
   mutate(stratum = paste(individual.local.identifier, burst_id, step_id, sep = "_"))
 
-save(used_av_track, file = paste0("alt_", n_alt, "_", hr, "_min_25_ind.RData"))
+save(used_av_track, file = paste0("alt_", n_alt, "_", hr, "_min_78_ind.RData"))
 
 # STEP 2: prep for movebank annotation ----------------------------------------------------------------
 
@@ -234,9 +242,9 @@ df <- used_av_track %>%
     as.data.frame()
 
 #rename columns
-colnames(df)[c(3,4)] <- c("location-long","location-lat")
+colnames(df)[c(2,3)] <- c("location-long","location-lat")
 
-write.csv(df, paste0("alt_", n_alt, "_", hr, "_min_25_ind.csv"))
+write.csv(df, paste0("alt_", n_alt, "_", hr, "_min_78_ind.csv")) #n = 48
 
 # STEP 3: open and process annotated file ----------------------------------------------------------------
 

@@ -86,5 +86,16 @@ wind_data <- mv %>%
          wind_speed = sqrt(u^2 + v^2)) %>% 
   mutate(airspeed = sqrt((gr_speed - ws)^2 + (cw)^2))
 
+# STEP 4: compare with ERA 5 --------------------------------------
+
+data <- wind_data %>% 
+  mutate(timestamp = paste(as.character(timestamp),"000",sep = ".")) %>% 
+  dplyr::select(-1) %>% 
+  as.data.frame()
+
+#rename columns
+colnames(data)[c(2,3)] <- c("location-long","location-lat")
+
+write.csv(data, "ETH_for_ERA5_annotation.csv", row.names = FALSE)
 
 
