@@ -22,14 +22,12 @@ setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
 
 #open annotated data (static variables and time since fledging and emigration)
-load("alt_50_20_min_25_ind_static_time_ann_weeks.RData") #ann_cmpl
+load( "inla_input_for_annotation_70inds.csv") #ann_cmpl
 
 cmpl_ann <- cmpl_ann %>% 
   mutate(days_since_emig_n = ceiling(as.numeric(days_since_emig)),#round up
-         weeks_since_emig_n = ceiling(as.numeric(weeks_since_emig)), #120 unique weeks
-         stratum = paste(individual.local.identifier, burst_id, step_id, sep = "_"))
+         weeks_since_emig_n = ceiling(as.numeric(weeks_since_emig))) #135 unique weeks
 
- 
 Mode <- function(x, na.rm = FALSE) {
   if(na.rm){
     x = x[!is.na(x)]
@@ -51,24 +49,26 @@ cmpl_ann %>%
 cmpl_ann %>% 
   group_by(individual.local.identifier) %>% 
   summarize(max_day = max(ceiling(as.numeric(days_since_emig)))) %>% 
-  summarize(mode = Mode(max_day), # 537
-            mean = mean(max_day)) #444
+  summarize(mode = Mode(max_day), #  459
+            median = median(max_day), # 438
+            mean = mean(max_day)) #  438
 
 
 #terrain ~ days since emigration ..... no patterns in the plots
 
-plot(cmpl_ann[cmpl_ann$used == 1, c("days_since_emig", "dem_100")])
-plot(cmpl_ann[cmpl_ann$used == 1, c("days_since_emig", "slope_100")])
-plot(cmpl_ann[cmpl_ann$used == 1, c("days_since_emig", "aspect_100")])
-plot(cmpl_ann[cmpl_ann$used == 1, c("days_since_emig", "slope_TPI_100")])
-plot(cmpl_ann[cmpl_ann$used == 1, c("days_since_emig", "TPI_100")])
-plot(cmpl_ann[cmpl_ann$used == 1, c("days_since_emig", "TRI_100")])
-plot(cmpl_ann[cmpl_ann$used == 1, c("days_since_emig", "aspect_TPI_100")])
+plot(cmpl_ann[cmpl_ann$used == 1, c("weeks_since_emig_n", "dem_100")])
+plot(cmpl_ann[cmpl_ann$used == 1, c("weeks_since_emig_n", "slope_100")])
+plot(cmpl_ann[cmpl_ann$used == 1, c("weeks_since_emig_n", "aspect_100")])
+plot(cmpl_ann[cmpl_ann$used == 1, c("weeks_since_emig_n", "slope_TPI_100")])
+plot(cmpl_ann[cmpl_ann$used == 1, c("weeks_since_emig_n", "TPI_100")])
+plot(cmpl_ann[cmpl_ann$used == 1, c("weeks_since_emig_n", "TRI_100")])
+plot(cmpl_ann[cmpl_ann$used == 1, c("weeks_since_emig_n", "aspect_TPI_100")])
 
 
-ggplot(cmpl_ann[cmpl_ann$used == 1,], aes(as.numeric(days_since_emig), aspect_TPI_100)) +
+ggplot(cmpl_ann[cmpl_ann$used == 1 & cmpl_ann$weeks_since_emig_n <= 50,], aes(as.numeric(weeks_since_emig_n), slope_TPI_100)) +
   geom_point() +
   stat_smooth(aes(group = individual.local.identifier), method = "lm") +
+  #geom_smooth() +
   theme_minimal() +
   theme(legend.position = "none")
 
@@ -78,54 +78,61 @@ ggplot(cmpl_ann[cmpl_ann$used == 1,], aes(as.numeric(days_since_emig), aspect_TP
 #one set of boxplots for select days: 10, 50 , 100, 500
 
 data_int <- cmpl_ann %>%
-  filter(days_since_emig_n %in% c(1, 10, 30 , 100, 300)) %>% 
-  mutate(days_f = as.factor(days_since_emig_n))
+  filter(weeks_since_emig_n %in% c(1, 2, 4, 10, 50, 100)) %>% 
+  mutate(weeks_f = as.factor(weeks_since_emig_n))
 
 
 variables <- c("dem_100", "slope_100", "aspect_100", "TRI_100", "TPI_100", "slope_TPI_100", "aspect_TPI_100" )
 
 X11(width = 6, height = 9)
 
-png("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/box_plots.png", width = 6, height = 9, units = "in", res = 300)
+png("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/box_plots_n48.png", width = 6, height = 9, units = "in", res = 300)
 
 par(mfrow= c(4,2), 
     oma = c(0,0,3,0), 
     las = 1,
     mgp = c(0,1,0))
 for(i in 1:length(variables)){
-  boxplot(data_int[,variables[i]] ~ data_int[,"days_f"], data = data_int, boxfill = NA, border = NA, main = variables[i], xlab = "", ylab = "")
+  boxplot(data_int[,variables[i]] ~ data_int[,"weeks_f"], data = data_int, boxfill = NA, border = NA, main = variables[i], xlab = "", ylab = "")
   if(i == 1){
     legend("topleft", legend = c("used","available"), fill = c(alpha("darkgoldenrod1", 0.9),"gray"), bty = "n", cex = 0.8)
   }
-  boxplot(data_int[data_int$used == 1, variables[i]] ~ data_int[data_int$used == 1,"days_f"], outcol = alpha("black", 0.2),
+  boxplot(data_int[data_int$used == 1, variables[i]] ~ data_int[data_int$used == 1,"weeks_f"], outcol = alpha("black", 0.2),
           yaxt = "n", xaxt = "n", add = T, boxfill = alpha("darkgoldenrod1", 0.9),  lwd = 0.7, outpch = 20, outcex = 0.8,
-          boxwex = 0.25, at = 1:length(unique(data_int[data_int$used == 1, "days_f"])) - 0.15)
-  boxplot(data_int[data_int$used == 0, variables[i]] ~ data_int[data_int$used == 0, "days_f"], outcol = alpha("black", 0.2),
+          boxwex = 0.25, at = 1:length(unique(data_int[data_int$used == 1, "weeks_f"])) - 0.15)
+  boxplot(data_int[data_int$used == 0, variables[i]] ~ data_int[data_int$used == 0, "weeks_f"], outcol = alpha("black", 0.2),
           yaxt = "n", xaxt = "n", add = T, boxfill = "grey", lwd = 0.7, outpch = 20, outcex = 0.8,
-          boxwex = 0.25, at = 1:length(unique(data_int[data_int$used == 1 , "days_f"])) + 0.15)
+          boxwex = 0.25, at = 1:length(unique(data_int[data_int$used == 1 , "weeks_f"])) + 0.15)
   
 }
 dev.off()
 
 
-#also consider making the plots for periods of time and not only one day
-
 # STEP 3: check for collinearity ----------------------------------------------------------------
 
 cmpl_ann %>% 
-  dplyr::select(c("dem_100", "slope_100", "aspect_100", "TRI_100", "TPI_100", "slope_TPI_100", "aspect_TPI_100", "days_since_emig_n")) %>% 
+  dplyr::select(c("dem_100", "slope_100", "aspect_100", "TRI_100", "TPI_100", "slope_TPI_100", "aspect_TPI_100", "weeks_since_emig_n")) %>% 
   correlate() %>% 
-  stretch() %>% 
+  corrr::stretch() %>% 
   filter(abs(r) > 0.6) #slope and TRI are correlated (.98)
 
 # STEP 4: standardize variables ----------------------------------------------------------------
 
 all_data <- cmpl_ann %>% 
-  mutate_at(c("dem_100", "TRI_100", "days_since_emig_n", "weeks_since_emig_n"),
+  mutate_at(c("dem_100", "slope_100", "aspect_100", "TRI_100", "TPI_100", "slope_TPI_100", "aspect_TPI_100", "weeks_since_emig_n"),
             list(z = ~(scale(.)))) 
 
-#see previous versions for exploration using clogit
 # STEP 5: ssf modeling ----------------------------------------------------------------
+
+## mid_step: investigate using clogit
+
+form1a <- used ~ dem_100_z * weeks_since_emig_n + 
+  slope_TPI_100_z * weeks_since_emig_n_z + 
+  TRI_100_z * weeks_since_emig_n + 
+  strata(stratum)
+ssf <- clogit(form1a, data = all_data)
+summary(ssf)
+plot_summs(ssf)
 
 # INLA formula using interaction terms for time and predictor variables.
 # control for month of year or temperature....
@@ -136,12 +143,12 @@ all_data <- all_data %>%
          ind2 = factor(individual.local.identifier),
          ind3 = factor(individual.local.identifier),
          ind4 = factor(individual.local.identifier),
-         days_f1 = factor(days_since_emig_n),
-         days_f2 = factor(days_since_emig_n),
-         days_f3 = factor(days_since_emig_n),
-         days_f4 = factor(days_since_emig_n))
+         wks_f1 = factor(weeks_since_emig_n),
+         wks_f2 = factor(weeks_since_emig_n),
+         wks_f3 = factor(weeks_since_emig_n),
+         wks_f4 = factor(weeks_since_emig_n))
 
-saveRDS(all_data, file = "alt_50_20_min_25_ind_static_inlaready_wks.rds")
+saveRDS(all_data, file = "alt_50_20_min_48_ind_static_inlaready_wks.rds")
 
 
 all_data <- readRDS("alt_50_20_min_25_ind_static_inlaready_wks.rds")
@@ -151,7 +158,7 @@ all_data <- readRDS("alt_50_20_min_25_ind_static_inlaready_wks.rds")
 #add one new row to unique strata instead of entire empty copies of strata. assign day since emigration and terrain values on a regular grid
 set.seed(500)
 
-n <- 1000
+n <- 500
 new_data <- all_data %>%
   group_by(stratum) %>% 
   slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
@@ -161,10 +168,12 @@ new_data <- all_data %>%
         # weeks_since_emig_n = sample(seq(min(all_data$weeks_since_emig_n),max(all_data$weeks_since_emig_n), length.out = 10), n, replace = T), 
          weeks_since_emig_n_z = sample(seq(min(all_data$weeks_since_emig_n_z),max(all_data$weeks_since_emig_n_z), length.out = 10), n, replace = T),
          dem_100_z = sample(seq(min(all_data$dem_100_z),max(all_data$dem_100_z), length.out = 10), n, replace = T), #regular intervals, so we can make a raster later on
-         TRI_100_z = sample(seq(min(all_data$TRI_100_z),max(all_data$TRI_100_z), length.out = 10), n, replace = T)) %>% 
+         TRI_100_z = sample(seq(min(all_data$TRI_100_z),max(all_data$TRI_100_z), length.out = 10), n, replace = T),
+        slope_TPI_100_z =  sample(seq(min(all_data$slope_TPI_100_z),max(all_data$slope_TPI_100_z), length.out = 10), n, replace = T)) %>% 
   full_join(all_data)
 
-saveRDS(new_data,"alt_50_20_min_25_ind_static_inlaready_wmissing_wks.rds")
+saveRDS(new_data,"alt_50_20_min_48_ind_static_inlaready_wmissing_wks.rds")
+saveRDS(new_data,"alt_50_20_min_48_ind_static_inlaready_wmissing500_wks.rds")
 
 new_data <- readRDS("alt_50_20_min_25_ind_static_inlaready_wmissing_wks.rds")
 
@@ -172,12 +181,15 @@ new_data <- readRDS("alt_50_20_min_25_ind_static_inlaready_wmissing_wks.rds")
 formulaM <- used ~ -1 + 
   dem_100_z * weeks_since_emig_n_z +
   TRI_100_z * weeks_since_emig_n_z + 
+  slope_TPI_100_z * weeks_since_emig_n_z + 
   f(stratum, model = "iid", 
     hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
   f(ind1, dem_100_z, model = "iid",
     hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) + 
   f(ind2, TRI_100_z,  model = "iid",
-    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
+    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) + 
+  f(ind3, slope_TPI_100_z,  model = "iid",
+    hyper=list(theta = list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
   
 mean.beta <- 0
 prec.beta <- 1e-4 
@@ -209,9 +221,9 @@ M_pred3 <- inla(formulaM, family = "Poisson",
                num.threads = 10,
                control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
                control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
-Sys.time() - b #1000 missing values: 17 mins
+Sys.time() - b #500 missing values: 17 mins
 
-saveRDS(M_pred3, file = "inla_model_predw_random_wks.rds")
+saveRDS(M_pred3, file = "inla_model_predw_random_wks_48n.rds")
 
 #make plot for coefficients ---------------------- 
 

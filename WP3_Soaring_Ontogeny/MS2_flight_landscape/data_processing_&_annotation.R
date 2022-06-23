@@ -336,47 +336,38 @@ topo <- stack(list("/home/enourani/Desktop/golden_eagle_static_layers/whole_regi
 
 # STEP 6: annotation: days since fledging and emigration ----------------------------------------------------------------
 
-load("alt_50_20_min_25_ind_static_ann.RData") #topo_ann
+load("alt_50_20_min_70_ind_static_ann.RData") #topo_ann_df ... n_distinct(topo_ann_df$individual.local.identifier) = 53
 
 #open emigration information
-## Hester's files on matching the names
-load("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/data/from_Hester/eagle_names.RData") #eagle_names
-#open file with info on fledging and emigration timing (from Svea)
-dates <- read.csv("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/data/Goldeneagles_emigration_time_10_2021.csv",
-                  stringsAsFactors = F, fileEncoding = "latin1") %>%  
-  rowwise() %>% 
-  mutate(fledging_timestamp = paste(paste(strsplit(date_fledging, "\\.") %>% map_chr(., 3), #yr 
-                                          strsplit(date_fledging, "\\.") %>% map_chr(., 2), #mnth
-                                          strsplit(date_fledging, "\\.") %>% map_chr(., 1), sep = "-"),  #day
-                                    time_fledging, sep = " "),
-         emigration_timestamp = ifelse(is.na(date_emigration), NA , 
-                                       paste(paste(strsplit(date_emigration, "\\.") %>% map_chr(., 3), #yr 
-                                                   strsplit(date_emigration, "\\.") %>% map_chr(., 2), #mnth
-                                                   strsplit(date_emigration, "\\.") %>% map_chr(., 1), sep = "-"),  #day
-                                             time_emigration, sep = " "))) %>% 
-  ungroup() %>% 
-  mutate(fledging_timestamp = as.POSIXct(strptime(fledging_timestamp,format = "%Y-%m-%d %H:%M:%S"),tz = "UTC"),
-         emigration_timestamp = as.POSIXct(strptime(emigration_timestamp,format = "%Y-%m-%d %H:%M:%S"),tz = "UTC")) %>% 
-  full_join(eagle_names, by = c("id" = "age_name")) %>% 
-  as.data.frame()
+#open file containing emigration dates
+load("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/em_fl_dt_recurse_70ind.RData") #emig_fledg_dates
 
-cmpl_ann <- lapply(split(topo_ann, topo_ann$individual.local.identifier), function(x){
+#remove individuals with very narrow post-fledging period. They are a combination of dead, adult, etc. only 5 are in my subset of 53 anyway.
+inds_to_remove <- emig_fledg_dates %>% 
+  mutate(post_fledging_duration = difftime(emigration_dt,fledging_dt, units = "days")) %>% 
+  filter(post_fledging_duration <= 30 )
+
+topo_ann_df <- topo_ann_df %>% 
+  filter(!(individual.local.identifier %in% inds_to_remove$individual.local.identifier)) #n_distinct = 48
+
+
+cmpl_ann <- lapply(split(topo_ann_df, topo_ann_df$individual.local.identifier), function(x){
   
-  ind_dates <- dates %>% 
-    filter(local_identifier == unique(x$individual.local.identifier))
+  ind_dates <- emig_fledg_dates %>% 
+    filter(individual.local.identifier == unique(x$individual.local.identifier))
   
   x <- x %>% 
-    mutate(days_since_emig = difftime(timestamp,ind_dates$emigration_timestamp, units = c("days")),
-           days_since_fled = difftime(timestamp,ind_dates$fledging_timestamp, units = c("days")),
-           weeks_since_emig = difftime(timestamp,ind_dates$emigration_timestamp, units = c("weeks")),
-           weeks_since_fled = difftime(timestamp,ind_dates$fledging_timestamp, units = c("weeks")))
+    mutate(days_since_emig = difftime(timestamp,ind_dates$emigration_dt, units = c("days")),
+           weeks_since_emig = difftime(timestamp,ind_dates$emigration_dt, units = c("weeks")),
+           days_since_fled = difftime(timestamp,ind_dates$fledging_dt, units = c("days")),
+           weeks_since_fled = difftime(timestamp,ind_dates$fledging_dt, units = c("weeks")))
   
   x
 }) %>% 
   reduce(rbind)
 
-save(cmpl_ann, file = "alt_50_20_min_25_ind_static_time_ann.RData")
-save(cmpl_ann, file = "alt_50_20_min_25_ind_static_time_ann_weeks.RData")
+save(cmpl_ann, file = "alt_50_20_min_70_ind_static_time_ann.RData")
+
 
 #mid step: save as csv for annotating with temperature to account for weather conditions.
 
@@ -385,38 +376,9 @@ cmpl_ann_w <- cmpl_ann %>%
     as.data.frame()
 
 #row numbers are over a million, so do separate into two dfs for annotation
-colnames(cmpl_ann_w)[c(3,4)] <- c("location-long","location-lat") #rename columns to match movebank format
+colnames(cmpl_ann_w)[c(26,27)] <- c("location-long","location-lat") #rename columns to match movebank format
 
-write.csv(cmpl_ann_w, "inla_input_for_annotation.csv")
+write.csv(cmpl_ann_w, "inla_input_for_annotation_70inds.csv")
 
-
-# STEP 7: annotation: landform classes ----------------------------------------------------------------
-#landform layers downloaded from: https://esdac.jrc.ec.europa.eu/content/global-landform-classification
-
-ll <- rast("/home/enourani/Desktop/LandformClassification/meybeck1km/w001001.adf") %>% 
-  as.factor()
-
-ll_jp <- rast("/home/enourani/Desktop/LandformClassification/iwahashi2/w001001.adf") %>% 
-  as.factor()
-
-#open landform legend
-meta_d <- read_excel("/home/enourani/Desktop/LandformClassification/legend/LEGEND.xlsx", sheet = "Meybeck", range = "A1:B16")
-meta_d_jp <- read_excel("/home/enourani/Desktop/LandformClassification/legend/LEGEND.xlsx", sheet = "Iwahashi", range = "A1:B17")
-
-load("alt_50_20_min_25_ind_static_time_ann_weeks.RData") 
-
-cmpl_ann <- cmpl_ann %>%   
-  st_as_sf(coords = c("location.long", "location.lat"), crs = wgs) %>% 
-  mutate(extract(x = ll, y = st_coordinates(.))) %>% #extract landforms
-  full_join(meta_d, by = c("COUNT_" = "ID")) %>%
-  rename(landform_class_M = COUNT_,
-         landform_legend_M = Legend) %>% 
-  mutate(extract(x = ll_jp, y = st_coordinates(.))) %>% #extract landforms
-  full_join(meta_d_jp, by = c("COUNT_" = "ID")) %>%
-  rename(landform_class_I = COUNT_,
-         landform_legend_I = Legend)
-  
-  
-saveRDS(cmpl_ann, file = "alt_50_20_min_25_ind_static_time_ann_weeks_landforms.RDS")
 
 
