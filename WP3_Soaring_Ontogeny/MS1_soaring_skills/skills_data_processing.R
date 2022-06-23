@@ -33,6 +33,65 @@ eagleStudyId <- 282734839 # The golden eagle study on MoveBank
 ## 5. Calculate the ratio of soaring to flight
 ## 6. Plot the ratio over days since fledging
 
+### Classify behaviors
+# birds to remove:
+files <- list.files("D:/goldenEagles_fromMartina/accGPS_behavClass", full.names = T)[-c(3,4,5,23,24)]
+# list the data with wind speed classifications removing the adults 
+wind_files <- list.files("D:/goldenEagles_wind", full.names = T)
+# the adult birds that should be removed
+#ind_id <- c("Aosta1_20 (eobs 7511)", "Aosta2_20 (eobs 7558)", "Aosta21 (eobs7590)", "Mellau21 (eobs 6988)", "Memmingen20 (eobs 7507)")
+# the estimated dates
+load("fledging_emig_times.RData")
+
+file_names <- str_sub(files, 47, -24)
+files <- files[-which(!file_names %in% times$individual.local.identifier)]
+
+invisible(lapply(files, function(x){
+  # read in the data for this ID containing flapping classifications 
+  ind <- readRDS(x)
+  # extract ID
+  ID <- unique(ind$local_identifier)
+  # read in the data for this ID containing wind estimates 
+  load(wind_files[grepl(ID, wind_files, fixed = T)]) # burstsWindDF
+  
+  date <- times %>% filter(individual.local.identifier == ID)
+  
+  pfdp_wind <- burstsWindDF%>% 
+    filter(between(timestamp, date$fledging_dt, date$emigration_dt)) %>% 
+    rename(location_long = location.long,
+           location_lat = location.lat)
+  
+  pfdp_behav <- ind %>% 
+    filter(between(timestamp, date$fledging_dt, date$emigration_dt))
+  
+  pfdp <- pfdp_behav %>% 
+    left_join(pfdp_wind) %>% 
+    #filter(between(timestamp, date$fledging_dt, date$emigration_dt)) %>% 
+    mutate(flight_type = ifelse(behavior == "Flapping",
+                                "flap",
+                                ifelse(soarClust == "soar" & thermalClust == "circular",
+                                       "soar_circular", 
+                                       ifelse(thermalClust == "linear",
+                                              "soar_linear",
+                                              ifelse(soarClust == "glide",
+                                                     "glide",
+                                                     NA))))) %>% 
+    mutate(flight_type = ifelse(is.na(thermalID) & flight_type == "soar_circular",
+                                "circular_no_ID",
+                                flight_type))
+  
+  
+  # wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
+  # pfdpsf <- st_as_sf(pfdp, coords = c("location_long", "location_lat"), crs = wgs)
+  # check <- pfdpsf[1:500,]
+  # mapview(check, zcol = "flight_type")
+  saveRDS(pfdp, file = paste0("D:/Golden_eagle_wind_behav_June_2022/", ID, ".rds"))
+  
+}))
+
+# 15 individuals have 0 rows of data due to missing wind estimates, possibly because
+# they fledged in the fall and data transmission was poor during the pfdp
+
 ### Assign life stages to the birds for which we have fledging dates
 
 # the file with the names of the birds in different formats
@@ -151,9 +210,72 @@ for (i in unique(cfls$id_date)) {
 
 cfls <- cfls_t; rm(cfls_t)
 
+## 23.06
+df <- pfdp
+df$date <- date(df$timestamp)
+df <- lapply(split(df, df$date), function(x){
+  x$flight_time <-  as.numeric(difftime(x$timestamp[nrow(x)], x$timestamp[1], units = "sec"))
+  x
+}) %>% reduce(rbind)
+
 
 ## 2. give IDs to each unique soaring event (Martina probably has faster code for this)
 
+### 21.06.22:
+
+files <- list.files("D:/goldenEagles_fromMartina/accGPS_behavClass", full.names = T)
+start_time <- Sys.time()
+for (i in files) {
+  # create an empty frame to hold the IDs
+  cls <- data.frame()
+  # open a file
+  full_ind <- readRDS(i)
+  # select only the thermals
+  ind <- full_ind[which(full_ind$thermalClust == "circular"),]
+  # calculate the time between locations
+  ind$timeGap <- c(NA, diff(ind$timestamp))
+  # select one day of data at a time
+  ind$day <- date(ind$timestamp)
+  for (h in unique(ind$day)) {
+    temp <- ind[which(ind$day == h),]
+    # add a thermal ID column
+    temp$thermalID <- NA
+    # designate the first thermal on this day as 1
+    temp$thermalID[1] <- 1
+    # for each location on a day, if the difference in time is more than a second (4% of cases),
+    # update the thermal ID by adding 1.
+    if (nrow(temp) > 1){
+      for (j in 2:nrow(temp)) {
+        temp$thermalID[j] <- ifelse(temp$timeGap[j] > 1, 
+                                    temp$thermalID[j-1]+1,
+                                    temp$thermalID[j-1])
+      }
+    }
+    # add the day to the ID so each thermal will be uniquely identified
+    temp$thermalID <- paste(h,  temp$thermalID, sep = "_")
+    # bind the days back together
+    cls <- rbind(cls, temp)
+  }
+  
+  # add these thermal IDs to the full data
+  full_ind$thermalID <- NA
+  for (k in 1:nrow(full_ind)) {
+    # for each row, if the time stamp matches one with a thermal, add that thermal ID
+    full_ind$thermalID[k] <- ifelse(full_ind$timestamp[k] %in% cls$timestamp,
+                               cls$thermalID[which(cls$timestamp == full_ind$timestamp[k])],
+                               NA)
+  }
+  
+  # save the data with the IDs appended
+  saveRDS(full_ind, file = paste0("classified_gps&acc/", unique(full_ind$local_identifier), "_gps&accClass&ID.rds"))
+  rm(h, i, j, k, cls, temp, ind, full_ind)
+}
+# Time difference of 1.139609 hours
+Sys.time()-start_time
+
+check <- readRDS(paste0("classified_gps&acc/", list.files("classified_gps&acc")[1]))
+
+### the old way:
 cfls2 <- data.frame()
 
 # each orographic event
