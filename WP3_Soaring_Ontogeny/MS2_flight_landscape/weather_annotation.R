@@ -246,6 +246,17 @@ colnames(df)[c(2,3)] <- c("location-long","location-lat")
 
 write.csv(df, paste0("alt_", n_alt, "_", hr, "_min_78_ind.csv")) #n = 48
 
+#annotation request fails, remove height above ellipsoid to see if it fixes it
+
+df <- read.csv(paste0("alt_", n_alt, "_", hr, "_min_78_ind.csv"))
+
+df_no_na <- df %>% 
+  drop_na()
+
+colnames(df_no_na)[c(3,4)] <- c("location-long","location-lat")
+
+write.csv(df_no_na, paste0("alt_", n_alt, "_", hr, "_min_78_ind_no_na.csv"), row.names = F) #n = 48
+
 # STEP 3: open and process annotated file ----------------------------------------------------------------
 
 ann <- read.csv("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/data/annotations/Apr_18_22/alt_50_60_min_25_ind.csv-3274898828578094969.csv") %>% 

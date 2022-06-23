@@ -98,4 +98,15 @@ colnames(data)[c(2,3)] <- c("location-long","location-lat")
 
 write.csv(data, "ETH_for_ERA5_annotation.csv", row.names = FALSE)
 
+era5 <- read.csv("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ETH_ERA5_annotation/ETH_forERA5_noheight.csv-6585178841830394962/ETH_forERA5_noheight.csv-6585178841830394962.csv") %>% 
+  mutate(timestamp = as.POSIXct(strptime(timestamp, format = "%Y-%m-%d %H:%M:%S"),tz = "UTC")) %>% 
+  rename(era5_u_900 = ECMWF.ERA5.PL.U.Wind,
+         era5_v_900 = ECMWF.ERA5.PL.V.Wind) %>% 
+  full_join(wind_data)
 
+#they are pretty different. but also I don't know if the 900 mbar is a good level to use
+Us <- melt(era5[,c("u","era5_u_900")])
+ggplot(Us, aes(x = value, fill = variable)) + geom_density(alpha = 0.25) + theme_bw()
+
+Vs <-  melt(era5[,c("v","era5_v_900")])
+ggplot(Vs, aes(x = value, fill = variable)) + geom_density(alpha = 0.25) + theme_bw()
