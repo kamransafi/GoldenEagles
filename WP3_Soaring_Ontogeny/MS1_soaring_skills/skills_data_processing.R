@@ -65,7 +65,7 @@ invisible(lapply(files, function(x){
     filter(between(timestamp, date$fledging_dt, date$emigration_dt))
   
   pfdp <- pfdp_behav %>% 
-    left_join(pfdp_wind) %>% 
+    left_join(pfdp_wind, by = intersect(colnames(pfdp_behav), colnames(pfdp_wind))) %>% 
     #filter(between(timestamp, date$fledging_dt, date$emigration_dt)) %>% 
     mutate(flight_type = ifelse(behavior == "Flapping",
                                 "flap",
@@ -85,107 +85,107 @@ invisible(lapply(files, function(x){
   # pfdpsf <- st_as_sf(pfdp, coords = c("location_long", "location_lat"), crs = wgs)
   # check <- pfdpsf[1:500,]
   # mapview(check, zcol = "flight_type")
-  saveRDS(pfdp, file = paste0("D:/Golden_eagle_wind_behav_June_2022/", ID, ".rds"))
+  
+  #saveRDS(pfdp, file = paste0("D:/Golden_eagle_wind_behav_June_2022/", ID, ".rds"))
   
 }))
 
 # 15 individuals have 0 rows of data due to missing wind estimates, possibly because
 # they fledged in the fall and data transmission was poor during the pfdp
 
-### Assign life stages to the birds for which we have fledging dates
+ 
+### Ratio of soaring to flight
 
-# the file with the names of the birds in different formats
-# load("eagle_names.RData")
-# 
-# # the birds that have ACC data associated
-# objs <- list.files("thermals")#, full.names = T)
-# objs <- sub("\\) ", "\\)", objs) # correct Stürfis20
-# objs <- str_sub(objs, 1,-48)
-# objs <- sub(" ", "\\.", objs)
-# objs <- sub("Art.San ", "", objs) # correct Art San Romerio18
-# 
-# # the file with the fledging and emigration dates (from Svea)
-# stages <- read.csv("Goldeneagles10_2021.csv", stringsAsFactors = F)
-# stages <- stages[order(stages$id),]
-# stages <- stages[which(stages$id %in% objs),]
-# # get the fledging date column re-arranged
-# stages$date_fledging <- paste0(stages$date_fledging, " ", stages$time_fledging)
-# stages$date_fledging <- as.POSIXct(gsub("\\.", "\\-", stages$date_fledging), format = "%d-%m-%Y %H:%M:%OS")
-# # get the emigration date column re-arranged
-# stages$date_emigration <- paste0(stages$date_emigration, " ", stages$time_emigration)
-# stages$date_emigration <- as.POSIXct(gsub("\\.", "\\-", stages$date_emigration), format = "%d-%m-%Y %H:%M:%OS")
-# # set all the missing emigration dates to today so that it is impossible for a bird to have timestamps > emigration date
-# # to assign life stage, we look at timestamps < emigration date, and therefore cannot use NA
-# stages$date_emigration[which(is.na(stages$date_emigration))] <- Sys.time()
-# 
-# # open the segmented files
-# # give each a life_stage column
-# # either add data or leave NA
-# gps_fls <- list.files("thermals", full.names = T)
-# 
-# gps_ls <- list()
-# 
-# for (i in gps_fls) {
-#   load(i)
-#   if(unique(HRdf$local_identifier) %in% eagle_names$local_identifier){
-#     gps_ls[[length(gps_ls) + 1]] <- HRdf
-#     print(paste0("Successfully loaded ", unique(HRdf$local_identifier), "."), quote = F)
-#   } else{rm(i);rm(HRdf)}
-# }
-# 
-# 
-# # loop through each individual and label its data with life stage
-# for (i in 1:length(gps_ls)) {
-#   # get the segmented GPS data from a single id
-#   gps_df <- gps_ls[[i]]
-#   # add the name for life stage data to the data frame with gps
-#   gps_df$sname <- NA
-#   gps_df$sname <- eagle_names$age_name[which(eagle_names$local_identifier == unique(gps_df$local_identifier))]
-#   # for each id, match stages to move,
-#   gps_df$stage <- NA
-#   # then say before fledge, after fledge, and after emigration
-#   if (unique(gps_df$local_identifier) %in% eagle_names$local_identifier){ #our_Inds$eobs
-#     # timestamps less than date of fledging are classified as 1 (pre-fledging)
-#     gps_df$stage[which(gps_df$timestamp < stages$date_fledging[which(stages$id == unique(gps_df$sname))])] <- 1
-#     # timestamps greater than date of fledging & less than date of emigration are classfied as 2 (fledgling)
-#     gps_df$stage[which(gps_df$timestamp > stages$date_fledging[which(stages$id == unique(gps_df$sname))] &
-#                          gps_df$timestamp < stages$date_emigration[which(stages$id == unique(gps_df$sname))])] <- 2
-#     # timesamps greater than date of emigration are classfied as 3 (emigrant)
-#     gps_df$stage[which(gps_df$timestamp > stages$date_emigration[which(stages$id == unique(gps_df$sname))])] <- 3
-#   }
-#   # save the file again
-#   save(gps_df, file = paste0("gps_age/", unique(gps_df$local_identifier), gsub("-",".", Sys.Date()), "_gps_age.RData"))
-#   # signal
-#   print(paste0("Added life stage information to ", unique(gps_df$local_identifier), "."), quote = F)
-# }
-# 
-# # finally, check that there are life stage data associated with each individual
-# for (i in 1:length(gps_ls)) {
-#   df <- gps_ls[[i]]
-#   if(NA %in% unique(df$stage)){
-#     print(paste0(unique(gps_ls[[i]]$local_identifier), " has no stages."))
-#   }
-# }
+pfdp_files <- list.files("D:/Golden_eagle_wind_behav_June_2022")
+# remove individuals without data
+pfdp_files <- pfdp_files[sapply(pfdp_files, file.size) > 2000]
 
-# list the files that have the segmented gps data
-cfls_ls <- list.files("thermals", full.names = T)
+# determine the total time spent in each behavior for each individual
+flight_durations <- lapply(pfdp_files, function(x){
+  ind <- readRDS(x)  
+  ID <- unique(ind$local_identifier)
+  behavior_time <- ind %>% 
+    drop_na(flight_type) %>% 
+    group_by(date(timestamp), flight_type) %>% 
+    summarize(duration = difftime(tail(timestamp, 1), head(timestamp,1), units = "sec")) %>% 
+    summarize(total_time = sum(duration),
+              circle_time = sum(duration[flight_type %in% c("soar_circular", "circular_no_ID")]),
+              linear_time = sum(duration[flight_type == "soar_linear"]),
+              glide_time = sum(duration[flight_type == "glide"]),
+              flap_time = sum(duration[flight_type == "flap"])) %>% 
+    mutate(local_identifier = ID)
+  return(behavior_time)
+  
+}) %>% 
+  reduce(rbind)
 
-cfls <- data.frame()
+# calculate the ratios of each flight type to total flight time
+flight_ratios <- flight_durations %>% 
+  mutate(circles = as.numeric(circle_time)/as.numeric(total_time),
+         lines = as.numeric(linear_time)/as.numeric(total_time),
+         glides = as.numeric(glide_time)/as.numeric(total_time),
+         flaps = as.numeric(flap_time)/as.numeric(total_time),
+         soar_to_flight = (as.numeric(circle_time) + as.numeric(linear_time))/as.numeric(total_time)) %>% 
+  rename(date = 1) %>% 
+  left_join(times[c(-4)], by = c("local_identifier" = "individual.local.identifier")) %>% 
+  # days since fledging for each individual
+  mutate(days_since_fledging = difftime(date, fledging_dt, units = "days"))
 
-# read in the data
-for (i in cfls_ls) {
-  load(i)
-  gps_df <- gps_df[which(gps_df$stage == 2),] # select only the ones post-fledging
-  cfls <- rbind(cfls,gps_df)
-  rm(gps_df)
-  print(paste0("Successfully loaded ", str_sub(sub("_.RData", "", sub("\\/", "", gsub("gps_age", "", i))), 1, -11), "."), quote = F)
-}
+ggplot(flight_ratios, aes(days_since_fledging, soar_to_flight))+
+  geom_point(aes(group = local_identifier, color = local_identifier))+
+  #geom_smooth(method = "loess")+
+  geom_smooth(method = "lm", se = F, aes(color = local_identifier))+
+  theme_classic()+
+  theme(legend.position="none", axis.text = element_text(color = "black"))
 
-# reclassify the thermal soaring events so that there is no circular gliding
-cfls$thermalClust <- "other"
-cfls$thermalClust[which(cfls$gr.speed >= 2 & cfls$soarClust == "soar" & cfls$turnAngle_smooth >= 300)] <- "circular"
-cfls$thermalClust[which(cfls$gr.speed >= 2 & cfls$soarClust=="soar" & cfls$thermalClust != "circular")] <- "linear"
-cfls$thermalClust <- factor(cfls$thermalClust, levels=c("circular","linear","other"))
+
+
+### Ratio of gliding to flapping between thermals
+
+# find consecutive, unique thermals
+# measure time spent flapping 
+# measure time spent gliding
+# calculate the ratio
+
+### Wind speed exposure during thermal soaring events
+pfdp_files <- list.files("D:/Golden_eagle_wind_behav_June_2022", full.names = T)
+# remove individuals without data
+pfdp_files <- pfdp_files[sapply(pfdp_files, file.size) > 2000] 
+
+wind_estimates <- lapply(pfdp_files, function(x){
+  ind <- readRDS(x) %>% 
+    drop_na(location_lat)
+  # extract wind speeds per thermal
+  wind_exposure <- ind %>% 
+    drop_na(thermalID) %>% 
+    group_by(local_identifier, thermalID) %>% 
+    arrange(timestamp) %>% 
+    mutate(wind_speed = sqrt((windX)^2 + (windY)^2)) %>% 
+    summarize(max_wind = max(wind_speed, na.rm = T),
+              min_wind = min(wind_speed, na.rm = T),
+              mean_wind = mean(wind_speed, na.rm = T), 
+              timestamp = head(timestamp, 1),
+              location_lat = head(location_lat, 1),
+              location_long = head(location_long, 1))
+  return(wind_exposure)
+}) %>% reduce(rbind)
+  
+wind_times <- wind_estimates %>% 
+  left_join(times[c(-4)], by = c("local_identifier" = "individual.local.identifier")) %>% 
+  mutate(hours_since_fledging = difftime(timestamp, fledging_dt, units = "hours"))
+
+ggplot(wind_times, aes(hours_since_fledging, max_wind))+
+  geom_point()+
+  geom_smooth(method = "lm", se = F, aes(color = local_identifier))+
+  theme_classic()+
+  theme(legend.position="none", axis.text = element_text(color = "black"))
+
+
+# Energy expenditure during thermal soaring events
+# Falling out of thermals (reword so higher values represent improvement) 
+# Climb rate (needs to be relative to thermal strength)
+
+
 
 ## 1. Calculate the total time spent flying in these data (gliding, soaring, flapping)
 
@@ -211,14 +211,8 @@ for (i in unique(cfls$id_date)) {
 cfls <- cfls_t; rm(cfls_t)
 
 ## 23.06
-df <- pfdp
-df$date <- date(df$timestamp)
-df <- lapply(split(df, df$date), function(x){
-  x$flight_time <-  as.numeric(difftime(x$timestamp[nrow(x)], x$timestamp[1], units = "sec"))
-  x
-}) %>% reduce(rbind)
 
-
+  
 ## 2. give IDs to each unique soaring event (Martina probably has faster code for this)
 
 ### 21.06.22:
