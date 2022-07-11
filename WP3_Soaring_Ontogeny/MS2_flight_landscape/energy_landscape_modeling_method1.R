@@ -22,7 +22,7 @@ setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
 
 #open annotated data (static variables and time since fledging and emigration)
-load( "inla_input_for_annotation_70inds.csv") #ann_cmpl
+load("alt_50_20_min_70_ind_static_time_ann.RData") #cmpl_ann
 
 cmpl_ann <- cmpl_ann %>% 
   mutate(days_since_emig_n = ceiling(as.numeric(days_since_emig)),#round up
@@ -119,7 +119,7 @@ cmpl_ann %>%
 # STEP 4: standardize variables ----------------------------------------------------------------
 
 all_data <- cmpl_ann %>% 
-  mutate_at(c("dem_100", "slope_100", "aspect_100", "TRI_100", "TPI_100", "slope_TPI_100", "aspect_TPI_100", "weeks_since_emig_n"),
+  mutate_at(c("dem_100", "TRI_100", "slope_TPI_100", "weeks_since_emig_n", "days_since_emig_n"),
             list(z = ~(scale(.)))) 
 
 # STEP 5: ssf modeling ----------------------------------------------------------------
@@ -151,14 +151,14 @@ all_data <- all_data %>%
 saveRDS(all_data, file = "alt_50_20_min_48_ind_static_inlaready_wks.rds")
 
 
-all_data <- readRDS("alt_50_20_min_25_ind_static_inlaready_wks.rds")
+all_data <- readRDS("alt_50_20_min_48_ind_static_inlaready_wks.rds")
 
 
 
 #add one new row to unique strata instead of entire empty copies of strata. assign day since emigration and terrain values on a regular grid
 set.seed(500)
 
-n <- 500
+n <- 100
 new_data <- all_data %>%
   group_by(stratum) %>% 
   slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
@@ -175,7 +175,7 @@ new_data <- all_data %>%
 saveRDS(new_data,"alt_50_20_min_48_ind_static_inlaready_wmissing_wks.rds")
 saveRDS(new_data,"alt_50_20_min_48_ind_static_inlaready_wmissing500_wks.rds")
 
-new_data <- readRDS("alt_50_20_min_25_ind_static_inlaready_wmissing_wks.rds")
+new_data <- readRDS("alt_50_20_min_48_ind_static_inlaready_wmissing500_wks.rds")
 
 #model formula. slope and TRI are correlated. This version includes on TRI and dem. Martina's preprint suggests TRI, dem and slope tpi, but the latter was insig
 formulaM <- used ~ -1 + 
@@ -202,23 +202,23 @@ M_marti_c <- inla(formulaM, family = "Poisson",
             mean = mean.beta,
             prec = list(default = prec.beta)),
           data = all_data, 
-          num.threads = 10,
+          num.threads = 8,
           control.predictor = list(compute = TRUE, link = 1), 
           control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
-Sys.time() - b  #without random effects: 1.76 min. with random effects: 16.7 min
+Sys.time() - b  #without random effects: 5 min. with random effects: 16.7 min
 
-save(M_marti_c, file = "inla_model_w_random_wks.RData")
+save(M_marti_c, file = "inla_model_w_random_wks_n78.RData")
 
 Efxplot(M_marti_c) # all of them are very similar in terms of cpo and Mlik
 
 #Model for predictions
 (b <- Sys.time())
-M_pred3 <- inla(formulaM, family = "Poisson", 
+M_pred <- inla(formulaM, family = "Poisson", 
                control.fixed = list(
                  mean = mean.beta,
                  prec = list(default = prec.beta)),
                data = new_data, 
-               num.threads = 10,
+               num.threads = 1, #reduce number of threads to avoid RAM failure
                control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
                control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
 Sys.time() - b #500 missing values: 17 mins
