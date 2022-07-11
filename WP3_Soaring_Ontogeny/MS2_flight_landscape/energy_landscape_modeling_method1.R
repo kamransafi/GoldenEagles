@@ -260,7 +260,7 @@ par(cex = 0.7,
     bty = "l"
 )
 
-plot(0, type = "n", labels = FALSE, tck = 0, xlim = c(-0.05,0.05), ylim = c(0.7,5.3), xlab = "Estimate", ylab = "")
+plot(0, type = "n", labels = FALSE, tck = 0, xlim = c(-0.02,0.02), ylim = c(0.7,5.3), xlab = "Estimate", ylab = "")
 
 #add vertical line for zero
 abline(v = 0, col = "grey30",lty = 2)
@@ -272,7 +272,7 @@ arrows(graph$Lower, graph$Factor_n,
 
 
 #add axes
-axis(side= 1, at = seq(-0.05, 0.05, by =  0.01), labels = seq(-0.05, 0.05, by =  0.01), 
+axis(side= 1, at = seq(-0.02, 0.02, by =  0.01), labels = seq(-0.02, 0.02, by =  0.01), 
      tick=T ,col = NA, col.ticks = 1, tck=-.015)
 
 axis(side= 2, at = c(1:5),
