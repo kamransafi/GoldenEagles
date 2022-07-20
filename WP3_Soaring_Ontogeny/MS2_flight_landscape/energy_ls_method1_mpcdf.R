@@ -196,7 +196,7 @@ cols <- c(DEM = "lightcoral",
           TRI = "cornflowerblue")
 
 #plot two_vars
-X11(width = 7.5, height = 10)
+X11(width = 7, height = 9)
 (coefs_inds <- ggplot(two_vars, aes(x = mean, y = ID, color = variable)) +
     geom_vline(xintercept = 0, linetype="dashed", 
                color = "gray25", size = 0.5) +
