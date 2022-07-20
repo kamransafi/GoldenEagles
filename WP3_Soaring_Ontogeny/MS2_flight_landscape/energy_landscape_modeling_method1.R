@@ -3,6 +3,7 @@
 #the first attempt will only include static variables. reasons: 1) movebank annotation isn't working and 2) res of static variables is higher
 #Feb 22. 2022. Elham Nourani. Konstanz, DE
 
+
 library(tidyverse)
 library(magrittr)
 library(corrr)
@@ -181,15 +182,15 @@ new_data <- readRDS("alt_50_20_min_48_ind_static_inlaready_wmissing500_wks.rds")
 formulaM <- used ~ -1 + 
   dem_100_z * weeks_since_emig_n_z +
   TRI_100_z * weeks_since_emig_n_z + 
-  slope_TPI_100_z * weeks_since_emig_n_z + 
+#  slope_TPI_100_z * weeks_since_emig_n_z + 
   f(stratum, model = "iid", 
     hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
   f(ind1, dem_100_z, model = "iid",
     hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) + 
   f(ind2, TRI_100_z,  model = "iid",
-    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) + 
-  f(ind3, slope_TPI_100_z,  model = "iid",
-    hyper=list(theta = list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
+    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) #+ 
+#  f(ind3, slope_TPI_100_z,  model = "iid",
+#    hyper=list(theta = list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
   
 mean.beta <- 0
 prec.beta <- 1e-4 
@@ -202,7 +203,7 @@ M_marti_c <- inla(formulaM, family = "Poisson",
             mean = mean.beta,
             prec = list(default = prec.beta)),
           data = all_data, 
-          num.threads = 8,
+          num.threads = 1,
           control.predictor = list(compute = TRUE, link = 1), 
           control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
 Sys.time() - b  #without random effects: 5 min. with random effects: 16.7 min
