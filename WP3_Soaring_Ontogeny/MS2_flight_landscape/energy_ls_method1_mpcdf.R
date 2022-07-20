@@ -8,9 +8,9 @@ library(tidyverse)
 library(terra)
 library(sf)
 library(scales)
+library(patchwork) #patching up interaction plots
 
-
-rnd <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/rnd_coeff_M_preds.rds")
+setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
 
 # PLOT 1: coefficient plots ----------------------------------------------------------------------------------------------------
@@ -34,41 +34,61 @@ max <- max(graph$Upper,na.rm = T)
 
 graph$Factor_n <- as.numeric(graph$Factor)
 
-#remove weeks since emigration. because it is NA
-#plot
+# #remove weeks since emigration. because it is NA
+# #plot
+# X11(width = 4.7, height = 2.7)
+# 
+# png("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/static_landscape_figs/coeffs_48n_wpred.png", 
+#     width = 4.7, height = 2.7, units = "in", res = 300)
+# 
+# par(cex = 0.7,
+#     oma = c(0,3.7,0,0),
+#     mar = c(3, 8.5, 0.5, 1),
+#     bty = "l"
+# )
+# 
+# plot(0, type = "n", labels = FALSE, tck = 0, xlim = c(-0.1,0.5), ylim = c(0.7,4.3), xlab = "Estimate", ylab = "")
+# 
+# #add vertical line for zero
+# abline(v = 0, col = "grey30",lty = 2)
+# #add points and error bars
+# points(graph$Estimate, graph$Factor_n, col = "cornflowerblue", pch = 20, cex = 2)
+# arrows(graph$Lower, graph$Factor_n,
+#        graph$Upper, graph$Factor_n,
+#        col = "cornflowerblue", code = 3, length = 0.03, angle = 90, lwd = 2) #angle of 90 to make the arrow head as straight as a line
+# 
+# 
+# #add axes
+# axis(side= 1, at = seq(-0.1, 0.5, by =  0.1), labels = seq(-0.1, 0.5, by =  0.1), 
+#      tick=T ,col = NA, col.ticks = 1, tck=-.015)
+# 
+# axis(side= 2, at = c(1:4),
+#      labels = c("Weeks since dispersal * TRI","Weeks since dispersal * DEM", "TRI", "DEM"),
+#      tick=T ,col = NA, col.ticks = 1, # NULL would mean to use the defult color specified by "fg" in par
+#      tck=-.015 , #tick marks smaller than default by this proportion
+#      las=2) # text perpendicular to axis label 
+# 
+# dev.off()
+
+#plot in ggplot2
 X11(width = 4.7, height = 2.7)
 
-png("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/static_landscape_figs/coeffs_48n_wpred.png", 
-    width = 4.7, height = 2.7, units = "in", res = 300)
+coefs <- ggplot(graph, aes(x = Estimate, y = Factor)) +
+  geom_vline(xintercept = 0, linetype="dashed", 
+             color = "gray", size = 0.5) +
+  geom_point(color = "cornflowerblue", size = 2)  +
+  xlim(-0.1,0.5) +
+  scale_y_discrete(name = "",
+                   labels = c("Weeks since dispersal * TRI","Weeks since dispersal * DEM", "TRI", "DEM")) +
+  geom_linerange(aes(xmin = Lower, xmax = Upper),color = "cornflowerblue", size = 1) +
+  theme_classic()
+  
 
-par(cex = 0.7,
-    oma = c(0,3.7,0,0),
-    mar = c(3, 8.5, 0.5, 1),
-    bty = "l"
-)
-
-plot(0, type = "n", labels = FALSE, tck = 0, xlim = c(-0.1,0.5), ylim = c(0.7,4.3), xlab = "Estimate", ylab = "")
-
-#add vertical line for zero
-abline(v = 0, col = "grey30",lty = 2)
-#add points and error bars
-points(graph$Estimate, graph$Factor_n, col = "cornflowerblue", pch = 20, cex = 2)
-arrows(graph$Lower, graph$Factor_n,
-       graph$Upper, graph$Factor_n,
-       col = "cornflowerblue", code = 3, length = 0.03, angle = 90, lwd = 2) #angle of 90 to make the arrow head as straight as a line
+ggsave(plot = coefs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_coefs_static_w_rnd_wk_48minimal.png", 
+       width = 4.7, height = 2.7, dpi = 300)
 
 
-#add axes
-axis(side= 1, at = seq(-0.1, 0.5, by =  0.1), labels = seq(-0.1, 0.5, by =  0.1), 
-     tick=T ,col = NA, col.ticks = 1, tck=-.015)
 
-axis(side= 2, at = c(1:4),
-     labels = c("Weeks since dispersal * TRI","Weeks since dispersal * DEM", "TRI", "DEM"),
-     tick=T ,col = NA, col.ticks = 1, # NULL would mean to use the defult color specified by "fg" in par
-     tck=-.015 , #tick marks smaller than default by this proportion
-     las=2) # text perpendicular to axis label 
-
-dev.off()
 
 # PLOT 2: interaction plots ----------------------------------------------------------------------------------------------------
 
@@ -155,5 +175,39 @@ X11(width = 10, height = 4)
 combined <- p_dem + p_rugg & theme(legend.position = "right")
 p_2 <- combined + plot_layout(guides = "collect")
 
-ggsave(plot = p_2, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_preds_static_w_rnd_wk_2vars.png", 
+ggsave(plot = p_2, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_preds_static_w_rnd_wk_n48.png", 
        width = 10, height = 4, dpi = 300)
+
+
+# PLOT 3: individual variation plots ----------------------------------------------------------------------------------------------------
+
+rnd <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/rnd_coeff_M_preds.rds")
+
+names <- rnd[[2]]$ID
+
+dem <- rnd[[2]] %>% 
+  mutate(variable = "DEM")
+
+two_vars <- rnd[[3]] %>% 
+  mutate(variable = "TRI") %>% 
+  bind_rows(dem)
+
+cols <- c(DEM = "lightcoral",
+          TRI = "cornflowerblue")
+
+#plot two_vars
+X11(width = 7.5, height = 10)
+(coefs_inds <- ggplot(two_vars, aes(x = mean, y = ID, color = variable)) +
+    geom_vline(xintercept = 0, linetype="dashed", 
+               color = "gray25", size = 0.5) +
+    geom_point(size = 2, position = position_dodge(width = .7))  +
+    geom_linerange(aes(xmin = two_vars[, 4], xmax = two_vars[, 6]), size = 0.8, position = position_dodge(width = .7)) +
+    scale_color_manual(values = cols) + 
+    theme_minimal()) +
+  labs(x = "Estimate", y = "")
+
+
+ggsave(plot = coefs_inds, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/ind_coefs_static_w_rnd_wk_48.png", 
+       width = 7.5, height = 10, dpi = 300)
+
+
