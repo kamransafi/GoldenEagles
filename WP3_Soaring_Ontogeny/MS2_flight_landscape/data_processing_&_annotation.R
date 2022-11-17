@@ -60,7 +60,7 @@ tolerance <- 5 #minutes; tolerance for sub-sampling
 n_alt <- 50 #number of alternative steps.
 
 #prepare cluster for parallel computation
-mycl <- makeCluster(10) #the number of CPUs to use (adjust this based on your machine)
+mycl <- makeCluster(5) #the number of CPUs to use (adjust this based on your machine)
 
 clusterExport(mycl, c("mv", "hr", "tolerance", "n_alt","wgs", "meters_proj", "NCEP.loxodrome.na")) #define the variable that will be used within the ParLapply call
 

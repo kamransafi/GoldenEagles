@@ -3,86 +3,176 @@
 #Elham Nourani, PhD.
 
 library(tidyverse)
+library(terra)
+library(sf)
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
 
 #I need to make predictions with the INLA model for the entire Alpine region. i.e. I need to append enough rows with NA values to the dataset 
-#options: 1) do it in batches, 2) only make predictions for unique combos of dem and tri, then associate the prediction to the rest of the cells
-#with the same values. 3) run on the cluster.
+# 1) only make predictions for unique combos of dem and tri, then associate the prediction to the rest of the cells
+#with the same values. 3) run on the cluster, maybe in batches
 #AND, let's not forget that I need to do this for different timestamps (weeks)!! :p
 
+# STEP 1: prep topo layers. do 200 m instead of 100
 
-# STEP 1: open topo and tracking data ----------------------------------------------------------------
-#open topo stack for the Alps (layers for east and west Alps were merged in Alps_topo_layers_prep.R)
-alps_topo_wgs <- readRDS("Alps_dem_tri_wgs.rds")
+dem <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/dem_100.tif")
+TRI <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/TRI_100.tif")
 
-#how many rows do we have: 17,539,565
-alps_topo_df <- alps_topo_wgs %>% 
-  as.data.frame(xy = T)
+dem_200 <- terra::aggregate(dem, fact = 2, fun = "mean", filename = "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/dem_200.tif")
+tri_200 <- terra::aggregate(TRI, fact = 2, fun = "mean", filename = "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/tri_200.tif")
 
-saveRDS(alps_topo_df, file = "Alps_dem_tri_wgs_df.rds")
+#open Apline perimeter layer
+Alps <- st_read("/home/enourani/ownCloud/Work/GIS_files/Alpine_perimeter/Alpine_Convention_Perimeter_2018_v2.shp") %>% 
+  st_transform(crs(tri_200)) %>% 
+  as("SpatVector")
 
-#unique dem-tri combos: 17,435,266 lol
-alps_topo_df %>% 
-  group_by(dem_100,TRI_100)
+stck <- c(dem_200,tri_200) %>% 
+  mask(Alps)
+
+names(stck) <- c("dem_200", "tri_200")
+
+# STEP 1: prep new data ----------------------------------------------------------------
+
+#unique dem-tri combos: 4,755,351 lol
+alps_topo_df <- as.data.frame(stck, xy = T) 
+
+saveRDS(alps_topo_df, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alps_topo_df.rds")
+
+alps_unique <- alps_topo_df %>% 
+  group_by(dem_200,tri_200) %>% 
+  slice(n = 1)
+
+n_unique <- alps_topo_df %>% 
+  n_distinct(c("dem_200", "tri_200"))
 
 #open eagle data
-# load("alt_50_20_min_25_ind_static_time_ann_weeks.RData") #ann_cmpl
-# 
-# cmpl_ann <- cmpl_ann %>% 
-#   mutate(days_since_emig_n = ceiling(as.numeric(days_since_emig)),#round up
-#          weeks_since_emig_n = ceiling(as.numeric(weeks_since_emig)), #120 unique weeks
-#          stratum = paste(individual.local.identifier, burst_id, step_id, sep = "_"))  
+all_data <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_inlaready_wks.rds")
 
 # STEP 2: create new datasets: one for each interval ----------------------------------------------------------------
 
-#what intervals? there are 120 weeks. maybe do week 1, week2, month1, month2, month3, month 6, yr 1? (in total, one year post fledging)... it may have plateaued by then. 
-#depending on how cooperative the cluster is, try more regular intervals (esp. early on)
-alps_topo_df <- readRDS("Alps_dem_tri_wgs_df.rds")
+#do every week for the first month, then every 6 months and 2 yrs
 
-#open inla-ready data with weeks
-all_data <- readRDS("alt_50_20_min_25_ind_static_inlaready_wks.rds")
-
-#do every week for the first month, then every 6 months?
-weeks <- c(1, 2, 3, 4, 24, 48) 
 
 set.seed(500)
-n <- nrow(alps_topo_df)
+n <- nrow(alps_unique) #unique combo of tri and dem values 
 
-#prep data for week one, then loop over weeks and just change the week number and save
+#prep data for week one, then loop over weeks and just change the week number and run the model 
+#although the new terrain info for the alps is in 200 m resolution, don't change the column name in the input data, because
+#it will mess up the model and predictions!!
+#(/home/mahle68/ownCloud/Work/cluster_computing/GE_inla_static/alps_preds/order_of_business_alps)
 
-new_data <- all_data %>%
+alps_data <- all_data %>%
   group_by(stratum) %>% 
   slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
   ungroup() %>% 
   slice_sample(n = n, replace = T) %>% 
   mutate(used = NA,
          weeks_since_emig_n = NA, 
-         dem_100 = alps_topo_df$dem_100, #add these right here, so I won't need to back-transform later
-         TRI_100 = alps_topo_df$TRI_100,
-         dem_100_z = (alps_topo_df$dem_100 - mean(all_data$dem_100))/sd(all_data$dem_100), #convert these to z-scores based on the mean and variance of the tracking data.
-         TRI_100_z = (alps_topo_df$TRI_100 - mean(all_data$TRI_100))/sd(all_data$TRI_100)) %>% 
-  full_join(all_data) %>% 
+         dem_100 = alps_unique$dem_200, #add these right here, so I won't need to back-transform later
+         tri_100 = alps_unique$tri_200,
+         dem_100_z = (alps_unique$dem_200 - mean(all_data$dem_100))/sd(all_data$dem_100), #convert these to z-scores based on the mean and variance of the tracking data.
+         tri_100_z = (alps_unique$tri_200 - mean(all_data$TRI_100))/sd(all_data$TRI_100)) %>% 
+  full_join(all_data) #%>% 
   select(-c(5:15,19,26,28))
 
-saveRDS(new_data, file = "inla_preds_for_cluster/generic_alt_50_20_min_25_ind_wmissing.rds")
+saveRDS(alps_data, file = "inla_preds_for_cluster/generic_alt_50_20_min_48_ind_wmissing.rds")
 
-#alternatively, this can be done on the cluster:
-for(i in weeks){
 
-  new_data_w <- new_data %>%
-  mutate(weeks_since_emig_n = i)
+#also prepare a vector with the sd and mean of the weeks since fledging. to be used ltr for the modeling
 
-  saveRDS(new_data, file = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/inla_preds_for_cluster/", "week_", i,
-                           "_alt_50_20_min_25_ind_wmissing.rds"))
+weeks_since_z_info <- data.frame(mean_wks = mean(all_data$weeks_since_emig_n), #center
+                                 sd_wks = sd(all_data$weeks_since_emig_n)) #scale
+
+saveRDS(weeks_since_z_info, file = "inla_preds_for_cluster/weeks_since_z_info.rds")
+
+#run the weekly predictions on the cluster
+
+# STEP 3: make sure model coefficients match the original model's ----------------------------------------------------------------
+
+
+#list coefficient files to make sure they match the original model. check! :D
+graph_files <- list.files("/home/mahle68/ownCloud/Work/cluster_computing/GE_inla_static/results_alps/GE_ALPS/", pattern = "graph", full.names = T)
+
+#(write a ftn?) plot the coefficients
+lapply(graph_files, function(wk){
   
-}
+  graph <- readRDS(wk)
+  graph <- graph[graph$Factor != "weeks_since_emig_n_z",]
+  if(class(graph$Factor) != "character"){droplevels(graph$Factor)}
+  VarOrder <- rev(unique(graph$Factor))
+  VarNames <- VarOrder
+  
+  graph$Factor <- factor(graph$Factor, levels = VarOrder)
+  levels(graph$Factor) <- VarNames
+  
+  #min <- min(graph$Lower,na.rm = T)
+  #max <- max(graph$Upper,na.rm = T)
+  
+  graph$Factor_n <- as.numeric(graph$Factor)
+  
+  #plot in ggplot2
+  #X11(width = 4.7, height = 2.7)
+  
+  coefs <- ggplot(graph, aes(x = Estimate, y = Factor)) +
+    geom_vline(xintercept = 0, linetype="dashed", 
+               color = "gray", size = 0.5) +
+    geom_point(color = "cornflowerblue", size = 2)  +
+    xlim(-0.1,0.5) +
+    scale_y_discrete(name = "",
+                     labels = c("Weeks since dispersal * TRI","Weeks since dispersal * DEM", "TRI", "DEM")) +
+    geom_linerange(aes(xmin = Lower, xmax = Upper),color = "cornflowerblue", size = 1) +
+    theme_classic()
+  
+  
+  ggsave(plot = coefs, 
+         filename = paste0("/home/mahle68/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/weekly_alps_preds_jul26/inla_coeffs_48ind_", str_sub(wk,-7,-5),".png"), 
+         width = 4.7, height = 2.7, dpi = 300)
+  
+})
+
+
+# STEP 4: create the prediction maps: one for each week ----------------------------------------------------------------
+
+#was thinking to also include a map of sd for each week, but I didnt save the sd info in the prediction results. if planning to
+#repeat for more weeks, save the sd in the results.
+#figure out what to do with values of TRI and TPI that are outside the range of the training data
+#option 1: create a new raster layer with these regions. overlay this with the prediction raster with a gray fill
+
+
+#open original data
+all_data <- readRDS("/home/mahle68/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_inlaready_wks.rds")
+
+#list prediction files
+pred_files <- list.files("/home/mahle68/ownCloud/Work/cluster_computing/GE_inla_static/results_alps/GE_ALPS/", 
+                         pattern = "preds", full.names = T)
+
+#open Apline perimeter layer
+Alps <- st_read("/home/mahle68/ownCloud/Work/GIS_files/Alpine_perimeter/Alpine_Convention_Perimeter_2018_v2.shp") %>% 
+  st_transform(crs(tri_200)) %>% 
+  as("SpatVector")
+
+#open the alpine region dataframe
+alps_topo_df <- readRDS("/home/mahle68/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alps_topo_df.rds")
+
+#add one column per week, and cbind the prediction values based on TRI and TPI
+lapply(pred_files, function(wk){
+  
+  wk_n <- str_sub(wk,-7,-5) %>% 
+    mutate() #backtransform the dem and tri values
+  preds <- readRDS(wk)
+  
+  
+  
+  
+  
+  
+})
+
+
+#for plotting, create a raster stack, with one layer per week.
 
 
 
 
 
-
-#next steps: 1) create the new datasets to get an idea of what I'm working with. 2) figure out the cluster 
-#alos, at some point, add temperature to the original model

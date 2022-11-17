@@ -10,12 +10,12 @@ library(sf)
 library(scales)
 library(patchwork) #patching up interaction plots
 
-setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
+setwd("/home/mahle68/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
 
 # PLOT 1: coefficient plots ----------------------------------------------------------------------------------------------------
 
-graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/graph_M_pred.rds")
+graph <- readRDS("/home/mahle68/ownCloud/Work/cluster_computing/GE_inla_static/results/graph_M_pred.rds")
 
 #remove weeks since dispersal
 graph <- graph[graph$Factor != "weeks_since_emig_n_z",]
@@ -26,49 +26,10 @@ VarNames <- VarOrder
 graph$Factor <- factor(graph$Factor, levels = VarOrder)
 levels(graph$Factor) <- VarNames
 
-
-
-
-min <- min(graph$Lower,na.rm = T)
-max <- max(graph$Upper,na.rm = T)
+#min <- min(graph$Lower,na.rm = T)
+#max <- max(graph$Upper,na.rm = T)
 
 graph$Factor_n <- as.numeric(graph$Factor)
-
-# #remove weeks since emigration. because it is NA
-# #plot
-# X11(width = 4.7, height = 2.7)
-# 
-# png("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/static_landscape_figs/coeffs_48n_wpred.png", 
-#     width = 4.7, height = 2.7, units = "in", res = 300)
-# 
-# par(cex = 0.7,
-#     oma = c(0,3.7,0,0),
-#     mar = c(3, 8.5, 0.5, 1),
-#     bty = "l"
-# )
-# 
-# plot(0, type = "n", labels = FALSE, tck = 0, xlim = c(-0.1,0.5), ylim = c(0.7,4.3), xlab = "Estimate", ylab = "")
-# 
-# #add vertical line for zero
-# abline(v = 0, col = "grey30",lty = 2)
-# #add points and error bars
-# points(graph$Estimate, graph$Factor_n, col = "cornflowerblue", pch = 20, cex = 2)
-# arrows(graph$Lower, graph$Factor_n,
-#        graph$Upper, graph$Factor_n,
-#        col = "cornflowerblue", code = 3, length = 0.03, angle = 90, lwd = 2) #angle of 90 to make the arrow head as straight as a line
-# 
-# 
-# #add axes
-# axis(side= 1, at = seq(-0.1, 0.5, by =  0.1), labels = seq(-0.1, 0.5, by =  0.1), 
-#      tick=T ,col = NA, col.ticks = 1, tck=-.015)
-# 
-# axis(side= 2, at = c(1:4),
-#      labels = c("Weeks since dispersal * TRI","Weeks since dispersal * DEM", "TRI", "DEM"),
-#      tick=T ,col = NA, col.ticks = 1, # NULL would mean to use the defult color specified by "fg" in par
-#      tck=-.015 , #tick marks smaller than default by this proportion
-#      las=2) # text perpendicular to axis label 
-# 
-# dev.off()
 
 #plot in ggplot2
 X11(width = 4.7, height = 2.7)
@@ -93,7 +54,7 @@ ggsave(plot = coefs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontoge
 # PLOT 2: interaction plots ----------------------------------------------------------------------------------------------------
 
 all_data <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_inlaready_wks.rds")
-new_data <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/alt_50_20_min_48_ind_static_inlaready_wmissing_wks.rds")
+#new_data <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/alt_50_20_min_48_ind_static_inlaready_wmissing_wks.rds")
 preds <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/preds_M_preds.rds")
 
 y_axis_var <- c("dem_100_z", "TRI_100_z")
