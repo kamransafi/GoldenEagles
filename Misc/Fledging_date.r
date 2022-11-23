@@ -94,7 +94,7 @@ inds$timestamp_end[as.POSIXct(inds$timestamp_end, format="%Y-%m-%d %H:%M:%OS", t
 rm(tend)  
 #start a pdf for visual
 inds$FledgeDate <- NULL
-pdf("./FledingDates.pdf", height=7, width=7)
+#pdf("./FledingDates.pdf", height=7, width=7)
 #go through the study by individual note: this can be paralellized with foreach
 for(j in 1:nrow(inds)){
   print(paste("Doing ", inds[j,"local_identifier"], ".", sep=""))
@@ -119,7 +119,7 @@ for(j in 1:nrow(inds)){
   print("Super success!")
   print("--------------------------------------------------")
 }
-dev.off()
+#dev.off()
 
 
 #funX <- tapply(coordinates(eagle)[,1], yday(timestamps(eagle)), FUN=ecdf)
