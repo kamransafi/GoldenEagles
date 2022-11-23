@@ -115,7 +115,6 @@ for(j in 1:nrow(inds)){
   points(eagle[timestamps(eagle)<=fledged[[1]],], pch=1, col=alpha("firebrick", 0.7), cex=0.3)
   legend("topleft", legend=paste("Fledging date: ", fledged[[1]], sep=""), bty="n")
   legend("bottomright", legend=paste("Used criterion: ", fledged[[2]], sep=""), bty="n")
-
   title(inds$local_identifier[j])
   print("Super success!")
   print("--------------------------------------------------")
