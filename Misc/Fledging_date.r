@@ -39,9 +39,8 @@ inds <- getMovebankAnimals("LifeTrack Golden Eagle Alps", creds)
 inds <- inds[inds$sensor_type_id==653,]
 #reduce to more than 850 locations and the names only
 inds <- inds[inds$number_of_events>850,"local_identifier"]
-#remove care adult birds
-rm_inds <- c("Mellau21 (eobs 6988)", "Memmingen20 (eobs 7507)", "Aosta1_20 (eobs 7511)", "Aosta2_20 (eobs 7558)", "Aosta21 (eobs7590)")
-inds <- inds[!inds %in% rm_inds]
+#remove recovery birds
+inds <- inds[!inds %in% c("Mellau21 (eobs 6988)", "Memmingen20 (eobs 7507)", "Aosta1_20 (eobs 7511)", "Aosta2_20 (eobs 7558)", "Aosta21 (eobs7590)")]
 #start a pdf for visual
 pdf("/home/kami/Documents/Research/Projects/GoldenEagles/Analysis/FledingDates.pdf", height=7, width=7)
 #go through the study by individual note: this can be paralellized with foreach
