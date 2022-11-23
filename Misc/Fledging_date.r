@@ -27,46 +27,17 @@
 # here would be to use start of deployment and go from there.
 # Another idea could be to include HDOP into evaluating the cluster assignment.
 
-library(move)
-library(lubridate)
-library(adehabitatLT)
-library(scales)
-#MB login
-creds <- movebankLogin()
-#get animal names for serial processing
-inds <- getMovebankAnimals("LifeTrack Golden Eagle Alps", creds)
-#reduce to GPS only
-inds <- inds[inds$sensor_type_id==653,]
-#reduce to more than 850 locations and the names only
-inds <- inds[inds$number_of_events>850,"local_identifier"]
-#start a pdf for visual
-pdf("/home/kami/Documents/Research/Projects/GoldenEagles/Analysis/FledingDates.pdf", height=7, width=7)
-#go through the study by individual note: this can be paralellized with foreach
-for(ind in inds){
-  print(paste("Doing ", ind, ".", sep=""))
-  #dld all the data for one individual
-  eagleAll <- getMovebankData(study="LifeTrack Golden Eagle Alps", sensorID=653, 
-                              animalName=ind, login=creds, 
-                              removeDuplicatedTimestamps=T) 
-  #restrict to year of tagging
-  eagle <- eagleAll[year(timestamps(eagleAll))==min(year(timestamps(eagleAll))),]
+FledgeDate <- function(x){
   #calculate mean daily position
-  Dcoords <- cbind(tapply(coordinates(eagle)[,1], yday(timestamps(eagle)), FUN=mean), tapply(coordinates(eagle)[,2], yday(timestamps(eagle)), FUN=mean))
+  Dcoords <- cbind(tapply(coordinates(x)[,1], yday(timestamps(x)), FUN=mean), tapply(coordinates(x)[,2], yday(timestamps(x)), FUN=mean))
   #count the number of year days for looping through
-  DayCount <- unique(yday(timestamps(eagle)))
-  #container for mean inter-day distances
-  DM <- NULL
-  #contained for sd of inter-day distances
-  VarM <- NULL
-  #loop through each year day. Can also be made more efficient
-  for(i in 1:(length(DayCount)-1)){
-    #calculate for each day the mean of inter-day distances
-    tmp <- mean(spDistsN1(cbind(coordinates(eagle)[yday(timestamps(eagle))==DayCount[i+1],1], coordinates(eagle)[yday(timestamps(eagle))==DayCount[i+1],2]), Dcoords[i,], longlat=T)*1000)
-    #calculate for each day the sd of inter-day distances
-    tvar <- sd(spDistsN1(cbind(coordinates(eagle)[yday(timestamps(eagle))==DayCount[i+1],1], coordinates(eagle)[yday(timestamps(eagle))==DayCount[i+1],2]), Dcoords[i,], longlat=T)*1000)
-    DM <- c(DM, tmp)
-    VarM <- c(VarM, tvar)
-  }
+  DayCount <- unique(yday(timestamps(x)))
+  
+  #calculate for each day the mean of inter-day distances
+  DM <- unlist(lapply(1:(length(DayCount)-1), function(i) mean(spDistsN1(cbind(coordinates(x)[yday(timestamps(x))==DayCount[i+1],1], coordinates(x)[yday(timestamps(x))==DayCount[i+1],2]), Dcoords[i,], longlat=T)*1000)))
+  #calculate for each day the sd of inter-day distances
+  VarM <- unlist(lapply(1:(length(DayCount)-1), function(i) sd(spDistsN1(cbind(coordinates(x)[yday(timestamps(x))==DayCount[i+1],1], coordinates(x)[yday(timestamps(x))==DayCount[i+1],2]), Dcoords[i,], longlat=T)*1000)))
+  
   #BoxCox transform of means
   bcD <- boxcox(DM~DayCount[-1], seq(-2, 2, length=1000), plotit = F)
   tD <- DM^bcD$x[which.max(bcD$y)]
@@ -83,26 +54,69 @@ for(ind in inds){
   VarClass <- rep(NA, length.out=length(tVar))
   VarClass[!is.na(tVar)] <- VarClus$cluster
   
-  #choose fledging date as the day either of the measures switched class
-  FledgeD <- which(abs(diff(VarClass))+abs(diff(DClass))==1)[1]+1
+  #choose fledging date as the day either or both of the measures switched class
+  FledgeD <- which(abs(diff(VarClass))+abs(diff(DClass))>=1)[1]
   
   #if there are many NAs in the VarClass, base the fledging date on mean inter-day distance only
-  #remember the criterion in Donly and use this for the plot.
+  #remember the criterion that chose the fledging date.
   if(is.na(FledgeD)){
     FledgeD <- which(abs(diff(DClass))==1)[1]+1
-    Donly <- TRUE
+    crit <- "D"
   }else{
-    Donly <- FALSE
-  }
+    if(min(which(abs(diff(VarClass))==1))==min(which(abs(diff(DClass))==1))){
+      crit <- "DV"
+    }else{
+      if(min(which(abs(diff(VarClass))==1))<min(which(abs(diff(DClass))==1))){
+        crit <- "V"
+      }else{
+        crit <- "D"
+      }
+    }
+    }
+  DDay <- as.POSIXct(as.character(as.Date(floor(1/2*(DayCount[FledgeD]+DayCount[FledgeD+1])), origin=paste(year(timestamps(eagle)[1]), "-01-01", sep=""))), format="%Y-%m-%d", tz="UTC")
+  return(list(DDay, crit))
+}
+
+library(move)
+library(lubridate)
+library(scales)
+library(MASS)
+#MB login
+creds <- movebankLogin()
+#get animal names for serial processing
+inds <- getMovebankAnimals("LifeTrack Golden Eagle Alps", creds)
+#reduce to GPS only
+inds <- inds[inds$sensor_type_id==653,]
+#reduce to more than 850 locations and the names only
+inds <- inds[inds$number_of_events>850, c("local_identifier", "timestamp_start", "timestamp_end")]
+tend <- as.POSIXct(inds$timestamp_start, format="%Y-%m-%d %H:%M:%OS", tz="UTC") + 6*30*24*3600
+inds$timestamp_end[as.POSIXct(inds$timestamp_end, format="%Y-%m-%d %H:%M:%OS", tz="UTC")>tend] <- paste(as.character(tend[as.POSIXct(inds$timestamp_end, format="%Y-%m-%d %H:%M:%OS", tz="UTC")>tend]), ".000", sep="")
+rm(tend)  
+#start a pdf for visual
+inds$FledgeDate <- NULL
+pdf("/home/kami/Documents/Research/Projects/GoldenEagles/Analysis/FledingDates.pdf", height=7, width=7)
+#go through the study by individual note: this can be paralellized with foreach
+for(j in 1:nrow(inds)){
+  print(paste("Doing ", inds[j,"local_identifier"], ".", sep=""))
+  print(paste("Start date: ", inds[j,"timestamp_start"], " until ", inds[j,"timestamp_end"], ".", sep=""))
+  #dld max 6 months of the data for one individual from start of data
+  eagle <- getMovebankData(study="LifeTrack Golden Eagle Alps", sensorID=653, 
+                              animalName=inds[j,1], login=creds, 
+                              timestamp_start=gsub(".", "", gsub(":", "", gsub(" ", "", gsub("-", "", inds[j,"timestamp_start"]))), fixed=T),
+                              timestamp_end=gsub(".", "", gsub(":", "", gsub(" ", "", gsub("-", "", inds[j,"timestamp_end"]))), fixed=T),
+                              removeDuplicatedTimestamps=T) 
+  print(paste("Downloaded ", round(difftime(max(timestamps(eagle)), min(timestamps(eagle)), units="days")), " days of tracking data.", sep=""))
+  
+  fledged <- FledgeDate(eagle)
+  inds[j, "FledgeDate"] <- fledged[[1]]
   
   plot(eagle, pch=16, col=alpha("grey10", 0.5), type="l", bty="n", xlab="Longitude", ylab="Latitude")
-  points(eagle[yday(timestamps(eagle))%in%DayCount[1:FledgeD],], pch=16, col=alpha("firebrick", 0.3), cex=0.3)
-  points(eagle[yday(timestamps(eagle))%in%DayCount[1:FledgeD],], pch=1, col=alpha("firebrick", 0.7), cex=0.3)
-  legend("topleft", legend=paste("Fledging date: ", as.Date(floor(1/2*(DayCount[FledgeD]+DayCount[FledgeD+1])), origin=paste(year(timestamps(eagle)[1]), "-01-01", sep=""), sep="")), bty="n")
-  if(Donly==T){
-    legend("bottomright", legend="Used distance only!", bty="n")
-  }
-  title(ind)
+  points(eagle[timestamps(eagle)<=fledged[[1]],], pch=16, col=alpha("firebrick", 0.3), cex=0.3)
+  points(eagle[timestamps(eagle)<=fledged[[1]],], pch=1, col=alpha("firebrick", 0.7), cex=0.3)
+  legend("topleft", legend=paste("Fledging date: ", fledged[[1]], sep=""), bty="n")
+  legend("bottomright", legend=paste("Used criterion: ", fledged[[2]], sep=""), bty="n")
+
+  title(inds$local_identifier[j])
   print("Super success!")
   print("--------------------------------------------------")
 }
