@@ -89,6 +89,10 @@ inds <- getMovebankAnimals("LifeTrack Golden Eagle Alps", creds)
 inds <- inds[inds$sensor_type_id==653,]
 #reduce to more than 850 locations and the names only
 inds <- inds[inds$number_of_events>850, c("local_identifier", "timestamp_start", "timestamp_end")]
+#adult birds to remove
+rm_inds <- c("Appennino18 (eobs 6462)", "Ftan20 (eobs 7108)", "Memmingen20 (eobs 7507)", 
+             "Aosta1_20 (eobs 7511)", "Aosta2_20 (eobs 7558)", "Mellau21 (eobs 6988)", "Aosta21 (eobs7590)")
+inds <- inds[!inds %in% rm_inds]
 tend <- as.POSIXct(inds$timestamp_start, format="%Y-%m-%d %H:%M:%OS", tz="UTC") + 6*30*24*3600
 inds$timestamp_end[as.POSIXct(inds$timestamp_end, format="%Y-%m-%d %H:%M:%OS", tz="UTC")>tend] <- paste(as.character(tend[as.POSIXct(inds$timestamp_end, format="%Y-%m-%d %H:%M:%OS", tz="UTC")>tend]), ".000", sep="")
 rm(tend)  
