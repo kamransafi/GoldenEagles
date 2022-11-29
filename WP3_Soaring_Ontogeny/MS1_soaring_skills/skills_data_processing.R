@@ -5,23 +5,54 @@
 
 
 ## This file contains code for three tasks: 1) calculating time spent soaring, 2) calculating 
-## maximum wind speed in thermals per day, and 3) calculating ODBA per time in each thermal.
+## maximum wind speed in thermals per day, and 3) calculating DBA per time in each thermal.
 
 ## Packages and functions:
 library(move)
+library(geosphere)
 library(lubridate)
 library(data.table)
+library(reshape2)
+library(lme4)
 library(tidyverse)
 library(ggpubr)
 #library(plyr)
 library(doParallel)
+library(INLA)
 is.error <- function(x) inherits(x, "try-error")
 source("C:/Users/hbronnvik/Documents/golden_eagle_tools/associate_ACCinfoToGPS.R") #For ACCtoGPS_parallel function
 load("C:/Users/hbronnvik/Documents/storkSSFs/Laptop/loginStored.RData") # The MoveBank login
-times <- read.csv("C:/Users/hbronnvik/Documents/golden_eagle_tools/fledging_emig_times.csv") %>% 
-  select(-"X")
+# the dispersal dates estimated using recurse
+# fpt_times <- read.csv("C:/Users/hbronnvik/Documents/golden_eagle_tools/fledging_emig_times.csv") %>% 
+#   select(-"X") %>% 
+#   mutate(dispersal_day = as.numeric(difftime(emigration_dt, fledging_dt, units = "days")),
+#          fledging_dt = as.POSIXct(fledging_dt, tz = "UTC", origin = "1970-01-01"),
+#          emigration_dt = as.POSIXct(emigration_dt, tz = "UTC", origin = "1970-01-01")) %>% 
+#   mutate(local_identifier = individual.local.identifier,
+#          individual.local.identifier = ifelse(individual.local.identifier == "Droslöng17 (eobs 5704)", "Drosloeng17 (eobs 5704)",
+#                                    ifelse(individual.local.identifier == "Güstizia18 (eobs 5942)", "Guestizia18 (eobs 5942)", 
+#                                           ifelse(individual.local.identifier == "Stürfis20 (eobs 7049) ", "Stuerfis20 (eobs 7049) ",
+#                                                  individual.local.identifier))),
+#          individual.local.identifier = gsub("ü", "u", individual.local.identifier))
+# # the fledging dates estimated visually
+# vis_times <- read.csv("C:/Users/hbronnvik/Documents/golden_eagle_tools/Goldeneagles_ch_it_final.csv", sep = ";") %>%
+#   mutate(date_fledging = parse_datetime(date_fledging, format = "%d.%m.%Y"),
+#          date_emigration = parse_datetime(date_emigration, format = "%d.%m.%Y"),
+#          date_tagging = parse_datetime(date_tagging, format = "%d.%m.%Y")) %>% 
+#   arrange(individual.local.identifier)
+# # merging the two and filtering to the 44 birds with fledging dates from the visual estimation
+# times <- fpt_times %>% 
+#   full_join(vis_times[, c("individual.local.identifier", "date_fledging", "date_emigration", "date_tagging")]) %>% 
+#   drop_na(date_fledging)
+
+times <- readRDS("C:/Users/hbronnvik/Documents/golden_eagle_tools/dobs_et_112822.rds") %>% 
+  drop_na(date_of_tagging, emigration_dt) %>% 
+  rename(local_identifier = individual.local.identifier)
+
 eagleStudyId <- 282734839 # The golden eagle study on MoveBank
 
+rm_inds <- c("Appennino18 (eobs 6462)", "Ftan20 (eobs 7108)", "Memmingen20 (eobs 7507)", 
+             "Aosta1_20 (eobs 7511)", "Aosta2_20 (eobs 7558)", "Mellau21 (eobs 6988)", "Aosta21 (eobs7590)")
 ## Task 1: ratio of soaring modes
 ##############################################################################################
 ## 21.02.22
@@ -44,9 +75,9 @@ wind_files <- list.files("D:/goldenEagles_wind", full.names = T)
 
 
 file_names <- str_sub(files, 47, -24)
-files <- files[-which(!file_names %in% times$individual.local.identifier)]
+files <- files[-which(!file_names %in% times$local_identifier)]
 
-invisible(lapply(files, function(x){
+pfdp <- invisible(lapply(files, function(x){
   # read in the data for this ID containing flapping classifications 
   ind <- readRDS(x)
   # extract ID
@@ -54,20 +85,72 @@ invisible(lapply(files, function(x){
   # read in the data for this ID containing wind estimates 
   load(wind_files[grepl(ID, wind_files, fixed = T)]) # burstsWindDF
   
-  date <- times %>% filter(individual.local.identifier == ID)
+  date <- times %>% 
+    filter(local_identifier == ID)
   
   pfdp_wind <- burstsWindDF%>% 
-    filter(between(timestamp, date$fledging_dt, date$emigration_dt)) %>% 
+    filter(between(timestamp, date$date_of_tagging, date$emigration_dt)) %>% 
     rename(location_long = location.long,
            location_lat = location.lat)
   
   pfdp_behav <- ind %>% 
-    filter(between(timestamp, date$fledging_dt, date$emigration_dt))
+    filter(between(timestamp, date$date_of_tagging, date$emigration_dt))
   
   pfdp <- pfdp_behav %>% 
     left_join(pfdp_wind, by = intersect(colnames(pfdp_behav), colnames(pfdp_wind))) %>% 
-    #filter(between(timestamp, date$fledging_dt, date$emigration_dt)) %>% 
-    mutate(flight_type = ifelse(behavior == "Flapping",
+    mutate(behavior = ifelse(is.na(behavior), "Unclassified", behavior),
+           flight_type = ifelse(behavior == "Flapping",
+                                "flap",
+                                ifelse(soarClust == "soar" & thermalClust == "circular",
+                                       "soar_circular", 
+                                       ifelse(thermalClust == "linear",
+                                              "soar_linear",
+                                              ifelse(soarClust == "glide",
+                                                     "glide",
+                                                     NA))))) %>% 
+    mutate(flight_type = ifelse(is.na(thermalID) & flight_type == "soar_circular",
+                                "circular_no_ID",
+                                flight_type))
+  # saveRDS(pfdp, file = paste0("C:/Users/hbronnvik/Documents/golden_eagle_tools/Golden_eagle_wind_behav_Nov_2022/", ID, ".rds"))
+
+  return(pfdp)
+  # wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
+  # pfdpsf <- st_as_sf(pfdp, coords = c("location_long", "location_lat"), crs = wgs)
+  # check <- pfdpsf[1:500,]
+  # mapview(check, zcol = "flight_type")
+  
+    
+})) %>% reduce(rbind)
+
+# 15 individuals have 0 rows of data due to missing wind estimates, possibly because
+# they fledged in the fall and data transmission was poor during the pfdp
+
+# Art falls out due to no data in PFDP between
+# Grosio "
+
+# check the number of bursts with each  flight classification
+burst_count <- lapply(files, function(x){
+  ind <- readRDS(x)
+  # extract ID
+  ID <- unique(ind$local_identifier)
+  # read in the data for this ID containing wind estimates 
+  load(wind_files[grepl(ID, wind_files, fixed = T)]) # burstsWindDF
+  
+  date <- times %>% 
+    filter(local_identifier == ID)
+  
+  pfdp_wind <- burstsWindDF%>% 
+    filter(between(timestamp, date$date_of_tagging, date$emigration_dt)) %>% 
+    rename(location_long = location.long,
+           location_lat = location.lat)
+  
+  pfdp_behav <- ind %>% 
+    filter(between(timestamp, date$date_of_tagging, date$emigration_dt))
+  
+  pfdp <- pfdp_behav %>% 
+    left_join(pfdp_wind, by = intersect(colnames(pfdp_behav), colnames(pfdp_wind))) %>% 
+    mutate(behavior = ifelse(is.na(behavior), "Unclassified", behavior),
+           flight_type = ifelse(behavior == "Flapping",
                                 "flap",
                                 ifelse(soarClust == "soar" & thermalClust == "circular",
                                        "soar_circular", 
@@ -80,23 +163,20 @@ invisible(lapply(files, function(x){
                                 "circular_no_ID",
                                 flight_type))
   
+  counts <- pfdp %>%
+    group_by(flight_type, burstID) %>% 
+    summarize(bursts = n()) %>% 
+    summarize(bursts = n()) %>% 
+    mutate(local_identifier = ID)
   
-  # wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
-  # pfdpsf <- st_as_sf(pfdp, coords = c("location_long", "location_lat"), crs = wgs)
-  # check <- pfdpsf[1:500,]
-  # mapview(check, zcol = "flight_type")
-  
-  #saveRDS(pfdp, file = paste0("D:/Golden_eagle_wind_behav_June_2022/", ID, ".rds"))
-  
-}))
+  return(counts)
+}) %>% reduce(rbind) %>% 
+  group_by(local_identifier) %>% 
+  mutate(all_classifications = ifelse(n() == 6, T, F)) %>% 
+  ungroup()
 
-# 15 individuals have 0 rows of data due to missing wind estimates, possibly because
-# they fledged in the fall and data transmission was poor during the pfdp
-
- 
 ### Ratio of soaring to flight
-
-pfdp_files <- list.files("C:/Users/hbronnvik/Documents/golden_eagle_tools/Golden_eagle_wind_behav_June_2022", full.names = T)
+pfdp_files <- list.files("C:/Users/hbronnvik/Documents/golden_eagle_tools/Golden_eagle_wind_behav_Nov_2022", full.names = T)
 # remove individuals without data
 pfdp_files <- pfdp_files[sapply(pfdp_files, file.size) > 2000]
 
@@ -109,7 +189,7 @@ flight_durations <- lapply(pfdp_files, function(x){
   ind <- ind %>% 
     mutate(date = date(timestamp)) %>% 
     group_by(date) %>% 
-    mutate(poi = centroid(as.matrix(cbind(location_long, location_lat)))) %>%
+    mutate(poi = geosphere::centroid(as.matrix(cbind(location_long, location_lat)))) %>%
     ungroup()
 
   # find the time spent in each behavior per day
@@ -140,48 +220,306 @@ flight_durations <- lapply(pfdp_files, function(x){
   return(behavior_time)
 }) %>% reduce(rbind)
 
+# sample sizes
+events <- flight_durations %>% 
+  group_by(local_identifier) %>% 
+  count()
+
+# the ft to dt numbers rather than tagging to dt
+# check <- readRDS("C:/Users/hbronnvik/Documents/golden_eagle_tools/days_of_observation_pfdp.rds")
+
+# make the flight durations movebank-ready for environmental annotation
+# mb <- flight_durations %>%
+#   mutate(timestamp = paste0(date, " 13:00:00.000")) %>% # midday UTC
+#   rename("location-long" = center_long,
+#          "location-lat" = center_lat) %>%
+#   write.csv(file = "flight_duration_centroids.csv")
+
+flight_durations <- read.csv("C:/Users/hbronnvik/Documents/golden_eagle_tools/flight_duration_centroids-8108507782512663629/flight_duration_centroids-8108507782512663629.csv") %>% 
+  select(-X) %>% 
+  mutate(wind_speed = sqrt(ECMWF.ERA5.PL.U.Wind**2 + ECMWF.ERA5.PL.V.Wind**2))
+
 # calculate the ratios of each flight type to total flight time
 flight_ratios <- flight_durations %>% 
-  mutate(circles = as.numeric(circle_time)/as.numeric(total_time),
-         lines = as.numeric(linear_time)/as.numeric(total_time),
-         glides = as.numeric(glide_time)/as.numeric(total_time),
-         flaps = as.numeric(flap_time)/as.numeric(total_time),
-         soar_to_flight = (as.numeric(circle_time) + as.numeric(linear_time))/as.numeric(total_time)) %>% 
+  mutate(circles = as.numeric(as.numeric(circle_time)/as.numeric(total_time)),
+         lines = as.numeric(as.numeric(linear_time)/as.numeric(total_time)),
+         glides = as.numeric(as.numeric(glide_time)/as.numeric(total_time)),
+         flaps = as.numeric(as.numeric(flap_time)/as.numeric(total_time)),
+         status = 0) %>% 
   rename(date = 1) %>% 
-  left_join(times[c("individual.local.identifier", "emigration_dt", "fledging_dt")], by = c("local_identifier" = "individual.local.identifier")) %>% 
+  left_join(times[c("local_identifier", "emigration_dt", "date_of_tagging")]) %>% 
   # days since fledging for each individual
-  mutate(days_since_fledging = difftime(date, fledging_dt, units = "days")) %>% 
-  filter(total_time > 0)
-
-# prep for movebank annotation
-flight_ratios <- flight_ratios %>% 
-  mutate(timestamp = paste0(date, " 12:00:00.000")) %>% 
-  rename("location-long" = center_long,
-         "location-lat" = center_lat)
+  mutate(days_since_tagging = difftime(date, date_of_tagging, units = "days", tz = "UTC")) %>% 
+  filter(total_time > 0 & local_identifier != "Windlahn19 (eobs 7018)") 
 
 # write.csv(flight_ratios, file = paste0("C:/Users/hbronnvik/Documents/golden_eagle_tools/behav_class_GE_", Sys.Date(), ".csv"))
 
+### Wind speed exposure during thermal soaring events
+# pfdp_files <- list.files("D:/Golden_eagle_wind_behav_June_2022", full.names = T)
+# # remove individuals without data
+# pfdp_files <- pfdp_files[sapply(pfdp_files, file.size) > 2000] 
+# 
+# wind_estimates <- lapply(pfdp_files, function(x){
+#   ind <- readRDS(x) %>% 
+#     drop_na(location_lat)
+#   # extract wind speeds per thermal
+#   wind_exposure <- ind %>% 
+#     drop_na(thermalID) %>% 
+#     group_by(local_identifier, thermalID) %>% 
+#     arrange(timestamp) %>% 
+#     mutate(wind_speed = sqrt((windX)^2 + (windY)^2)) %>% 
+#     summarize(max_wind = max(wind_speed, na.rm = T),
+#               min_wind = min(wind_speed, na.rm = T),
+#               mean_wind = mean(wind_speed, na.rm = T), 
+#               timestamp = head(timestamp, 1),
+#               location_lat = head(location_lat, 1),
+#               location_long = head(location_long, 1))
+#   return(wind_exposure)
+# }) %>% reduce(rbind)
+#   
+# wind_times <- wind_estimates %>% 
+#   left_join(times[c(-4)], by = c("local_identifier" = "individual.local.identifier")) %>% 
+#   mutate(hours_since_fledging = difftime(timestamp, fledging_dt, units = "hours"))
+# 
+# ggplot(wind_times, aes(hours_since_fledging, max_wind))+
+#   geom_point()+
+#   geom_smooth(method = "lm", se = F, aes(color = local_identifier))+
+#   theme_classic()+
+#   theme(legend.position="none", axis.text = element_text(color = "black"))
+# 
+# 
+# wind_daily <- wind_times %>% 
+#   mutate(date = date(timestamp)) %>% 
+#   group_by(local_identifier, date) %>% 
+#   summarise(wind_speed = mean(mean_wind))
+# 
+# flight_ratios <- full_join(flight_ratios, wind_daily, by = c("local_identifier", "date")) %>% 
+#   mutate(days_since_fledging = as.numeric(days_since_fledging))
+# 
+# flight_ratios[flight_ratios == 0] <- NA
+# 
+# plot_ratios <- flight_ratios %>% 
+#   melt(id.vars = c("local_identifier", "date", "days_since_fledging", "dispersal_day")) %>% 
+#   filter(variable %in% c("circles", "lines", "flaps", "glides") & value > 0) %>% 
+#   mutate(days_since_fledging = as.numeric(days_since_fledging),
+#          value = as.numeric(value)) %>% 
+#   group_by(local_identifier, variable) %>% 
+#   mutate(slope = coef(lm(days_since_fledging ~ value))[2]) %>% 
+#   ungroup()
+# 
+# ggplot(plot_ratios, aes(days_since_fledging, value, group = variable, color = variable))+
+#   geom_smooth(method = "lm", se = F)+
+#   geom_point()+
+#   labs(x = "Days since fledging", y = "Ratio of time spent per flight time")+
+#   theme_classic()+
+#   # facet_wrap(~variable, scales = "free")+
+#   theme(axis.text = element_text(color = "black"))
+# 
+# 
+# coefs_i <- lapply(unique(flight_ratios$local_identifier), function(x)tryCatch({
+#   df <- flight_ratios %>% 
+#     filter(local_identifier == x)
+#   
+#   mod <- lapply(c("circles", "flaps", "lines", "glides"), function(y){
+#     fd <- df %>% 
+#       select(y, days_since_fledging) %>% 
+#       drop_na() %>% 
+#       as.data.frame()
+#     
+#     pull <- coef(lm(days_since_fledging ~ fd[,1], data = fd)) %>% 
+#       as.data.frame() %>% 
+#       rownames_to_column() %>% 
+#       mutate(rowname = c("intercept", y),
+#              local_identifier = x) %>% 
+#       rename(value = ".",
+#              variable = rowname)
+#     
+#     return(pull)
+#   }) %>% reduce(rbind)
+#   return(mod)
+# }, error = function(msg){print(paste0("Not enough values to model for ", x))})
+# ) %>% reduce(rbind) 
+# 
+# coefs_i <- coefs_i %>% 
+#   filter(variable != "intercept" & str_detect(coefs_i$variable, "Not") == F) %>% 
+#   pivot_wider(names_from = c("variable"), values_from = c("value"))
+# 
+# colnames(coefs_i)[-1] <- paste(colnames(coefs_i)[-1], "slope", sep = "_")
+# 
+# tidy_ratios <- flight_ratios %>% 
+#   group_by(local_identifier, dispersal_day) %>% 
+#   summarize(circles_peak = max(circles),
+#             flaps_peak = max(flaps),
+#             lines_peak = max(lines),
+#             glides_peak = max(glides)) %>% 
+#   ungroup()
+# 
+# model_data <- full_join(tidy_ratios, coefs_i, by = "local_identifier") %>% 
+#   mutate(circles_slope = as.numeric(circles_slope),
+#          lines_slope = as.numeric(lines_slope),
+#          glides_slope = as.numeric(glides_slope),
+#          flaps_slope = as.numeric(flaps_slope),
+#          scaled_circles_slope = scale(circles_slope)[c(1:n())],
+#          scaled_lines_slope = scale(lines_slope)[c(1:n())],
+#          scaled_flaps_slope = scale(flaps_slope)[c(1:n())],
+#          scaled_glides_slope = scale(glides_slope)[c(1:n())],
+#          scaled_glides_peak = scale(glides_peak)[c(1:n())],
+#          scaled_flaps_peak = scale(flaps_peak)[c(1:n())],
+#          scaled_lines_peak = scale(lines_peak)[c(1:n())],
+#          scaled_circles_peak = scale(circles_peak)[c(1:n())])
+# 
+# pfdp_mod <- lm(dispersal_day ~ scaled_circles_slope + scaled_lines_slope + scaled_glides_slope + scaled_flaps_slope +
+#      scaled_circles_peak + scaled_lines_peak + scaled_glides_peak + scaled_flaps_peak, data = model_data)
 
-library(reshape2)
-plot_ratios <- flight_ratios %>% 
-  rename("Thermal soaring" = circles,
-         "Linear soaring" = lines,
-         "Flapping" = flaps,
-         "Gliding" = glides) %>% 
-  melt(id.vars = c("local_identifier", "date", "days_since_fledging")) %>% 
-  filter(variable %in% c("Thermal soaring", "Linear soaring", "Flapping", "Gliding")) %>% 
-  mutate(days_since_fledging = as.numeric(days_since_fledging),
-         value = as.numeric(value))
 
-ggplot(plot_ratios, aes(days_since_fledging, value))+
-  geom_smooth(method = "lm", se = F, color = "black")+
-  geom_point(aes(color = variable))+
-  labs(x = "Days since fledging", y = "Ratio of time spent per flight time")+
-  theme_classic()+
-  facet_wrap(~variable, scales = "free")+
-  theme(legend.position="none", axis.text = element_text(color = "black"))
+# check the number of birds for which we have dispersal date bursts (4)
+done <- flight_ratios[which(flight_ratios$date == date(flight_ratios$emigration_dt)),]
+todo <- unique(flight_ratios$local_identifier[!flight_ratios$local_identifier %in% done$local_identifier])
+todo <- todo[!todo == "Windlahn19 (eobs 7018)"]
+
+files <- list.files("D:/goldenEagles_fromMartina/accGPS_behavClass", full.names = T)
+file_names <- str_sub(files, 47, -24)
+files <- files[-which(!file_names %in% todo)]
+
+# get the first burst after dispersal for the remaining birds
+pdp_burst <- lapply(files, function(x)tryCatch({
+  ind <- readRDS(x)
+  # extract ID
+  ID <- unique(ind$local_identifier)
+  # read in the data for this ID containing wind estimates 
+  load(wind_files[grepl(ID, wind_files, fixed = T)]) # burstsWindDF
+  
+  date <- times %>% 
+    filter(local_identifier == ID)
+  
+  pdp_wind <- burstsWindDF %>% 
+    filter(timestamp > date$emigration_dt) %>% 
+    rename(location_long = location.long,
+           location_lat = location.lat)
+  
+  pdp_behav <- ind %>% 
+    filter(timestamp > date$emigration_dt)
+  
+  pdp <- pdp_behav %>% 
+    left_join(pdp_wind, by = intersect(colnames(pdp_behav), colnames(pdp_wind))) %>% 
+    mutate(behavior = ifelse(is.na(behavior), "Unclassified", behavior),
+           flight_type = ifelse(behavior == "Flapping",
+                                "flap",
+                                ifelse(soarClust == "soar" & thermalClust == "circular",
+                                       "soar_circular", 
+                                       ifelse(thermalClust == "linear",
+                                              "soar_linear",
+                                              ifelse(soarClust == "glide",
+                                                     "glide",
+                                                     NA))))) %>% 
+    mutate(flight_type = ifelse(is.na(thermalID) & flight_type == "soar_circular",
+                                "circular_no_ID",
+                                flight_type)) %>% 
+    filter(burstID == burstID[!is.na(flight_type)][1])
+  
+  return(pdp)
+}, error = function(msg){print(geterrmessage())}))
+
+pdp_burst <- pdp_burst[sapply(pdp_burst, length) > 1]
+
+# determine the total time spent in each behavior for each individual
+suppressMessages(pdp_flight_durations <- lapply(pdp_burst, function(ind){
+  ID <- unique(ind$local_identifier)
+  
+  # determine the center point of each day to allow environmental annotation
+  ind <- ind %>% 
+    mutate(date = date(timestamp)) %>% 
+    mutate(poi = geosphere::centroid(as.matrix(cbind(location_long, location_lat))))
+  
+  # find the time spent in each behavior per day
+  behavior_time <- ind %>% 
+    drop_na(flight_type) %>% 
+    group_by(date, flight_type) %>% 
+    summarize(duration = difftime(tail(timestamp, 1), head(timestamp,1), units = "sec")) %>% 
+    summarize(total_time = sum(duration),
+              circle_time = sum(duration[flight_type %in% c("soar_circular", "circular_no_ID")]),
+              linear_time = sum(duration[flight_type == "soar_linear"]),
+              glide_time = sum(duration[flight_type == "glide"]),
+              flap_time = sum(duration[flight_type == "flap"])) %>% 
+    mutate(local_identifier = ID) %>% 
+    ungroup()
+  
+  # append the center points
+  behavior_time <- behavior_time %>% 
+    full_join(ind[,c("date", "poi")]) %>% 
+    group_by(date) %>% 
+    slice(1) %>% 
+    # reduce the matrix
+    mutate(center_long = poi[,1],
+           center_lat = poi[,2]) %>% 
+    ungroup() %>%
+    # clean the unneeded column
+    select(-poi) %>% 
+    # remove dates for which behavior classification did not happen
+    drop_na(local_identifier)
+  
+  return(behavior_time)
+}) %>% reduce(rbind))
+
+# make the flight durations movebank-ready for environmental annotation
+# mb <- pdp_flight_durations %>%
+#   mutate(timestamp = paste0(date, " 13:00:00.000")) %>% # midday UTC
+#   rename("location-long" = center_long,
+#          "location-lat" = center_lat) %>%
+#   write.csv(file = "pdp_flight_duration_centroids.csv")
+
+pdp_flight_durations <- read.csv("C:/Users/hbronnvik/Documents/golden_eagle_tools/flight_duration_centroids-599409861752509455/flight_duration_centroids-599409861752509455.csv") %>% 
+  select(-X) %>% 
+  mutate(wind_speed = sqrt(ECMWF.ERA5.PL.U.Wind**2 + ECMWF.ERA5.PL.V.Wind**2))
+
+# calculate the ratios of each flight type to total flight time
+pdp_flight_ratios <- pdp_flight_durations %>% 
+  mutate(circles = as.numeric(as.numeric(circle_time)/as.numeric(total_time)),
+         lines = as.numeric(as.numeric(linear_time)/as.numeric(total_time)),
+         glides = as.numeric(as.numeric(glide_time)/as.numeric(total_time)),
+         flaps = as.numeric(as.numeric(flap_time)/as.numeric(total_time)),
+         status = 1) %>% 
+  rename(date = 1) %>% 
+  left_join(times[c("local_identifier", "emigration_dt", "date_of_tagging")]) %>% 
+  # days since fledging for each individual
+  mutate(days_since_tagging = difftime(date, date_of_tagging, units = "days", tz = "UTC")) %>% 
+  filter(total_time > 0) 
+
+mod_data <- flight_ratios %>% 
+  rbind(pdp_flight_ratios) %>% 
+  arrange(local_identifier) %>% 
+  mutate(days_since_tagging = as.numeric(days_since_tagging),
+         scaled_circles = scale(circles)[1,],
+         scaled_lines = scale(lines)[1,], 
+         scaled_flaps = scale(flaps)[1,],
+         scaled_glides = scale(glides)[1,])
+
+# saveRDS(mod_data, file = "frailty_data_112822.rds")
+mod_data <- readRDS("C:/Users/hbronnvik/Documents/golden_eagle_tools/frailty_data_112822.rds")
+# Model formula
+form <- inla.surv(days_since_tagging, status) ~ 1 + scaled_circles + scaled_lines + scaled_flaps +
+  scaled_glides + f(local_identifier, model = "iid", hyper = list(prec = list(param = c(0.001, 0.001))))
+
+# Model fitting
+fr.ret <- inla(form, data = mod_data, family  = "weibullsurv", num.threads = 10)
+# saveRDS(fr.ret, file = "fr.ret.281122.rds")
+
+# plot (from Gomez-Rubio
+n.pat <- nrow(fr.ret$summary.random$local_identifier)
+
+tab <- data.frame(patient = 1:n.pat, 
+                  low.lim = fr.ret$summary.random$id[, "0.025quant"],
+                  upp.lim = fr.ret$summary.random$id[, "0.975quant"])
+
+ggplot(tab, aes(x = patient, y = low.lim)) +
+  geom_linerange(aes(ymin = low.lim, ymax = upp.lim), col = "gray40") +
+  xlab("Patient") +
+  ylab("Effect") +
+  coord_flip() + 
+  geom_hline(yintercept = 0, linetype = "dashed", col = "gray20")
 
 
+##############################################################################################
 
 ### Ratio of gliding to flapping between thermals
 
@@ -189,64 +527,6 @@ ggplot(plot_ratios, aes(days_since_fledging, value))+
 # measure time spent flapping 
 # measure time spent gliding
 # calculate the ratio
-
-### Wind speed exposure during thermal soaring events
-pfdp_files <- list.files("D:/Golden_eagle_wind_behav_June_2022", full.names = T)
-# remove individuals without data
-pfdp_files <- pfdp_files[sapply(pfdp_files, file.size) > 2000] 
-
-wind_estimates <- lapply(pfdp_files, function(x){
-  ind <- readRDS(x) %>% 
-    drop_na(location_lat)
-  # extract wind speeds per thermal
-  wind_exposure <- ind %>% 
-    drop_na(thermalID) %>% 
-    group_by(local_identifier, thermalID) %>% 
-    arrange(timestamp) %>% 
-    mutate(wind_speed = sqrt((windX)^2 + (windY)^2)) %>% 
-    summarize(max_wind = max(wind_speed, na.rm = T),
-              min_wind = min(wind_speed, na.rm = T),
-              mean_wind = mean(wind_speed, na.rm = T), 
-              timestamp = head(timestamp, 1),
-              location_lat = head(location_lat, 1),
-              location_long = head(location_long, 1))
-  return(wind_exposure)
-}) %>% reduce(rbind)
-  
-wind_times <- wind_estimates %>% 
-  left_join(times[c(-4)], by = c("local_identifier" = "individual.local.identifier")) %>% 
-  mutate(hours_since_fledging = difftime(timestamp, fledging_dt, units = "hours"))
-
-ggplot(wind_times, aes(hours_since_fledging, max_wind))+
-  geom_point()+
-  geom_smooth(method = "lm", se = F, aes(color = local_identifier))+
-  theme_classic()+
-  theme(legend.position="none", axis.text = element_text(color = "black"))
-
-
-wind_daily <- wind_times %>% 
-  mutate(date = date(timestamp)) %>% 
-  group_by(local_identifier, date) %>% 
-  summarise(wind_speed = mean(mean_wind))
-
-flight_ratios <- full_join(flight_ratios, wind_daily, by = c("local_identifier", "date"))
-
-# check the correlations of the variables
-pairs(~ circles + lines + glides + flaps + wind_speed, data = flight_ratios, upper.panel = NULL)
-
-library(lme4)
-mod_data <- flight_ratios %>% 
-  select(circles, lines, glides, flaps, local_identifier, days_since_fledging) %>% 
-  mutate(days_since_fledging = as.numeric(days_since_fledging), 
-         circles = scale(circles), 
-         lines = scale(lines),
-         glides = scale(glides),
-         flaps = scale(flaps))
-
-mod <- lmer(days_since_fledging ~ circles + lines + glides + flaps + (1|local_identifier), data = mod_data)
-qqnorm(resid(mod))
-
-##############################################################################################
 
 ## Task 2: wind speed exposure within thermals
 ##############################################################################################
