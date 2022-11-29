@@ -90,13 +90,14 @@ inds <- inds[inds$sensor_type_id==653,]
 #reduce to more than 850 locations and the names only
 inds <- inds[inds$number_of_events>850, c("local_identifier", "timestamp_start", "timestamp_end")]
 #remove birds tagged after fledging
-inds <- inds[!inds %in% c("Appennino18 (eobs 6462)", "Ftan20 (eobs 7108)", "Memmingen20 (eobs 7507)", 
-                          "Aosta1_20 (eobs 7511)", "Aosta2_20 (eobs 7558)", "Mellau21 (eobs 6988)", "Aosta21 (eobs7590)")]
+inds <- inds[!inds$local_identifier %in% c("Appennino18 (eobs 6462)", "Ftan20 (eobs 7108)", "Memmingen20 (eobs 7507)", 
+                          "Aosta1_20 (eobs 7511)", "Aosta2_20 (eobs 7558)", "Mellau21 (eobs 6988)", "Aosta21 (eobs7590)"),]
 tend <- as.POSIXct(inds$timestamp_start, format="%Y-%m-%d %H:%M:%OS", tz="UTC") + 6*30*24*3600
 inds$timestamp_end[as.POSIXct(inds$timestamp_end, format="%Y-%m-%d %H:%M:%OS", tz="UTC")>tend] <- paste(as.character(tend[as.POSIXct(inds$timestamp_end, format="%Y-%m-%d %H:%M:%OS", tz="UTC")>tend]), ".000", sep="")
 rm(tend)  
 #start a pdf for visual
 inds$FledgeDate <- NULL
+inds$FledgeCriterion <- NULL
 #pdf("./FledingDates.pdf", height=7, width=7)
 #go through the study by individual note: this can be paralellized with foreach
 for(j in 1:nrow(inds)){
@@ -112,6 +113,7 @@ for(j in 1:nrow(inds)){
   
   fledged <- FledgeDate(eagle)
   inds[j, "FledgeDate"] <- fledged[[1]]
+  inds[j, "FledgeCriterion"] <- fledged[[2]]
   
   plot(eagle, pch=16, col=alpha("grey10", 0.5), type="l", bty="n", xlab="Longitude", ylab="Latitude")
   points(eagle[timestamps(eagle)<=fledged[[1]],], pch=16, col=alpha("firebrick", 0.3), cex=0.3)
