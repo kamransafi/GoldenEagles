@@ -1,25 +1,25 @@
 #from terminal on local system: (make sure to be on MPI internet, use VPN)
 #the file with all data (no missing values)
 
-scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/inla_preds_for_cluster/generic_alt_50_20_min_48_ind_wmissing.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_ALPS/
+#copy over the dataset-----------------------------------------------------------------
+scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/inla_preds_for_cluster/alps_alt_50_20_min_48_ind_wmissing.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_ALPS/
 
+#copy over info for backtransforming the week values
 scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/inla_preds_for_cluster/weeks_since_z_info.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_ALPS/
 
 #make sure paradiso license is on the cluster
-#scp /home/mahle68/ownCloud/Work/cluster_computing/GE_inla_static/pardiso.lic #enourani@raven.mpcdf.mpg.de:/raven/u/enourani/
+#scp /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/pardiso.lic #enourani@raven.mpcdf.mpg.de:/raven/u/enourani/
 
-#ssh to cluster
-
+#ssh to cluster-----------------------------------------------------------------
 # if not on MPI network: 
 ssh enourani@gate.mpcdf.mpg.de
 ssh raven.mpcdf.mpg.de
-
 
 #if on MPI network:
 ssh enourani@raven.mpcdf.mpg.de
 
 
-#load R
+#load R-----------------------------------------------------------------
 module purge
 module load gcc/10 R/4.2 gdal gsl/2.4
 

@@ -52,7 +52,7 @@ n_unique <- nrow(alps_unique)
 
 #open eagle data
 all_data <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_inlaready_wks.rds") %>% 
-  select(c("location.long", "location.lat", "track", "stratum", "step_length", "turning_angle", "used", "dem_100", "TRI_100", "ind1", "ind2", "weeks_since_emig_n", "weeks_since_emig_n_z"))
+  select(c("location.long", "location.lat", "track", "stratum", "step_length", "turning_angle", "used", "ind1", "ind2", "weeks_since_emig_n", "weeks_since_emig_n_z", "dem_100", "dem_100_z", "TRI_100", "TRI_100_z"))
 
 # STEP 2: create new datasets: one for each interval ----------------------------------------------------------------
 
@@ -77,10 +77,10 @@ alps_data <- all_data %>%
          TRI_100 = alps_unique$tri_200,
          dem_100_z = (alps_unique$dem_200 - mean(all_data$dem_100))/sd(all_data$dem_100), #convert these to z-scores based on the mean and variance of the tracking data.
          TRI_100_z = (alps_unique$tri_200 - mean(all_data$TRI_100))/sd(all_data$TRI_100)) %>% 
-  full_join(all_data)
+  bind_rows(all_data)
 
-saveRDS(alps_data, file = "inla_preds_for_cluster/generic_alt_50_20_min_48_ind_wmissing.rds")
-
+#saveRDS(alps_data, file = "inla_preds_for_cluster/generic_alt_50_20_min_48_ind_wmissing.rds") #this is the old version from July
+saveRDS(alps_data, file = "inla_preds_for_cluster/alps_alt_50_20_min_48_ind_wmissing.rds") 
 
 #also prepare a vector with the sd and mean of the weeks since fledging. to be used ltr for the modeling
 
