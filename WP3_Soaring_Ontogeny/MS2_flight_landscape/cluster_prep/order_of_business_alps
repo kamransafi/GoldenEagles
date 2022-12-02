@@ -8,7 +8,7 @@ scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/inla_pr
 scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/inla_preds_for_cluster/weeks_since_z_info.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_ALPS/
 
 #make sure paradiso license is on the cluster
-#scp /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/pardiso.lic #enourani@raven.mpcdf.mpg.de:/raven/u/enourani/
+#scp /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/pardiso.lic enourani@raven.mpcdf.mpg.de:/raven/u/enourani/
 
 #ssh to cluster-----------------------------------------------------------------
 # if not on MPI network: 
@@ -44,7 +44,9 @@ inla.setOption(pardiso.license = "pardiso.lic")
 
 weeks <- c(1, 2, 3, 4, 24, 48, 104) 
 
-alps_data <- readRDS("generic_alt_50_20_min_48_ind_wmissing.rds")
+alps_data <- readRDS("alps_alt_50_20_min_48_ind_wmissing.rds") %>% 
+as.data.frame()
+
 weeks_z_info <- readRDS("weeks_since_z_info.rds")
 
 #define variables and formula
@@ -121,13 +123,12 @@ lapply(weeks, function(x){
 #STEP 3: copy results over to local system -------------------------------------------------------------------
 
 #on cluster: remove the data files
-rm GE_ALPS/generic_alt_50_20_min_48_ind_wmissing.rds
+rm GE_ALPS/alps_alt_50_20_min_48_ind_wmissing.rds
 rm GE_ALPS/weeks_since_z_info.rds
 
 
 #from local terminal
 
-scp -r enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_ALPS/ /home/mahle68/ownCloud/Work/cluster_computing/GE_inla_static/results_alps/
-
+scp -r enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_ALPS/ /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results_alps/alps_preds_Dec22
 
 
