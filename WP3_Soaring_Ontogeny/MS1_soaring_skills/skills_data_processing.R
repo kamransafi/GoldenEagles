@@ -22,6 +22,7 @@ library(INLA)
 is.error <- function(x) inherits(x, "try-error")
 source("C:/Users/hbronnvik/Documents/golden_eagle_tools/associate_ACCinfoToGPS.R") #For ACCtoGPS_parallel function
 load("C:/Users/hbronnvik/Documents/storkSSFs/Laptop/loginStored.RData") # The MoveBank login
+
 # the dispersal dates estimated using recurse
 # fpt_times <- read.csv("C:/Users/hbronnvik/Documents/golden_eagle_tools/fledging_emig_times.csv") %>% 
 #   select(-"X") %>% 
@@ -45,9 +46,7 @@ load("C:/Users/hbronnvik/Documents/storkSSFs/Laptop/loginStored.RData") # The Mo
 #   full_join(vis_times[, c("individual.local.identifier", "date_fledging", "date_emigration", "date_tagging")]) %>% 
 #   drop_na(date_fledging)
 
-times <- readRDS("C:/Users/hbronnvik/Documents/golden_eagle_tools/dobs_et_112822.rds") %>% 
-  drop_na(date_of_tagging, emigration_dt) %>% 
-  rename(local_identifier = individual.local.identifier)
+times <- readRDS("C:/Users/hbronnvik/Documents/golden_eagle_tools/dobs_et_120222.rds")
 
 eagleStudyId <- 282734839 # The golden eagle study on MoveBank
 
@@ -75,29 +74,30 @@ wind_files <- list.files("D:/goldenEagles_wind", full.names = T)
 
 
 file_names <- str_sub(files, 47, -24)
-files <- files[-which(!file_names %in% times$local_identifier)]
+files <- files[-which(!file_names %in% rm_inds)]
+files <- files[sapply(files, file.size) > 2000]
 
-pfdp <- invisible(lapply(files, function(x){
+pfdp <- suppressMessages(lapply(files, function(x){
   # read in the data for this ID containing flapping classifications 
   ind <- readRDS(x)
   # extract ID
   ID <- unique(ind$local_identifier)
   # read in the data for this ID containing wind estimates 
   load(wind_files[grepl(ID, wind_files, fixed = T)]) # burstsWindDF
-  
-  date <- times %>% 
-    filter(local_identifier == ID)
+  # commented out to consider the whole range for a logistic regression:
+  # date <- times %>% 
+  #   filter(local_identifier == ID)
   
   pfdp_wind <- burstsWindDF%>% 
-    filter(between(timestamp, date$date_of_tagging, date$emigration_dt)) %>% 
+    # filter(between(timestamp, date$date_of_tagging, date$emigration_dt)) %>% 
     rename(location_long = location.long,
            location_lat = location.lat)
   
-  pfdp_behav <- ind %>% 
-    filter(between(timestamp, date$date_of_tagging, date$emigration_dt))
+  # pfdp_behav <- ind %>% 
+  #   filter(between(timestamp, date$date_of_tagging, date$emigration_dt))
   
-  pfdp <- pfdp_behav %>% 
-    left_join(pfdp_wind, by = intersect(colnames(pfdp_behav), colnames(pfdp_wind))) %>% 
+  pfdp <- ind %>% 
+    left_join(pfdp_wind) %>% 
     mutate(behavior = ifelse(is.na(behavior), "Unclassified", behavior),
            flight_type = ifelse(behavior == "Flapping",
                                 "flap",
@@ -111,7 +111,7 @@ pfdp <- invisible(lapply(files, function(x){
     mutate(flight_type = ifelse(is.na(thermalID) & flight_type == "soar_circular",
                                 "circular_no_ID",
                                 flight_type))
-  # saveRDS(pfdp, file = paste0("C:/Users/hbronnvik/Documents/golden_eagle_tools/Golden_eagle_wind_behav_Nov_2022/", ID, ".rds"))
+  # saveRDS(pfdp, file = paste0("C:/Users/hbronnvik/Documents/golden_eagle_tools/Golden_eagle_wind_behav_full_Nov_2022/", ID, ".rds"))
 
   return(pfdp)
   # wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
@@ -127,6 +127,17 @@ pfdp <- invisible(lapply(files, function(x){
 
 # Art falls out due to no data in PFDP between
 # Grosio "
+
+times <- times %>% 
+  rename(local_identifier = individual.local.identifier) %>% 
+  mutate(local_identifier = ifelse(local_identifier == "Stürfis20 (eobs 7049)", "Stürfis20 (eobs 7049) ", 
+                                   ifelse(local_identifier == "Valgrande19 (eobs 7033)", "ValGrande19 (eobs 7033)", local_identifier))) %>% 
+  filter(local_identifier %in% unique(pfdp$local_identifier))
+
+pfdp <- pfdp %>% 
+  full_join(times[, c("local_identifier", "date_of_tagging", "emigration_dt")])
+
+pfdp_files <- split(pfdp, pfdp$local_identifier)
 
 # check the number of bursts with each  flight classification
 burst_count <- lapply(files, function(x){
@@ -176,21 +187,29 @@ burst_count <- lapply(files, function(x){
   ungroup()
 
 ### Ratio of soaring to flight
-pfdp_files <- list.files("C:/Users/hbronnvik/Documents/golden_eagle_tools/Golden_eagle_wind_behav_Nov_2022", full.names = T)
+pfdp_files <- list.files("C:/Users/hbronnvik/Documents/golden_eagle_tools/Golden_eagle_wind_behav_full_Nov_2022", full.names = T)
 # remove individuals without data
 pfdp_files <- pfdp_files[sapply(pfdp_files, file.size) > 2000]
 
 # determine the total time spent in each behavior for each individual
-flight_durations <- lapply(pfdp_files, function(x){
-  ind <- readRDS(x)  
+flight_durations <- lapply(pfdp_files, function(ind){
+  # ind <- readRDS(x)  
+  print(unique(ind$local_identifier))
   ID <- unique(ind$local_identifier)
   
   # determine the center point of each day to allow environmental annotation
   ind <- ind %>% 
-    mutate(date = date(timestamp)) %>% 
-    group_by(date) %>% 
-    mutate(poi = geosphere::centroid(as.matrix(cbind(location_long, location_lat)))) %>%
-    ungroup()
+    mutate(date = date(timestamp)) 
+  
+  ind <- lapply(unique(ind$date), function(x){
+      if(nrow(ind[ind$date == x,]) > 2){
+        d_ind <- ind[ind$date == x,] %>% 
+          mutate(poi = geosphere::centroid(as.matrix(cbind(location_long, location_lat))))
+        return(d_ind)
+      }else{d_ind <- ind[ind$date == x,] %>% 
+        mutate(poi = cbind(median(location_long), median(location_lat)))
+      return(d_ind)}
+  }) %>% reduce(rbind)
 
   # find the time spent in each behavior per day
   behavior_time <- ind %>% 
@@ -213,7 +232,7 @@ flight_durations <- lapply(pfdp_files, function(x){
            center_lat = poi[,2]) %>% 
     ungroup() %>%
     # clean the unneeded column
-    select(-poi) %>% 
+    dplyr::select(-poi) %>% 
     # remove dates for which behavior classification did not happen
     drop_na(local_identifier)
   
@@ -233,7 +252,7 @@ events <- flight_durations %>%
 #   mutate(timestamp = paste0(date, " 13:00:00.000")) %>% # midday UTC
 #   rename("location-long" = center_long,
 #          "location-lat" = center_lat) %>%
-#   write.csv(file = "flight_duration_centroids.csv")
+#   write.csv(file = "flight_duration_centroids_113022.csv")
 
 flight_durations <- read.csv("C:/Users/hbronnvik/Documents/golden_eagle_tools/flight_duration_centroids-8108507782512663629/flight_duration_centroids-8108507782512663629.csv") %>% 
   select(-X) %>% 
@@ -495,7 +514,11 @@ mod_data <- flight_ratios %>%
          scaled_glides = scale(glides)[1,])
 
 # saveRDS(mod_data, file = "frailty_data_112822.rds")
-mod_data <- readRDS("C:/Users/hbronnvik/Documents/golden_eagle_tools/frailty_data_112822.rds")
+mod_data <- readRDS("C:/Users/hbronnvik/Documents/golden_eagle_tools/frailty_data_113022.rds")
+
+mod_data <- mod_data %>% 
+  filter(local_identifier %in% unique(mod_data$local_identifier)[1:12])
+
 # Model formula
 form <- inla.surv(days_since_tagging, status) ~ 1 + scaled_circles + scaled_lines + scaled_flaps +
   scaled_glides + f(local_identifier, model = "iid", hyper = list(prec = list(param = c(0.001, 0.001))))
@@ -505,20 +528,26 @@ fr.ret <- inla(form, data = mod_data, family  = "weibullsurv", num.threads = 10)
 # saveRDS(fr.ret, file = "fr.ret.281122.rds")
 
 # plot (from Gomez-Rubio
-n.pat <- nrow(fr.ret$summary.random$local_identifier)
+n.inds <- nrow(fr.ret$summary.random$local_identifier)
 
-tab <- data.frame(patient = 1:n.pat, 
-                  low.lim = fr.ret$summary.random$id[, "0.025quant"],
-                  upp.lim = fr.ret$summary.random$id[, "0.975quant"])
+tab <- data.frame(animal = 1:n.inds, 
+                  low.lim = fr.ret$summary.random$local_identifier[, "0.025quant"],
+                  upp.lim = fr.ret$summary.random$local_identifier[, "0.975quant"])
 
-ggplot(tab, aes(x = patient, y = low.lim)) +
+ggplot(tab, aes(x = animal, y = low.lim)) +
   geom_linerange(aes(ymin = low.lim, ymax = upp.lim), col = "gray40") +
-  xlab("Patient") +
+  xlab("Individual") +
   ylab("Effect") +
   coord_flip() + 
-  geom_hline(yintercept = 0, linetype = "dashed", col = "gray20")
+  geom_hline(yintercept = 0, linetype = "dashed", col = "gray20") +
+  theme_classic()
 
-
+gps_acc_burst <- lapply(gpsAcc_ls, function(x){
+  x <- x %>% 
+    arrange(timestamp)
+  ind <- split_gps_bursts_df(x, MaxTimeDiff = 2, MinBurstLength = 40)
+})
+gps_acc_burst <- gps_acc_burst[sapply(gps_acc_burst, nrow) > 0]
 ##############################################################################################
 
 ### Ratio of gliding to flapping between thermals
