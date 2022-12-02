@@ -94,7 +94,7 @@ saveRDS(weeks_since_z_info, file = "inla_preds_for_cluster/weeks_since_z_info.rd
 # STEP 3: make sure model coefficients match the original model's ----------------------------------------------------------------
 
 #list coefficient files to make sure they match the original model. check! :D
-graph_files <- list.files("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results_alps/GE_ALPS/", pattern = "graph", full.names = T)
+graph_files <- list.files("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results_alps/alps_preds_Dec22/", pattern = "graph", full.names = T)
 
 #(write a ftn?) plot the coefficients
 lapply(graph_files, function(wk){
