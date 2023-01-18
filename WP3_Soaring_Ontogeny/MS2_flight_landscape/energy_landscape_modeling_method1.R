@@ -182,16 +182,13 @@ new_data <- readRDS("alt_50_20_min_48_ind_static_inlaready_wmissing500_wks.rds")
 formulaM <- used ~ -1 + 
   dem_100_z * weeks_since_emig_n_z +
   TRI_100_z * weeks_since_emig_n_z + 
-#  slope_TPI_100_z * weeks_since_emig_n_z + 
   f(stratum, model = "iid", 
     hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
   f(ind1, dem_100_z, model = "iid",
     hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) + 
   f(ind2, TRI_100_z,  model = "iid",
     hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) #+ 
-#  f(ind3, slope_TPI_100_z,  model = "iid",
-#    hyper=list(theta = list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
-  
+
 mean.beta <- 0
 prec.beta <- 1e-4 
 

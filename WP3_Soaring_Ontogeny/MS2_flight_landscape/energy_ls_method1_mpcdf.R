@@ -130,7 +130,6 @@ p_dem <- ggplot(data = r_dem) +
 ggsave(plot = p_dem, filename = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_preds_static_w_rnd_wk_48n_",i, ".png"), 
        width = 6, height = 4, dpi = 300)
 
-
 #put both plots in one device
 X11(width = 10, height = 4)
 combined <- p_dem + p_rugg & theme(legend.position = "right")
@@ -143,6 +142,9 @@ ggsave(plot = p_2, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny
 # PLOT 3: individual variation plots ----------------------------------------------------------------------------------------------------
 
 rnd <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/rnd_coeff_M_preds.rds")
+
+#!!!!!!!!make sure to add the coefficient to these.
+
 
 names <- rnd[[2]]$ID
 

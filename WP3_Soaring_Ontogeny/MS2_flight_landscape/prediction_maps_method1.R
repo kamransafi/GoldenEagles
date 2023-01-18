@@ -128,7 +128,7 @@ lapply(graph_files, function(wk){
   
   
   ggsave(plot = coefs, 
-         filename = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/weekly_alps_preds_jul26/inla_coeffs_48ind_", str_sub(wk,-7,-5),".png"), 
+         filename = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/weekly_alps_preds_dec2/inla_coeffs_48ind_", str_sub(wk,-7,-5),".png"), 
          width = 4.7, height = 2.7, dpi = 300) #they are all the same. so should be OK
   
 })
@@ -146,7 +146,7 @@ lapply(graph_files, function(wk){
 all_data <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_inlaready_wks.rds")
 
 #list prediction files
-pred_files <- list.files("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results_alps/GE_ALPS/", 
+pred_files <- list.files("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results_alps/alps_preds_Dec22/", 
                          pattern = "preds", full.names = T)
 
 #open the alpine region dataframe.
@@ -159,8 +159,31 @@ Alps <- st_read("/home/enourani/ownCloud/Work/GIS_files/Alpine_perimeter/Alpine_
   st_transform(crs(tri_200)) %>% 
   as("SpatVector")
 
+#explore the variation in the predictions for each week
+lapply(pred_files, function(wk){
+  
+  preds <- readRDS(wk) %>% 
+    mutate(wk_n = str_sub(wk,-7,-5),
+           #backtransform the z-scores
+           tri_200 = (TRI_100_z * sd(all_data$TRI_100)) + mean(all_data$TRI_100),   #round the values for easier matching with the original alps data
+           dem_200 = (dem_100_z * sd(all_data$dem_100)) + mean(all_data$dem_100),
+           weeks_since_emig_n = (weeks_since_emig_n_z * sd(all_data$weeks_since_emig_n)) + mean(all_data$weeks_since_emig_n)) #%>% #this will have one value. because each lapply round includes infor for one week
+  
+  #append the predictions to the original alps topo data. 
+  alps_preds <- alps_topo_df %>% 
+    left_join(preds, by = c("dem_200", "tri_200"))
 
-#add one column per week, and cbind the prediction values with the original alps_topo_df based on TRI and TPI
+  png(paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/weekly_alps_preds_dec2/histograms/wk_", str_sub(wk,-7,-5),".png"),
+      width = 4.7, height = 2.7, units = "in", res = 300)  
+  hist(alps_preds$prob_pres)
+  dev.off()
+  
+    })
+
+
+
+#old: add one column per week, and cbind the prediction values with the original alps_topo_df based on TRI and TPI
+#create one map per week
 lapply(pred_files, function(wk){
   
   preds <- readRDS(wk) %>% 
@@ -172,8 +195,11 @@ lapply(pred_files, function(wk){
     #match the prediction values to the alps_df
     #full_join(alps_topo_df, by = c("dem_200", "tri_200"))
 
+  #append the predictions to the original alps topo data. 
   alps_preds <- alps_topo_df %>% 
   left_join(preds, by = c("dem_200", "tri_200"))
+  
+  r <- rast(alps_preds[,c("x", "y", "prob_pres")], crs = crs(Alps)) #use the ggplot code at the end to plot it. reorder the columns
   
   
 })
