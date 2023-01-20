@@ -113,6 +113,7 @@ lapply(weeks, function(x){
                       TRI_100_z = new_data[is.na(new_data$used) ,"TRI_100_z"],
                       weeks_since_emig_n_z = new_data[is.na(new_data$used) ,"weeks_since_emig_n_z"],
                       preds = M_pred$summary.fitted.values[used_na,"mean"]) %>% 
+                      #preds = M_pred$summary.fitted.values[used_na,"mean", "sd"]) 
     mutate(prob_pres = exp(preds)/(1+exp(preds))) #this should be between 0-1
   
   

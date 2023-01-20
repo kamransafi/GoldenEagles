@@ -156,7 +156,7 @@ all_data <- readRDS("alt_50_20_min_48_ind_static_inlaready_wks.rds")
 
 
 
-#add one new row to unique strata instead of entire empty copies of strata. assign day since emigration and terrain values on a regular grid
+#add one new row to unique strata instead of entire empty copies of strata. assign week since emigration and terrain values on a regular grid
 set.seed(500)
 
 n <- 100

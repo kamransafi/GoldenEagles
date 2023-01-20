@@ -12,7 +12,7 @@ setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
 #I need to make predictions with the INLA model for the entire Alpine region. i.e. I need to append enough rows with NA values to the dataset 
 # 1) only make predictions for unique combos of dem and tri, then associate the prediction to the rest of the cells
-#with the same values. 3) run on the cluster, maybe in batches
+#with the same values. 3) run on the cluster
 #AND, let's not forget that I need to do this for different timestamps (weeks)!! :p
 
 # STEP 0: prep topo layers. do 200 m instead of 100
@@ -39,10 +39,6 @@ names(stck) <- c("dem_200", "tri_200")
 alps_topo_df <- as.data.frame(stck, xy = T) 
 
 saveRDS(alps_topo_df, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alps_topo_df.rds")
-
-#alps_unique <- alps_topo_df %>% 
-#  group_by(dem_200,tri_200) %>% 
-#  slice(n = 1)
 
 alps_unique <- alps_topo_df %>% 
   distinct(dem_200, tri_200)
@@ -83,7 +79,6 @@ alps_data <- all_data %>%
 saveRDS(alps_data, file = "inla_preds_for_cluster/alps_alt_50_20_min_48_ind_wmissing.rds") 
 
 #also prepare a vector with the sd and mean of the weeks since fledging. to be used ltr for the modeling
-
 weeks_since_z_info <- data.frame(mean_wks = mean(all_data$weeks_since_emig_n), #center
                                  sd_wks = sd(all_data$weeks_since_emig_n)) #scale
 

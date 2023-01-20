@@ -25,7 +25,7 @@ load("flight_only_70ind.RData") #flight; from embc_segmentation.R #n = 56
 load("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/em_fl_dt_recurse_70ind.RData") #emig_fledg_dates
 inds_to_remove <- emig_fledg_dates %>% 
   mutate(post_fledging_duration = difftime(emigration_dt,fledging_dt, units = "days")) %>% 
-  filter(post_fledging_duration <= 30 )
+  filter(post_fledging_duration <= 30)
 
 flight <- flight %>%
   filter(!(individual.local.identifier %in% inds_to_remove$individual.local.identifier)) #n_distinct = 49
