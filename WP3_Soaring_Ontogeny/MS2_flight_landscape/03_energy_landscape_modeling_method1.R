@@ -1,6 +1,6 @@
 #script for analysis of golden eagle data for the dynamics of the energy landscape manuscript: modeling the energy landscape
-#follows on from embc_segmentation.R and data_processing_&_annotation.R
-#the first attempt will only include static variables. reasons: 1) movebank annotation isn't working and 2) res of static variables is higher
+#follows on from embc_segmentation.R and data_processing_&_annotation.R (and temp_download_&prep.R)
+#only includes static variables
 #Feb 22. 2022. Elham Nourani. Konstanz, DE
 
 
@@ -21,14 +21,6 @@ library(oce) #color palette for interaction plots
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
-
-#open annotated data (static variables and time since fledging and emigration)
-load("alt_50_20_min_70_ind_static_time_ann.RData") #cmpl_ann
-
-cmpl_ann <- cmpl_ann %>% 
-  mutate(days_since_emig_n = ceiling(as.numeric(days_since_emig)),#round up
-         weeks_since_emig_n = ceiling(as.numeric(weeks_since_emig))) #135 unique weeks
-
 Mode <- function(x, na.rm = FALSE) {
   if(na.rm){
     x = x[!is.na(x)]
@@ -38,21 +30,29 @@ Mode <- function(x, na.rm = FALSE) {
   return(ux[which.max(tabulate(match(x, ux)))])
 }
 
+
+#open annotated data
+cmpl_ann <- readRDS("alt_50_20_min_70_ind_static_time_ann_temp.rds") #data with montly temperature added in
+
+cmpl_ann <- cmpl_ann %>% 
+  mutate(days_since_emig_n = ceiling(as.numeric(days_since_emig)),#round up
+         weeks_since_emig_n = ceiling(as.numeric(weeks_since_emig))) #135 unique weeks. median =  30.00, 3rd quart. = 61
+
 # STEP 1: data exploration ----------------------------------------------------------------
 
 #number of days available for each individual
 cmpl_ann %>% 
   group_by(individual.local.identifier) %>% 
-  summarize(max_day = max(ceiling(as.numeric(days_since_emig)))) %>% #round up days since emigration. we don't want zeros
-  ggplot(aes(x = individual.local.identifier, y = max_day)) +
+  summarize(max_week = max(ceiling(as.numeric(weeks_since_emig)))) %>% #round up days since emigration. we don't want zeros
+  ggplot(aes(x = individual.local.identifier, y = max_week)) +
   geom_col()
 
 cmpl_ann %>% 
   group_by(individual.local.identifier) %>% 
-  summarize(max_day = max(ceiling(as.numeric(days_since_emig)))) %>% 
-  summarize(mode = Mode(max_day), #  459
-            median = median(max_day), # 438
-            mean = mean(max_day)) #  438
+  summarize(max_week = max(ceiling(as.numeric(weeks_since_emig)))) %>% 
+  summarize(mode = Mode(max_week), #  22
+            median = median(max_week), # 62.5
+            mean = mean(max_week)) #  63
 
 
 #terrain ~ days since emigration ..... no patterns in the plots
@@ -66,7 +66,7 @@ plot(cmpl_ann[cmpl_ann$used == 1, c("weeks_since_emig_n", "TRI_100")])
 plot(cmpl_ann[cmpl_ann$used == 1, c("weeks_since_emig_n", "aspect_TPI_100")])
 
 
-ggplot(cmpl_ann[cmpl_ann$used == 1 & cmpl_ann$weeks_since_emig_n <= 50,], aes(as.numeric(weeks_since_emig_n), slope_TPI_100)) +
+ggplot(cmpl_ann[cmpl_ann$used == 1 & cmpl_ann$weeks_since_emig_n <= 60,], aes(as.numeric(weeks_since_emig_n), slope_TPI_100)) +
   geom_point() +
   stat_smooth(aes(group = individual.local.identifier), method = "lm") +
   #geom_smooth() +
@@ -112,7 +112,7 @@ dev.off()
 # STEP 3: check for collinearity ----------------------------------------------------------------
 
 cmpl_ann %>% 
-  dplyr::select(c("dem_100", "slope_100", "aspect_100", "TRI_100", "TPI_100", "slope_TPI_100", "aspect_TPI_100", "weeks_since_emig_n")) %>% 
+  dplyr::select(c("dem_100", "slope_100", "aspect_100", "TRI_100", "TPI_100", "slope_TPI_100", "aspect_TPI_100", "month_temp" , "weeks_since_emig_n")) %>% 
   correlate() %>% 
   corrr::stretch() %>% 
   filter(abs(r) > 0.6) #slope and TRI are correlated (.98)
@@ -120,74 +120,70 @@ cmpl_ann %>%
 # STEP 4: standardize variables ----------------------------------------------------------------
 
 all_data <- cmpl_ann %>% 
-  mutate_at(c("dem_100", "TRI_100", "slope_TPI_100", "weeks_since_emig_n", "days_since_emig_n"),
+  mutate_at(c("dem_100", "TRI_100", "slope_TPI_100", "weeks_since_emig_n","month_temp" , "days_since_emig_n"),
             list(z = ~(scale(.)))) 
 
 # STEP 5: ssf modeling ----------------------------------------------------------------
 
 ## mid_step: investigate using clogit
+# control for monthly temperature....
 
-form1a <- used ~ dem_100_z * weeks_since_emig_n + 
-  slope_TPI_100_z * weeks_since_emig_n_z + 
-  TRI_100_z * weeks_since_emig_n + 
+form1a <- used ~ dem_100_z * weeks_since_emig_n_z + 
+  TRI_100_z * weeks_since_emig_n_z + 
+  month_temp_z +
   strata(stratum)
+
 ssf <- clogit(form1a, data = all_data)
 summary(ssf)
 plot_summs(ssf)
 
 # INLA formula using interaction terms for time and predictor variables.
-# control for month of year or temperature....
 
 #repeat the random effect
 all_data <- all_data %>% 
   mutate(ind1 = factor(individual.local.identifier),
          ind2 = factor(individual.local.identifier),
          ind3 = factor(individual.local.identifier),
-         ind4 = factor(individual.local.identifier),
-         wks_f1 = factor(weeks_since_emig_n),
-         wks_f2 = factor(weeks_since_emig_n),
-         wks_f3 = factor(weeks_since_emig_n),
-         wks_f4 = factor(weeks_since_emig_n))
+         ind4 = factor(individual.local.identifier))
 
-saveRDS(all_data, file = "alt_50_20_min_48_ind_static_inlaready_wks.rds")
+saveRDS(all_data, file = "alt_50_20_min_48_ind_static_temp_inlaready_wks.rds")
 
 
-all_data <- readRDS("alt_50_20_min_48_ind_static_inlaready_wks.rds")
+all_data <- readRDS("alt_50_20_min_48_ind_static_temp_inlaready_wks.rds")
 
-
-
-#add one new row to unique strata instead of entire empty copies of strata. assign week since emigration and terrain values on a regular grid
+#add one new row to unique strata instead of entire empty copies of strata. assign week since emigration and terrain values on a regular grid, so we can make a raster later on
 set.seed(500)
 
 n <- 100
+
 new_data <- all_data %>%
   group_by(stratum) %>% 
   slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
   ungroup() %>% 
   slice_sample(n = n, replace = F) %>% 
   mutate(used = NA,
-        # weeks_since_emig_n = sample(seq(min(all_data$weeks_since_emig_n),max(all_data$weeks_since_emig_n), length.out = 10), n, replace = T), 
-         weeks_since_emig_n_z = sample(seq(min(all_data$weeks_since_emig_n_z),max(all_data$weeks_since_emig_n_z), length.out = 10), n, replace = T),
-         dem_100_z = sample(seq(min(all_data$dem_100_z),max(all_data$dem_100_z), length.out = 10), n, replace = T), #regular intervals, so we can make a raster later on
-         TRI_100_z = sample(seq(min(all_data$TRI_100_z),max(all_data$TRI_100_z), length.out = 10), n, replace = T),
-        slope_TPI_100_z =  sample(seq(min(all_data$slope_TPI_100_z),max(all_data$slope_TPI_100_z), length.out = 10), n, replace = T)) %>% 
+         month_temp_z = sample(seq(min(all_data$month_temp_z),max(all_data$month_temp_z), length.out = 10), n, replace = T),
+         weeks_since_emig_n = sample(seq(min(all_data$weeks_since_emig_n),max(all_data$weeks_since_emig_n), length.out = 10), n, replace = T), 
+         dem_100_z = sample(seq(min(all_data$dem_100_z),max(all_data$dem_100_z), length.out = 10), n, replace = T),
+         TRI_100_z = sample(seq(min(all_data$TRI_100_z),max(all_data$TRI_100_z), length.out = 10), n, replace = T)) %>% 
   full_join(all_data)
 
-saveRDS(new_data,"alt_50_20_min_48_ind_static_inlaready_wmissing_wks.rds")
-saveRDS(new_data,"alt_50_20_min_48_ind_static_inlaready_wmissing500_wks.rds")
+saveRDS(new_data,"alt_50_20_min_48_ind_static_temp_inlaready_wmissing_wks.rds")
 
-new_data <- readRDS("alt_50_20_min_48_ind_static_inlaready_wmissing500_wks.rds")
+
+new_data <- readRDS("alt_50_20_min_48_ind_static_temp_inlaready_wmissing_wks.rds")
 
 #model formula. slope and TRI are correlated. This version includes on TRI and dem. Martina's preprint suggests TRI, dem and slope tpi, but the latter was insig
 formulaM <- used ~ -1 + 
   dem_100_z * weeks_since_emig_n_z +
   TRI_100_z * weeks_since_emig_n_z + 
+  month_temp_z + 
   f(stratum, model = "iid", 
     hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
   f(ind1, dem_100_z, model = "iid",
     hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) + 
   f(ind2, TRI_100_z,  model = "iid",
-    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) #+ 
+    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) 
 
 mean.beta <- 0
 prec.beta <- 1e-4 
