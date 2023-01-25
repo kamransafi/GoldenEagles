@@ -1,4 +1,4 @@
-# create figures for INLA model for landscpe level changes in GE flight. follows up on energy_landscape_modeling_method1.R and /home/mahle68/ownCloud/Work/cluster_computing/GE_inla_static/
+# create figures for INLA model for landscape level changes in GE flight. follows up on energy_landscape_modeling_method1.R and /home/mahle68/ownCloud/Work/cluster_computing/GE_inla_static/
 #Jul 19. 2022. Konstanz, DE
 #Elham Nourani
 
