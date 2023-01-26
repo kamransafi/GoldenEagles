@@ -4,9 +4,7 @@
 #From terminal on local system: (make sure to be on MPI internet, use VPN)
 #The file with all data (no missing values)
 
-#scp /home/mahle68/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_temp_inlaready_wmissing_wks.rds enourani@raven.mpcdf.mpg.de:/#raven/u/enourani/
-  
-scp /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/alt_50_20_min_48_ind_static_temp_inlaready_wmissing_wks.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/
+scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_temp_inlaready_wmissing_wks.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/INLA_GE/
   
 #coy over paradiso license
 scp /home/mahle68/ownCloud/Work/cluster_computing/GE_inla_static/pardiso.lic enourani@raven.mpcdf.mpg.de:/raven/u/enourani/
@@ -66,7 +64,7 @@ prec.beta <- 1e-4
 
 #run model
 (b <- Sys.time())
-M_main <- inla(formula_pred, family = "Poisson", 
+M_main <- inla(formulaM, family = "Poisson", 
                control.fixed = list(
                  mean = mean.beta,
                  prec = list(default = prec.beta)),
@@ -75,17 +73,12 @@ M_main <- inla(formula_pred, family = "Poisson",
                control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
                control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T),
                inla.mode="experimental")
-Sys.time() - b  #with random effects on 20 threads: 24.5 minutes
-
-#visualize coefficients.. doesnt work
-#png("inla_3coeff_no_missig.png", width = 7, height = 7, units = "in", res = 300)
-#Efxplot(M_main) 
-#dev.off()
+Sys.time() - b  # 2.3 minutes
 
 
 #extract model vlidation results
-eval <- data.frame(CPO = mean(M2$cpo$cpo),
-                   Mlik = as.numeric(M2$mlik[,1][2])) 
+eval <- data.frame(CPO = mean(M_main$cpo$cpo, na.rm = T),
+                   Mlik = as.numeric(M_main$mlik[,1][2])) 
 
 saveRDS(eval, file = "eval_M_main.rds")
 
@@ -97,7 +90,6 @@ colnames(graph)[which(colnames(graph)%in%c("0.025quant","0.975quant"))]<-c("Lowe
 colnames(graph)[which(colnames(graph)%in%c("0.05quant","0.95quant"))]<-c("Lower","Upper")
 colnames(graph)[which(colnames(graph)%in%c("mean"))]<-c("Estimate")
 
-#graph$Model<-i
 graph$Factor <- rownames(graph)
 
 saveRDS(graph, file = "graph_M_main.rds")
@@ -128,15 +120,12 @@ summ_rndm <- M_main$summary.random
 saveRDS(summ_rndm, file = "rnd_coeff_M_main.rds")
 
 
+#-----------------------------------------------------------------------------------------------
+# STEP 3: TRANSFER FILES TO LOCAL MACHINE
+## in the cluster, remove the input rds file
+rm INLA_GE/alt_50_20_min_48_ind_static_temp_inlaready_wmissing_wks.rds
+
 
 ## copy files back to local machine.. from local terminal
-scp enourani@raven.mpcdf.mpg.de:/raven/u/enourani/INLA_GE/graph_M_main.rds /home/mahle68/ownCloud/Work/cluster_computing/GE_inla_static/results/Jan23
-
-scp enourani@raven.mpcdf.mpg.de:/raven/u/enourani/INLA_GE/preds_M_main.rds /home/mahle68/ownCloud/Work/cluster_computing/GE_inla_static/results/Jan23
-
-scp enourani@raven.mpcdf.mpg.de:/raven/u/enourani/INLA_GE/rnd_coeff_M_main.rds /home/mahle68/ownCloud/Work/cluster_computing/GE_inla_static/results/Jan23
-
-#scp enourani@raven.mpcdf.mpg.de:/raven/u/enourani/INLA_GE/Rplots.pdf /home/mahle68/ownCloud/Work/cluster_computing/GE_inla_static/results/Jan23
-
-
+scp -r enourani@raven.mpcdf.mpg.de:/raven/u/enourani/INLA_GE /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Jan23
 
