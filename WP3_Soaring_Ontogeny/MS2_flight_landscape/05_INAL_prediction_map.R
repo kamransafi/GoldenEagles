@@ -1,4 +1,4 @@
-#code for using the SSF built in energy_landscape_modeling_method1.R to make flight suitability maps for regular peirods of time for the entire Alpine region
+#code for using the SSF built in 03_energy_landscape_modeling_method1.R to make flight suitability maps for regular periods of time for the entire Alpine region
 #May 16. 2022. Konstanz, DE.
 #Elham Nourani, PhD.
 
@@ -11,57 +11,44 @@ setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
 
 #I need to make predictions with the INLA model for the entire Alpine region. i.e. I need to append enough rows with NA values to the dataset 
-# 1) only make predictions for unique combos of dem and tri, then associate the prediction to the rest of the cells
-#with the same values. 3) run on the cluster
-#AND, let's not forget that I need to do this for different timestamps (weeks)!! :p
+#previously, I 1) only made the predictions for unique combos of dem and tri, then associate the prediction to the rest of the cells, and
+# 2) used 200 m instead of 100 m DEM. But I don't think I need to do these, because I'm using the cluster anyway
 
-# STEP 0: prep topo layers. do 200 m instead of 100
+# STEP 0: prep topo layers ----------------------------------------------------------------
 
-dem <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/dem_100.tif")
-TRI <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/TRI_100.tif")
-
-dem_200 <- terra::aggregate(dem, fact = 2, fun = "mean", filename = "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/dem_200.tif")
-tri_200 <- terra::aggregate(TRI, fact = 2, fun = "mean", filename = "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/tri_200.tif")
+dem_100 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/dem_100.tif")
+TRI_100 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/TRI_100.tif")
 
 #open Apline perimeter layer
 Alps <- st_read("/home/enourani/ownCloud/Work/GIS_files/Alpine_perimeter/Alpine_Convention_Perimeter_2018_v2.shp") %>% 
-  st_transform(crs(tri_200)) %>% 
+  st_transform(crs(TRI_100)) %>% 
   as("SpatVector")
 
-stck <- c(dem_200,tri_200) %>% 
+stck <- c(dem_100,TRI_100) %>% 
   mask(Alps)
 
-names(stck) <- c("dem_200", "tri_200")
+names(stck) <- c("dem_100", "TRI_100")
 
 # STEP 1: prep new data ----------------------------------------------------------------
 
 #unique dem-tri combos: 4,755,351 lol
-alps_topo_df <- as.data.frame(stck, xy = T) 
+alps_topo_df <- as.data.frame(stck, xy = T) %>% 
+  rename(location.long = x,
+         location.lat = y)
 
-saveRDS(alps_topo_df, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alps_topo_df.rds")
-
-alps_unique <- alps_topo_df %>% 
-  distinct(dem_200, tri_200)
-
-#how many unique combinations do we have
-n_unique <- nrow(alps_unique)
+saveRDS(alps_topo_df, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alps_topo_100m_df.rds")
 
 #open eagle data
-all_data <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_inlaready_wks.rds") %>% 
-  select(c("location.long", "location.lat", "track", "stratum", "step_length", "turning_angle", "used", "ind1", "ind2", "weeks_since_emig_n", "weeks_since_emig_n_z", "dem_100", "dem_100_z", "TRI_100", "TRI_100_z"))
+all_data <- readRDS("alt_50_20_min_48_ind_static_temp_inlaready_wks.rds") %>% 
+  select(c("location.long", "location.lat", "track", "stratum", "step_length", "turning_angle", "used", "ind1", "ind2", "weeks_since_emig_n", "weeks_since_emig_n_z", 
+           "dem_100", "dem_100_z", "TRI_100", "TRI_100_z", "month_temp", "month_temp_z"))
 
-# STEP 2: create new datasets: one for each interval ----------------------------------------------------------------
-
-#do every week for the first month, then every 6 months and 2 yrs
+# STEP 2: create new dataset for predictions ----------------------------------------------------------------
 
 set.seed(500)
-n <- n_unique #unique combo of tri and dem values 
+n <- nrow(alps_topo_df) #unique combo of tri and dem values 
 
 #prep data for week one, then (on the cluster) loop over weeks and just change the week number and run the model 
-#although the new terrain info for the alps is in 200 m resolution, don't change the column name in the input data, because
-#it will mess up the model and predictions!!
-#(/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/alps_preds/order_of_business_alps)
-
 alps_data <- all_data %>%
   group_by(stratum) %>% 
   slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
@@ -69,14 +56,13 @@ alps_data <- all_data %>%
   slice_sample(n = n, replace = T) %>% 
   mutate(used = NA,
          weeks_since_emig_n = NA, 
-         dem_100 = alps_unique$dem_200, #add these right here, so I won't need to back-transform later
-         TRI_100 = alps_unique$tri_200,
-         dem_100_z = (alps_unique$dem_200 - mean(all_data$dem_100))/sd(all_data$dem_100), #convert these to z-scores based on the mean and variance of the tracking data.
-         TRI_100_z = (alps_unique$tri_200 - mean(all_data$TRI_100))/sd(all_data$TRI_100)) %>% 
+         dem_100 = alps_topo_df$dem_100, #add these right here, so I won't need to back-transform later
+         TRI_100 = alps_topo_df$TRI_100,
+         dem_100_z = (alps_topo_df$dem_100 - mean(all_data$dem_100))/sd(all_data$dem_100), #convert these to z-scores based on the mean and variance of the tracking data.
+         TRI_100_z = (alps_topo_df$TRI_100 - mean(all_data$TRI_100))/sd(all_data$TRI_100)) %>% 
   bind_rows(all_data)
 
-#saveRDS(alps_data, file = "inla_preds_for_cluster/generic_alt_50_20_min_48_ind_wmissing.rds") #this is the old version from July
-saveRDS(alps_data, file = "inla_preds_for_cluster/alps_alt_50_20_min_48_ind_wmissing.rds") 
+saveRDS(alps_data, file = "inla_preds_for_cluster/alps_alt_50_20_min_48_ind_temp_wmissing.rds") 
 
 #also prepare a vector with the sd and mean of the weeks since fledging. to be used ltr for the modeling
 weeks_since_z_info <- data.frame(mean_wks = mean(all_data$weeks_since_emig_n), #center
@@ -84,7 +70,7 @@ weeks_since_z_info <- data.frame(mean_wks = mean(all_data$weeks_since_emig_n), #
 
 saveRDS(weeks_since_z_info, file = "inla_preds_for_cluster/weeks_since_z_info.rds")
 
-#run the weekly predictions on the cluster
+#run the weekly predictions on the cluster: cluster_prep/order_of_business_alps.txt
 
 # STEP 3: make sure model coefficients match the original model's ----------------------------------------------------------------
 

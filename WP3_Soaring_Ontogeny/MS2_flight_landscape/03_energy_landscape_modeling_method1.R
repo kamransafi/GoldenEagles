@@ -171,8 +171,4 @@ new_data <- all_data %>%
 saveRDS(new_data,"alt_50_20_min_48_ind_static_temp_inlaready_wmissing_wks.rds")
 
 
-new_data <- readRDS("alt_50_20_min_48_ind_static_temp_inlaready_wmissing_wks.rds")
-
-
-
 #the model will be run on the cluster. see cluster_prep/order_of_business_main_model.txt

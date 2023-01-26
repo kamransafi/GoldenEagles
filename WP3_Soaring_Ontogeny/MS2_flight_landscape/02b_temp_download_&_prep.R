@@ -10,7 +10,6 @@ library(sf)
 library(ncdf4)
 library(reticulate)
 
-
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
 
