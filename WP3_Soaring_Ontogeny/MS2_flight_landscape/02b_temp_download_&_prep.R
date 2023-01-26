@@ -73,6 +73,7 @@ ncdf_list <- list.files("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_so
 
 #extract temperature values for each point of the ssf input dataset. do it by month-year 
 mnth_yr_ls <- split(cmpl_ann, list(year(cmpl_ann$timestamp), month(cmpl_ann$timestamp)))
+
 #remove empty elements
 mnth_yr_ls <- mnth_yr_ls[lapply(mnth_yr_ls, nrow) > 0]
 
@@ -89,7 +90,9 @@ data_temp <- lapply(mnth_yr_ls, function(x){
   
   x_temp <- x %>% 
     st_as_sf(coords = c("location.long", "location.lat"), crs = wgs) %>% 
-    mutate(month_temp = extract(temp_r,.)$t2m) %>% 
+    mutate(month_temp = extract(temp_r,.)$t2m,
+           location.long = st_coordinates(.)[,1],
+           location.lat = st_coordinates(.)[,2]) %>% 
     st_drop_geometry()
 
   x_temp
