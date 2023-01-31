@@ -8,13 +8,13 @@ library(sf)
 library(mapview)
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
-
+wgs <- crs("+proj=longlat +datum=WGS84 +no_defs")
 
 #I need to make predictions with the INLA model for the entire Alpine region. i.e. I need to append enough rows with NA values to the dataset 
 #previously, I 1) only made the predictions for unique combos of dem and tri, then associate the prediction to the rest of the cells, and
 # 2) used 200 m instead of 100 m DEM. But I don't think I need to do these, because I'm using the cluster anyway
 
-# STEP 0: prep topo layers ----------------------------------------------------------------
+# STEP 0A: prep topo layers ----------------------------------------------------------------
 
 dem_100 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/dem_100.tif")
 TRI_100 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/TRI_100.tif")
@@ -24,19 +24,46 @@ Alps <- st_read("/home/enourani/ownCloud/Work/GIS_files/Alpine_perimeter/Alpine_
   st_transform(crs(TRI_100)) %>% 
   as("SpatVector")
 
-stck <- c(dem_100,TRI_100) %>% 
-  mask(Alps)
+Alps_buffer <- st_read("/home/enourani/ownCloud/Work/GIS_files/Alpine_perimeter/Alpine_Convention_Perimeter_2018_v2.shp") %>% 
+  st_transform(crs(TRI_100)) %>% 
+  st_buffer(1000) %>% 
+  as("SpatVector") #use buffered alps to make sure all temp values along the borders get transferred to the topo stack
 
-names(stck) <- c("dem_100", "TRI_100")
+stck_topo <- c(dem_100,TRI_100) %>% 
+  mask(Alps_buffer)
+
+names(stck_topo) <- c("dem_100", "TRI_100")
+
+# STEP 0B: prep temp layers ----------------------------------------------------------------
+#decade-long temp data based on 02b_temo_download_prep.R: use monthly temp for June and October
+Jun_temp <- rast("avg_temp_10yr_Jun.tif")
+Oct_temp <- rast("avg_temp_10yr_Oct.tif")
+
+#temp and topo have different extents and resolutions. make separate stacks
+stck_temp <- c(Jun_temp, Oct_temp) %>%
+  project(Alps) %>% 
+  resample(stck_topo, method="bilinear", threads = T) %>%  #match the resolution to stck_topo
+  mask(Alps_buffer)
+
+names(stck_temp) <- c("Jun_temp", "Oct_temp")
+
+stck_all <- c(stck_temp, stck_topo) %>% 
+  mask(Alps) #after putting everything in a stack, mask with the non-buffered Alps layer
+
 
 # STEP 1: prep new data ----------------------------------------------------------------
 
-#unique dem-tri combos: 4,755,351 lol
-alps_topo_df <- as.data.frame(stck, xy = T) %>% 
+alps_df <- as.data.frame(stck_all, xy = T) %>% 
   rename(location.long = x,
          location.lat = y)
+#there are 33,000 NAs. just omit them. they are at the border of the alps
+#nas_sf <- alps_df %>%  filter(is.na(Jun_temp)) %>% st_as_sf(coords = c("location.long","location.lat"), crs = wgs)
 
-saveRDS(alps_topo_df, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alps_topo_100m_df.rds")
+alps_df_no_na <- alps_df %>% 
+  drop_na(Jun_temp) %>% 
+  as.data.frame()
+  
+saveRDS(alps_df_no_na, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alps_topo_100m_temp_df.rds")
 
 #open eagle data
 all_data <- readRDS("alt_50_20_min_48_ind_static_temp_inlaready_wks.rds") %>% 
@@ -61,6 +88,8 @@ alps_data <- all_data %>%
          dem_100_z = (alps_topo_df$dem_100 - mean(all_data$dem_100))/sd(all_data$dem_100), #convert these to z-scores based on the mean and variance of the tracking data.
          TRI_100_z = (alps_topo_df$TRI_100 - mean(all_data$TRI_100))/sd(all_data$TRI_100)) %>% 
   bind_rows(all_data)
+
+
 
 saveRDS(alps_data, file = "inla_preds_for_cluster/alps_alt_50_20_min_48_ind_temp_wmissing.rds") 
 
