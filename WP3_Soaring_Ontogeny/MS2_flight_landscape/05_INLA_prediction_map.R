@@ -65,33 +65,44 @@ alps_df_no_na <- alps_df %>%
   
 saveRDS(alps_df_no_na, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alps_topo_100m_temp_df.rds")
 
+
+
+# STEP 2: create new dataset for predictions ----------------------------------------------------------------
+
+#open alps topo and temp data
+alps_df_no_na <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alps_topo_100m_temp_df.rds")
+
 #open eagle data
 all_data <- readRDS("alt_50_20_min_48_ind_static_temp_inlaready_wks.rds") %>% 
   select(c("location.long", "location.lat", "track", "stratum", "step_length", "turning_angle", "used", "ind1", "ind2", "weeks_since_emig_n", "weeks_since_emig_n_z", 
            "dem_100", "dem_100_z", "TRI_100", "TRI_100_z", "month_temp", "month_temp_z"))
 
-# STEP 2: create new dataset for predictions ----------------------------------------------------------------
 
 set.seed(500)
-n <- nrow(alps_topo_df) #unique combo of tri and dem values 
+n <- nrow(alps_df_no_na) #unique combo of tri and dem values 
 
-#prep data for week one, then (on the cluster) loop over weeks and just change the week number and run the model 
-alps_data <- all_data %>%
-  group_by(stratum) %>% 
-  slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
-  ungroup() %>% 
-  slice_sample(n = n, replace = T) %>% 
-  mutate(used = NA,
-         weeks_since_emig_n = NA, 
-         dem_100 = alps_topo_df$dem_100, #add these right here, so I won't need to back-transform later
-         TRI_100 = alps_topo_df$TRI_100,
-         dem_100_z = (alps_topo_df$dem_100 - mean(all_data$dem_100))/sd(all_data$dem_100), #convert these to z-scores based on the mean and variance of the tracking data.
-         TRI_100_z = (alps_topo_df$TRI_100 - mean(all_data$TRI_100))/sd(all_data$TRI_100)) %>% 
-  bind_rows(all_data)
+#prep data for week one, then (on the cluster) loop over weeks and just change the week number and run the model. one file per month
 
-
-
-saveRDS(alps_data, file = "inla_preds_for_cluster/alps_alt_50_20_min_48_ind_temp_wmissing.rds") 
+for(i in c("Jun_temp", "Oct_temp")){
+  
+  alps_data <- all_data %>%
+    group_by(stratum) %>% 
+    slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
+    ungroup() %>% 
+    slice_sample(n = n, replace = T) %>% 
+    mutate(used = NA,
+           weeks_since_emig_n = NA, 
+           dem_100 = alps_df_no_na %>%  pull(dem_100), #add these right here, so I won't need to back-transform later
+           TRI_100 = alps_df_no_na %>% pull(TRI_100),
+           month_temp = alps_df_no_na %>%  pull(i), #include temperature for one of the two months
+           dem_100_z = (alps_df_no_na$dem_100 - mean(all_data$dem_100))/sd(all_data$dem_100), #convert these to z-scores based on the mean and variance of the tracking data.
+           TRI_100_z = (alps_df_no_na$TRI_100 - mean(all_data$TRI_100))/sd(all_data$TRI_100),
+           month_temp_z = (alps_df_no_na %>%  pull(i) - mean(all_data$month_temp))/sd(all_data$month_temp)) %>% 
+    bind_rows(all_data)
+  
+  saveRDS(alps_data, file = paste0("inla_preds_for_cluster/alps_alt_50_20_min_48_ind_wmissing_", i, ".rds")) 
+  
+}
 
 #also prepare a vector with the sd and mean of the weeks since fledging. to be used ltr for the modeling
 weeks_since_z_info <- data.frame(mean_wks = mean(all_data$weeks_since_emig_n), #center
