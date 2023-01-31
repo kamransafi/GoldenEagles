@@ -115,7 +115,7 @@ saveRDS(weeks_since_z_info, file = "inla_preds_for_cluster/weeks_since_z_info.rd
 # STEP 3: make sure model coefficients match the original model's ----------------------------------------------------------------
 
 #list coefficient files to make sure they match the original model. check! :D
-graph_files <- list.files("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results_alps/alps_preds_Dec22/", pattern = "graph", full.names = T)
+graph_files <- list.files("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results_alps/alps_preds_Jan23/GE_ALPS/", pattern = "graph", full.names = T)
 
 #(write a ftn?) plot the coefficients
 lapply(graph_files, function(wk){
@@ -138,18 +138,18 @@ lapply(graph_files, function(wk){
   #X11(width = 4.7, height = 2.7)
   
   coefs <- ggplot(graph, aes(x = Estimate, y = Factor)) +
-    geom_vline(xintercept = 0, linetype="dashed", 
+    geom_vline(xintercept = 0, linetype = "dashed", 
                color = "gray", size = 0.5) +
     geom_point(color = "cornflowerblue", size = 2)  +
-    xlim(-0.1,0.5) +
+    #xlim(-0.2,0.6) +
     scale_y_discrete(name = "",
-                     labels = c("Weeks since dispersal * TRI","Weeks since dispersal * DEM", "TRI", "DEM")) +
-    geom_linerange(aes(xmin = Lower, xmax = Upper),color = "cornflowerblue", size = 1) +
+                     labels = c("Weeks since dispersal * TRI","Weeks since dispersal * DEM", "Montly temperature", "TRI", "DEM")) +
+    geom_linerange(aes(xmin = Lower, xmax = Upper), color = "cornflowerblue", size = 1) +
     theme_classic()
   
   
   ggsave(plot = coefs, 
-         filename = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/weekly_alps_preds_dec2/inla_coeffs_48ind_", str_sub(wk,-7,-5),".png"), 
+         filename = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/weekly_alps_preds_jan23/inla_coeffs_48ind_", str_sub(wk,-7,-5),".png"), 
          width = 4.7, height = 2.7, dpi = 300) #they are all the same. so should be OK
   
 })
@@ -164,42 +164,42 @@ lapply(graph_files, function(wk){
 
 
 #open original data
-all_data <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_inlaready_wks.rds")
-
+all_data <- readRDS("alt_50_20_min_48_ind_static_temp_inlaready_wks.rds") 
+alps_df_no_na <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alps_topo_100m_temp_df.rds")
 #list prediction files
-pred_files <- list.files("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results_alps/alps_preds_Dec22/", 
-                         pattern = "preds", full.names = T)
-
-#open the alpine region dataframe.
-alps_topo_df <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alps_topo_df.rds")
-
-tri_200 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/tri_200.tif")
-
-#open Apline perimeter layer
-Alps <- st_read("/home/enourani/ownCloud/Work/GIS_files/Alpine_perimeter/Alpine_Convention_Perimeter_2018_v2.shp") %>% 
-  st_transform(crs(tri_200)) %>% 
-  as("SpatVector")
-
-#explore the variation in the predictions for each week
-lapply(pred_files, function(wk){
-  
-  preds <- readRDS(wk) %>% 
-    mutate(wk_n = str_sub(wk,-7,-5),
-           #backtransform the z-scores
-           tri_200 = (TRI_100_z * sd(all_data$TRI_100)) + mean(all_data$TRI_100),   #round the values for easier matching with the original alps data
-           dem_200 = (dem_100_z * sd(all_data$dem_100)) + mean(all_data$dem_100),
-           weeks_since_emig_n = (weeks_since_emig_n_z * sd(all_data$weeks_since_emig_n)) + mean(all_data$weeks_since_emig_n)) #%>% #this will have one value. because each lapply round includes infor for one week
-  
-  #append the predictions to the original alps topo data. 
-  alps_preds <- alps_topo_df %>% 
-    left_join(preds, by = c("dem_200", "tri_200"))
-
-  png(paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/weekly_alps_preds_dec2/histograms/wk_", str_sub(wk,-7,-5),".png"),
-      width = 4.7, height = 2.7, units = "in", res = 300)  
-  hist(alps_preds$prob_pres)
-  dev.off()
-  
-    })
+# pred_files <- list.files("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results_alps/alps_preds_Jan23/GE_ALPS/", 
+#                          pattern = "preds", full.names = T)
+# 
+# #open the alpine region dataframe.
+# alps_topo_df <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alps_topo_df.rds")
+# 
+# tri_200 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/tri_200.tif")
+# 
+# #open Apline perimeter layer
+# Alps <- st_read("/home/enourani/ownCloud/Work/GIS_files/Alpine_perimeter/Alpine_Convention_Perimeter_2018_v2.shp") %>% 
+#   st_transform(crs(tri_200)) %>% 
+#   as("SpatVector")
+# 
+# #explore the variation in the predictions for each week
+# lapply(pred_files, function(wk){
+#   
+#   preds <- readRDS(wk) %>% 
+#     mutate(wk_n = str_sub(wk,-7,-5),
+#            #backtransform the z-scores
+#            tri_200 = (TRI_100_z * sd(all_data$TRI_100)) + mean(all_data$TRI_100),   #round the values for easier matching with the original alps data
+#            dem_200 = (dem_100_z * sd(all_data$dem_100)) + mean(all_data$dem_100),
+#            weeks_since_emig_n = (weeks_since_emig_n_z * sd(all_data$weeks_since_emig_n)) + mean(all_data$weeks_since_emig_n)) #%>% #this will have one value. because each lapply round includes infor for one week
+#   
+#   #append the predictions to the original alps topo data. 
+#   alps_preds <- alps_topo_df %>% 
+#     left_join(preds, by = c("dem_200", "tri_200"))
+# 
+#   png(paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/weekly_alps_preds_dec2/histograms/wk_", str_sub(wk,-7,-5),".png"),
+#       width = 4.7, height = 2.7, units = "in", res = 300)  
+#   hist(alps_preds$prob_pres)
+#   dev.off()
+#   
+#     })
 
 
 
@@ -210,15 +210,16 @@ lapply(pred_files, function(wk){
   preds <- readRDS(wk) %>% 
     mutate(wk_n = str_sub(wk,-7,-5),
            #backtransform the z-scores
-           tri_200 = (TRI_100_z * sd(all_data$TRI_100)) + mean(all_data$TRI_100),   #round the values for easier matching with the original alps data
-           dem_200 = (dem_100_z * sd(all_data$dem_100)) + mean(all_data$dem_100),
+           TRI_100 = (TRI_100_z * sd(all_data$TRI_100)) + mean(all_data$TRI_100),  
+           dem_100 = (dem_100_z * sd(all_data$dem_100)) + mean(all_data$dem_100),
+           month_temp = (month_temp_z * sd(all_data$month_temp)) + mean(all_data$month_temp),
            weeks_since_emig_n = (weeks_since_emig_n_z * sd(all_data$weeks_since_emig_n)) + mean(all_data$weeks_since_emig_n)) #%>% #this will have one value. because each lapply round includes infor for one week
     #match the prediction values to the alps_df
     #full_join(alps_topo_df, by = c("dem_200", "tri_200"))
 
   #append the predictions to the original alps topo data. 
-  alps_preds <- alps_topo_df %>% 
-  left_join(preds, by = c("dem_200", "tri_200"))
+  alps_preds <- alps_df_no_na %>% 
+  left_join(preds, by = c("dem_100", "TRI_100"))
   
   r <- rast(alps_preds[,c("x", "y", "prob_pres")], crs = crs(Alps)) #use the ggplot code at the end to plot it. reorder the columns
   
