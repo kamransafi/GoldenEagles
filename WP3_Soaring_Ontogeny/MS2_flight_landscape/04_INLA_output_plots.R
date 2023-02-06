@@ -1,4 +1,4 @@
-# create figures for INLA model for landscape level changes in GE flight. follows up on energy_landscape_modeling_method1.R and /home/mahle68/ownCloud/Work/cluster_computing/GE_inla_static/
+# create figures for INLA model for landscape level changes in GE flight. follows up on energy_landscape_modeling_method1.R and /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/
 #Jul 19. 2022. Konstanz, DE
 #Elham Nourani
 
@@ -10,12 +10,12 @@ library(sf)
 library(scales)
 library(patchwork) #patching up interaction plots
 
-setwd("/home/mahle68/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
+setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
 
 # PLOT 1: coefficient plots ----------------------------------------------------------------------------------------------------
 
-graph <- readRDS("/home/mahle68/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23/graph_M_main.rds")
+graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23_no_temp/graph_M_main.rds")
 
 #remove weeks since dispersal
 graph <- graph[graph$Factor != "weeks_since_emig_n_z",]
@@ -40,21 +40,19 @@ coefs <- ggplot(graph, aes(x = Estimate, y = Factor)) +
   geom_point(color = "cornflowerblue", size = 2)  +
   xlim(-0.1,0.6) +
   scale_y_discrete(name = "",
-                   labels = c("Weeks since dispersal * TRI","Weeks since dispersal * DEM", "Monthly temperature", "TRI", "DEM")) +
+                   labels = c("Weeks since dispersal * TRI","Weeks since dispersal * DEM", "TRI", "DEM")) +
   geom_linerange(aes(xmin = Lower, xmax = Upper),color = "cornflowerblue", size = 1) +
   theme_classic()
   
 
-ggsave(plot = coefs, filename = "/home/mahle68/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_coefs_static_w_rnd_wk_temp_48.png", 
+ggsave(plot = coefs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_coefs_static_FEB23.png", 
        width = 4.7, height = 2.7, dpi = 300)
-
-
 
 
 # PLOT 2: interaction plots ----------------------------------------------------------------------------------------------------
 
-all_data <- readRDS("/home/mahle68/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_temp_inlaready_wks.rds")
-preds <- readRDS("/home/mahle68/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23/preds_M_main.rds")
+all_data <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_temp_inlaready_wks.rds")
+preds <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23_no_temp/preds_M_main.rds")
 
 y_axis_var <- c("dem_100_z", "TRI_100_z")
 x_axis_var <- "weeks_since_emig_n_z"
@@ -86,7 +84,7 @@ for (i in y_axis_var){
            x = which(names(.) == x_axis_var)) %>% #weeks since emig
     as.data.frame()
   
-  saveRDS(avg_pred, file = paste0("inla_pred_w_random_n48_temp_df_", i,".rds"))
+  saveRDS(avg_pred, file = paste0("inla_pred_FEB23_", i,".rds"))
   
   #create a raster
   #r <- rast(avg_pred[,c("x", "y", "avg_pres")], crs = "+proj=longlat +datum=WGS84") #use the ggplot code at the end to plot it. reorder the columns
@@ -98,20 +96,21 @@ for (i in y_axis_var){
 
 #######use ggplot
 
-r_dem <- readRDS("inla_pred_w_random_n48_temp_df_dem_100_z.rds")
-r_rug <- readRDS("inla_pred_w_random_n48_temp_df_TRI_100_z.rds")
+r_dem <- readRDS("inla_pred_FEB23_dem_100_z.rds")
+r_rug <- readRDS("inla_pred_FEB23_TRI_100_z.rds")
 
 X11(width = 6, height = 4)
 
 p_rugg <- ggplot(data = r_rug) +
   geom_tile(aes(x = x, y = y, fill = avg_pres)) +
   #scale_fill_gradientn(colours = oce::oceColorsPalette(80), limits = c(0,1), 
-  scale_fill_gradient2(low = "lightslateblue", mid = "white", high = "firebrick1",limits = c(0,1), midpoint = 0.5,
+  scale_fill_gradient2(low = "lightslateblue", mid = "seashell2", high = "firebrick1",limits = c(0,1), midpoint = 0.5,
                        na.value = "white", name = "Intensity of use") +
-  theme_minimal() +
-  labs(x = "Weeks since dispersal", y = "Ruggedness")
+  labs(x = "Weeks since dispersal", y = "Terrain Ruggedness \n Index") +
+  theme_classic()
+ 
 
-ggsave(plot = p_rugg, filename = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_preds_static_w_rnd_wk_48n_",i, ".png"), 
+ggsave(plot = p_rugg, filename = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_preds_FEB23_",i, ".png"), 
        width = 6, height = 4, dpi = 300)
 
 
@@ -121,37 +120,50 @@ X11(width = 6, height = 4)
 p_dem <- ggplot(data = r_dem) +
   geom_tile(aes(x = x, y = y, fill = avg_pres)) +
   #scale_fill_gradientn(colours = oce::oceColorsPalette(80), limits = c(0,1), 
-  scale_fill_gradient2(low = "lightslateblue", mid = "white", high = "firebrick1",limits = c(0,1), midpoint = 0.5,
+  scale_fill_gradient2(low = "lightslateblue", mid = "seashell2", high = "firebrick1",limits = c(0,1), midpoint = 0.5,
                        na.value = "white", name = "Intensity of use") +
-  theme_minimal() +
-  labs(x = "Weeks since dispersal", y = "Elevation (m)")
+  labs(x = "", y = "Elevation \n (m)") +
+  theme_classic()
+  
 
-ggsave(plot = p_dem, filename = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_preds_static_w_rnd_wk_48n_",i, ".png"), 
+ggsave(plot = p_dem, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_preds_FEB23_dem100.png", 
        width = 6, height = 4, dpi = 300)
 
 #put both plots in one device
-X11(width = 10, height = 4)
+X11(width = 9, height = 4)
 combined <- p_dem + p_rugg & theme(legend.position = "right")
-p_2 <- combined + plot_layout(guides = "collect")
+(p_2  <- combined + plot_layout(guides = "collect", nrow = 2))
 
-ggsave(plot = p_2, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_preds_static_w_rnd_wk_n48.png", 
-       width = 10, height = 4, dpi = 300)
+
+
+ggsave(plot = p_2, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_preds_interaction_FEB23.png", 
+       width = 9, height = 4, dpi = 300)
+
+
+#interpolate to get rid of white spaces!!!!!!!!!!!
+
 
 
 # PLOT 3: individual variation plots ----------------------------------------------------------------------------------------------------
 
-rnd <- readRDS("/home/mahle68/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23/rnd_coeff_M_main.rds")
+rnd <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23_no_temp/rnd_coeff_M_main.rds")
+
+graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23_no_temp/graph_M_main.rds")
 
 #!!!!!!!!make sure to add the coefficient to these.
-
-
 names <- rnd[[2]]$ID
 
 dem <- rnd[[2]] %>% 
-  mutate(variable = "DEM")
+  mutate(coef = mean + graph %>% filter(Factor == "dem_100_z") %>% pull(Estimate),
+         lower = .[,4] +  graph %>% filter(Factor == "dem_100_z") %>% pull(Lower),
+         upper = .[,6] +  graph %>% filter(Factor == "dem_100_z") %>% pull(Upper),
+         variable = "DEM")
 
 two_vars <- rnd[[3]] %>% 
-  mutate(variable = "TRI") %>% 
+  mutate(coef = mean + graph %>% filter(Factor == "TRI_100_z") %>% pull(Estimate),
+         lower = .[,4] +  graph %>% filter(Factor == "TRI_100_z") %>% pull(Lower),
+         upper = .[,6] +  graph %>% filter(Factor == "TRI_100_z") %>% pull(Upper),
+         variable = "TRI") %>% 
   bind_rows(dem)
 
 cols <- c(DEM = "lightcoral",
@@ -159,17 +171,20 @@ cols <- c(DEM = "lightcoral",
 
 #plot two_vars
 X11(width = 7, height = 9)
-(coefs_inds <- ggplot(two_vars, aes(x = mean, y = ID, color = variable)) +
-    geom_vline(xintercept = 0, linetype="dashed", 
-               color = "gray25", size = 0.5) +
+(coefs_inds <- ggplot(two_vars, aes(x = coef, y = ID, color = variable)) +
+    # geom_vline(xintercept = 0, linetype="dashed", 
+    #             color = "gray25", size = 0.5) +
+    geom_vline(xintercept = graph %>% filter(Factor == "dem_100_z") %>% pull(Estimate), linetype="dashed", 
+               color = "lightcoral", size = 0.5) +
+    geom_vline(xintercept = graph %>% filter(Factor == "TRI_100_z") %>% pull(Estimate), linetype="dashed", 
+               color = "cornflowerblue", size = 0.5) +
     geom_point(size = 2, position = position_dodge(width = .7))  +
-    geom_linerange(aes(xmin = two_vars[, 4], xmax = two_vars[, 6]), size = 0.8, position = position_dodge(width = .7)) +
+    geom_linerange(aes(xmin = lower, xmax = upper), size = 0.8, position = position_dodge(width = .7)) +
     scale_color_manual(values = cols) + 
-    theme_minimal()) +
-  labs(x = "Estimate", y = "")
+    labs(x = "Estimate", y = "") +
+    theme_classic()) 
 
-
-ggsave(plot = coefs_inds, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/ind_coefs_static_w_rnd_wk_48.png", 
+ggsave(plot = coefs_inds, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/ind_coefs_FEB23.png", 
        width = 7.5, height = 10, dpi = 300)
 
 

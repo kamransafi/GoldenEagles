@@ -7,7 +7,7 @@ library(terra)
 library(sf)
 library(mapview)
 
-setwd("/home/mahle68/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
+setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 wgs <- crs("+proj=longlat +datum=WGS84 +no_defs")
 
 #I need to make predictions with the INLA model for the entire Alpine region. i.e. I need to append enough rows with NA values to the dataset 
@@ -79,8 +79,17 @@ all_data <- readRDS("alt_50_20_min_48_ind_static_temp_inlaready_wks.rds") %>%
 
 
 set.seed(500)
-n <- nrow(alps_df_no_na) #unique combo of tri and dem values 
+n <- nrow(alps_df_no_na) 
 
+#unique combo of tri and dem values 
+n_unique <- alps_df_no_na %>% 
+  distinct(dem_100, TRI_100) %>% 
+  nrow()
+  #group_by(dem_100, TRI_100) %>% 
+  #slice(1) %>% 
+  #ungroup() %>% 
+  #nrow()
+  
 #prep data for week one, then (on the cluster) loop over weeks and just change the week number and run the model. one file per month
 
 for(i in c("Jun_temp", "Oct_temp")){
