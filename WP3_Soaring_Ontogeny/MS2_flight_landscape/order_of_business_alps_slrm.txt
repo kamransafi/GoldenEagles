@@ -1,0 +1,62 @@
+#Submit the alpine prediction job to cluster
+#Jan 31. 2023. Konstanz, DE.
+#Elham Nourani, PhD
+
+#from terminal on local system: (make sure to be on MPI internet, use VPN)
+#the file with all data (no missing values)
+
+#copy over the dataset-----------------------------------------------------------------
+scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/inla_preds_for_cluster/alps_alt_50_20_min_48_ind_wmissing_Jun_temp.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/slrm_jobs/
+  
+#copy over info for backtransforming the week values
+scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/inla_preds_for_cluster/weeks_since_z_info.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/slrm_jobs/
+  
+#copy over Rscript
+scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/GoldenEagles/WP3_Soaring_Ontogeny/MS2_flight_landscape/cluster_prep/alpine_pred_slrm.R enourani@raven.mpcdf.mpg.de:/raven/u/enourani/slrm_jobs/
+  
+#copy over slrm file
+scp /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/alps_preds_slrm/inla_alps.slrm enourani@raven.mpcdf.mpg.de:/raven/u/enourani/slrm_jobs/
+  
+
+#make sure paradiso license is on the cluster
+#scp /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/pardiso.lic enourani@raven.mpcdf.mpg.de:/raven/u/enourani/slrm_jobs/
+  
+#ssh to cluster-----------------------------------------------------------------
+# if not on MPI network: 
+ssh enourani@gate.mpcdf.mpg.de
+ssh raven.mpcdf.mpg.de
+
+#if on MPI network:
+ssh enourani@raven.mpcdf.mpg.de
+
+
+# make sure slrm and R file are in the same folder. and that this folder is the main directory named in the slrm file -----------------------------------------------------------------
+inla.alps.slrm
+alpine_pred_slrm.R
+
+#submit job: run the slrm command from home  -----------------------------------------------------------------
+
+sbatch slrm_jobs/inla_alps.slrm
+
+
+#########################
+#check for any errors and messages when R code was running
+cat errorlog
+
+#check the status of the job
+squeue --user=enourani
+#########################
+
+#STEP 3: copy results over to local system -------------------------------------------------------------------
+
+#on cluster: remove the data files
+#move results to a different folder
+#rm GE_ALPS/alps_alt_50_20_min_48_ind_wmissing_Jun_temp.rds
+#rm GE_ALPS/weeks_since_z_info.rds
+
+
+#from local terminal
+
+scp -r enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_ALPS/ /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results_alps/alps_preds_Jan23
+
+

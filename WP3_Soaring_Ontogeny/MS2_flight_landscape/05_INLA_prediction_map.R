@@ -7,7 +7,7 @@ library(terra)
 library(sf)
 library(mapview)
 
-setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
+setwd("/home/mahle68/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 wgs <- crs("+proj=longlat +datum=WGS84 +no_defs")
 
 #I need to make predictions with the INLA model for the entire Alpine region. i.e. I need to append enough rows with NA values to the dataset 
@@ -167,18 +167,15 @@ lapply(graph_files, function(wk){
 all_data <- readRDS("alt_50_20_min_48_ind_static_temp_inlaready_wks.rds") 
 alps_df_no_na <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alps_topo_100m_temp_df.rds")
 #list prediction files
-# pred_files <- list.files("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results_alps/alps_preds_Jan23/GE_ALPS/", 
-#                          pattern = "preds", full.names = T)
-# 
-# #open the alpine region dataframe.
-# alps_topo_df <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alps_topo_df.rds")
-# 
-# tri_200 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/tri_200.tif")
-# 
-# #open Apline perimeter layer
-# Alps <- st_read("/home/enourani/ownCloud/Work/GIS_files/Alpine_perimeter/Alpine_Convention_Perimeter_2018_v2.shp") %>% 
-#   st_transform(crs(tri_200)) %>% 
-#   as("SpatVector")
+ pred_files <- list.files("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results_alps/alps_preds_Jan23/GE_ALPS/", 
+                          pattern = "preds", full.names = T)
+
+tri_200 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/tri_200.tif")
+ 
+#open Apline perimeter layer
+ Alps <- st_read("/home/enourani/ownCloud/Work/GIS_files/Alpine_perimeter/Alpine_Convention_Perimeter_2018_v2.shp") %>% 
+   st_transform(crs(tri_200)) %>% 
+   as("SpatVector")
 # 
 # #explore the variation in the predictions for each week
 # lapply(pred_files, function(wk){
@@ -201,12 +198,15 @@ alps_df_no_na <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_s
 #   
 #     })
 
+ 
+#open new data
+new_data <- readRDS("inla_preds_for_cluster/alps_alt_50_20_min_48_ind_wmissing_Jun_temp.rds")
 
+used_na <- which(is.na(new_data$used)) #the NA rows are at the beginning of new data
 
-#old: add one column per week, and cbind the prediction values with the original alps_topo_df based on TRI and TPI
 #create one map per week
 lapply(pred_files, function(wk){
-  
+
   preds <- readRDS(wk) %>% 
     mutate(wk_n = str_sub(wk,-7,-5),
            #backtransform the z-scores
@@ -222,7 +222,6 @@ lapply(pred_files, function(wk){
   left_join(preds, by = c("dem_100", "TRI_100"))
   
   r <- rast(alps_preds[,c("x", "y", "prob_pres")], crs = crs(Alps)) #use the ggplot code at the end to plot it. reorder the columns
-  
   
 })
 

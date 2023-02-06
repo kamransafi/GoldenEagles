@@ -15,11 +15,11 @@ setwd("/home/mahle68/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
 # PLOT 1: coefficient plots ----------------------------------------------------------------------------------------------------
 
-graph <- readRDS("/home/mahle68/ownCloud/Work/cluster_computing/GE_inla_static/results/graph_M_pred.rds")
+graph <- readRDS("/home/mahle68/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23/graph_M_main.rds")
 
 #remove weeks since dispersal
 graph <- graph[graph$Factor != "weeks_since_emig_n_z",]
-droplevels(graph$Factor)
+#droplevels(graph$Factor)
 VarOrder <- rev(unique(graph$Factor))
 VarNames <- VarOrder
 
@@ -38,14 +38,14 @@ coefs <- ggplot(graph, aes(x = Estimate, y = Factor)) +
   geom_vline(xintercept = 0, linetype="dashed", 
              color = "gray", size = 0.5) +
   geom_point(color = "cornflowerblue", size = 2)  +
-  xlim(-0.1,0.5) +
+  xlim(-0.1,0.6) +
   scale_y_discrete(name = "",
-                   labels = c("Weeks since dispersal * TRI","Weeks since dispersal * DEM", "TRI", "DEM")) +
+                   labels = c("Weeks since dispersal * TRI","Weeks since dispersal * DEM", "Monthly temperature", "TRI", "DEM")) +
   geom_linerange(aes(xmin = Lower, xmax = Upper),color = "cornflowerblue", size = 1) +
   theme_classic()
   
 
-ggsave(plot = coefs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_coefs_static_w_rnd_wk_48minimal.png", 
+ggsave(plot = coefs, filename = "/home/mahle68/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_coefs_static_w_rnd_wk_temp_48.png", 
        width = 4.7, height = 2.7, dpi = 300)
 
 
@@ -53,15 +53,14 @@ ggsave(plot = coefs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontoge
 
 # PLOT 2: interaction plots ----------------------------------------------------------------------------------------------------
 
-all_data <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_inlaready_wks.rds")
-#new_data <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/alt_50_20_min_48_ind_static_inlaready_wmissing_wks.rds")
-preds <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/preds_M_preds.rds")
+all_data <- readRDS("/home/mahle68/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_temp_inlaready_wks.rds")
+preds <- readRDS("/home/mahle68/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23/preds_M_main.rds")
 
 y_axis_var <- c("dem_100_z", "TRI_100_z")
 x_axis_var <- "weeks_since_emig_n_z"
 
-labels <- data.frame(var = c("dem_100_z", "TRI_100_z","weeks_since_emig_n_z"),
-                     label = c("Altitude (m.asl)", "Terrain ruggedness index", "Weeks since dispersal"))
+#labels <- data.frame(var = c("dem_100_z", "TRI_100_z","weeks_since_emig_n_z"),
+#                     label = c("Altitude (m.asl)", "Terrain ruggedness index", "Weeks since dispersal"))
 
 
 #extract center and scale values for time variable, to be used for back transformation. The y-axis attributes will be extracted in the for loop
@@ -87,7 +86,7 @@ for (i in y_axis_var){
            x = which(names(.) == x_axis_var)) %>% #weeks since emig
     as.data.frame()
   
-  saveRDS(avg_pred, file = paste0("inla_pred_w_random_n48_df_", i,".rds"))
+  saveRDS(avg_pred, file = paste0("inla_pred_w_random_n48_temp_df_", i,".rds"))
   
   #create a raster
   #r <- rast(avg_pred[,c("x", "y", "avg_pres")], crs = "+proj=longlat +datum=WGS84") #use the ggplot code at the end to plot it. reorder the columns
@@ -99,8 +98,8 @@ for (i in y_axis_var){
 
 #######use ggplot
 
-r_dem <- readRDS("inla_pred_w_random_n48_df_dem_100_z.rds")
-r_rug <- readRDS("inla_pred_w_random_n48_df_TRI_100_z.rds")
+r_dem <- readRDS("inla_pred_w_random_n48_temp_df_dem_100_z.rds")
+r_rug <- readRDS("inla_pred_w_random_n48_temp_df_TRI_100_z.rds")
 
 X11(width = 6, height = 4)
 
@@ -141,7 +140,7 @@ ggsave(plot = p_2, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny
 
 # PLOT 3: individual variation plots ----------------------------------------------------------------------------------------------------
 
-rnd <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/rnd_coeff_M_preds.rds")
+rnd <- readRDS("/home/mahle68/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23/rnd_coeff_M_main.rds")
 
 #!!!!!!!!make sure to add the coefficient to these.
 

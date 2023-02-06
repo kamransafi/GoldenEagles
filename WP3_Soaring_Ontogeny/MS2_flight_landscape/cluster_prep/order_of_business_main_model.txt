@@ -4,7 +4,7 @@
 #From terminal on local system: (make sure to be on MPI internet, use VPN)
 #The file with all data (no missing values)
 
-scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_temp_inlaready_wmissing_wks.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/INLA_GE/
+scp /home/mahle68/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_temp_inlaready_wmissing_wks_n1500.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/INLA_GE/
   
 #coy over paradiso license
 scp /home/mahle68/ownCloud/Work/cluster_computing/GE_inla_static/pardiso.lic enourani@raven.mpcdf.mpg.de:/raven/u/enourani/
@@ -42,7 +42,7 @@ library(INLA)
 inla.setOption(pardiso.license = "pardiso.lic")
 
 #open file
-new_data <- readRDS("alt_50_20_min_48_ind_static_temp_inlaready_wmissing_wks.rds")
+new_data <- readRDS("alt_50_20_min_48_ind_static_temp_inlaready_wmissing_wks_n1500.rds")
 
 #-----------------------------------------------------------------------------------------------
 # STEP 1: MODEL WITH NO MISSING VALUES. predictors: dem, tri, temperature. include missing values for plotting the interactions
@@ -123,9 +123,9 @@ saveRDS(summ_rndm, file = "rnd_coeff_M_main.rds")
 #-----------------------------------------------------------------------------------------------
 # STEP 3: TRANSFER FILES TO LOCAL MACHINE
 ## in the cluster, remove the input rds file
-rm INLA_GE/alt_50_20_min_48_ind_static_temp_inlaready_wmissing_wks.rds
+rm INLA_GE/alt_50_20_min_48_ind_static_temp_inlaready_wmissing_wks_n1500.rds
 
 
 ## copy files back to local machine.. from local terminal
-scp -r enourani@raven.mpcdf.mpg.de:/raven/u/enourani/INLA_GE /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Jan23
+scp -r enourani@raven.mpcdf.mpg.de:/raven/u/enourani/INLA_GE/ /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23
 

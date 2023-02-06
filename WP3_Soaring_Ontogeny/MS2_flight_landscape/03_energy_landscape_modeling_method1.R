@@ -154,7 +154,8 @@ all_data <- readRDS("alt_50_20_min_48_ind_static_temp_inlaready_wks.rds")
 #add one new row to unique strata instead of entire empty copies of strata. assign week since emigration and terrain values on a regular grid, so we can make a raster later on
 set.seed(500)
 
-n <- 100
+#n needs to be large enough to cover the whole range of 
+n <- 1500
 
 new_data <- all_data %>%
   group_by(stratum) %>% 
@@ -162,13 +163,13 @@ new_data <- all_data %>%
   ungroup() %>% 
   slice_sample(n = n, replace = F) %>% 
   mutate(used = NA,
-         month_temp_z = sample(seq(min(all_data$month_temp_z),max(all_data$month_temp_z), length.out = 10), n, replace = T),
+         month_temp_z = all_data %>%  filter(month_temp == median(month_temp)) %>%  slice(1) %>%  pull(month_temp_z), #assign mean temp for all rows
          weeks_since_emig_n = sample(seq(min(all_data$weeks_since_emig_n),max(all_data$weeks_since_emig_n), length.out = 10), n, replace = T), 
          dem_100_z = sample(seq(min(all_data$dem_100_z),max(all_data$dem_100_z), length.out = 10), n, replace = T),
          TRI_100_z = sample(seq(min(all_data$TRI_100_z),max(all_data$TRI_100_z), length.out = 10), n, replace = T)) %>% 
   full_join(all_data)
 
-saveRDS(new_data,"alt_50_20_min_48_ind_static_temp_inlaready_wmissing_wks.rds")
+saveRDS(new_data,"alt_50_20_min_48_ind_static_temp_inlaready_wmissing_wks_n1500.rds")
 
 
 #the model will be run on the cluster. see cluster_prep/order_of_business_main_model.txt

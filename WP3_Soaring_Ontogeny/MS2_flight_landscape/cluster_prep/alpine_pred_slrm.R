@@ -1,40 +1,9 @@
-#from terminal on local system: (make sure to be on MPI internet, use VPN)
-#the file with all data (no missing values)
-
-#copy over the dataset-----------------------------------------------------------------
-scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/inla_preds_for_cluster/alps_alt_50_20_min_48_ind_wmissing_Jun_temp.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_ALPS/
-
-#copy over info for backtransforming the week values
-scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/inla_preds_for_cluster/weeks_since_z_info.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_ALPS/
-
-#make sure paradiso license is on the cluster
-#scp /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/pardiso.lic enourani@raven.mpcdf.mpg.de:/raven/u/enourani/
-
-#ssh to cluster-----------------------------------------------------------------
-# if not on MPI network: 
-ssh enourani@gate.mpcdf.mpg.de
-ssh raven.mpcdf.mpg.de
-
-#if on MPI network:
-ssh enourani@raven.mpcdf.mpg.de
+#R script to predict the flyability of the alpine region for golden eagle juvies
+#Elham Nourani, PhD
+#Jan 31, 2023. Konstanz, DE
 
 
-#load R-----------------------------------------------------------------
-module purge
-module load gcc/10 R/4.2 gdal gsl/2.4
-
-#open R in new screen
-screen -S inlaGE
-R
-
-#to detach screen anytime, ctr+A,D
-#to go back to the scree: screen -d -r myScreenName
-#list of screens: screen -list
-#kill screen: screen -S myScreenName -X quit 
-
-######in R
-
-setwd("GE_ALPS")
+#setwd("GE_ALPS")
 
 library(tidyverse)
 library(INLA)
@@ -45,7 +14,12 @@ inla.setOption(pardiso.license = "pardiso.lic")
 weeks <- c(1, 2, 3, 4, 24, 48, 104) 
 
 alps_data <- readRDS("alps_alt_50_20_min_48_ind_wmissing_Jun_temp.rds") %>% 
-as.data.frame()
+  as.data.frame() 
+
+#try with a sample to test the cluster
+#alps_data <- alps_data %>% 
+#  group_by(used) %>% 
+#  slice(1:1000)
 
 weeks_z_info <- readRDS("weeks_since_z_info.rds")
 
@@ -66,35 +40,30 @@ prec.beta <- 1e-4
 
 #STEP 2: build one model per week ------------------------------------------------------------------------
 
-lapply(weeks, function(x){
-  
+#lapply(weeks, function(x){
+ 
+for(x in weeks){ 
   #create the new data
   new_data <- alps_data %>%
-  mutate(weeks_since_emig_n = replace_na(weeks_since_emig_n, x)) %>%
+    mutate(weeks_since_emig_n = replace_na(weeks_since_emig_n, x)) %>%
     rowwise() %>%
     mutate(weeks_since_emig_n_z = (weeks_since_emig_n - weeks_z_info$mean_wks)/weeks_z_info$sd_wks) #estimate z-score based on original data
-
-
-#try with a sample
-#strata <- sample(unique(new_data$stratum), 100)
-#new_data <- new_data %>% 
-#filter(stratum %in% strata)
-
+  
   #run model
   
   (b <- Sys.time())
   M_pred <- inla(formulaM, family = "Poisson", 
-               control.fixed = list(
-                 mean = mean.beta,
-                 prec = list(default = prec.beta)),
-               data = new_data, 
-               num.threads = 20,
-               control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
-               control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = F), #deactivate cpo to save computing power
-               inla.mode="experimental")
-Sys.time() - b
-
-
+                 control.fixed = list(
+                   mean = mean.beta,
+                   prec = list(default = prec.beta)),
+                 data = new_data, 
+                 num.threads = 20,
+                 control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
+                 control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = F), #deactivate cpo to save computing power
+                 inla.mode="experimental")
+  Sys.time() - b
+  
+  
   #save results
   
   # extract info for coefficient plots
@@ -104,7 +73,7 @@ Sys.time() - b
   colnames(graph)[which(colnames(graph)%in%c("0.025quant","0.975quant"))]<-c("Lower","Upper")
   colnames(graph)[which(colnames(graph)%in%c("0.05quant","0.95quant"))]<-c("Lower","Upper")
   colnames(graph)[which(colnames(graph)%in%c("mean"))]<-c("Estimate")
-
+  
   graph$Factor <- rownames(graph)
   
   saveRDS(graph, file = paste0("graph_M_pred_wk", x, ".rds"))
@@ -127,19 +96,8 @@ Sys.time() - b
   
   saveRDS(preds, file = paste0("preds_M_pred_wk", x, ".rds"))
   
-})
-
-
-#STEP 3: copy results over to local system -------------------------------------------------------------------
-
-#on cluster: remove the data files
-#move results to a different folder
-#rm GE_ALPS/alps_alt_50_20_min_48_ind_wmissing_Jun_temp.rds
-#rm GE_ALPS/weeks_since_z_info.rds
-
-
-#from local terminal
-
-scp -r enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_ALPS/ /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results_alps/alps_preds_Jan23
+  rm(M_pred,preds, graph)
+  gc(gc())
+}
 
 
