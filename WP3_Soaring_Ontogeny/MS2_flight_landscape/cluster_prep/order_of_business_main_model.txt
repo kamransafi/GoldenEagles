@@ -4,10 +4,10 @@
 #From terminal on local system: (make sure to be on MPI internet, use VPN)
 #The file with all data (no missing values)
 
-scp /home/mahle68/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_temp_inlaready_wmissing_wks_n1500.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/INLA_GE/
+scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_temp_inlaready_wmissing_wks_n1500.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/INLA_GE/
   
 #coy over paradiso license
-scp /home/mahle68/ownCloud/Work/cluster_computing/GE_inla_static/pardiso.lic enourani@raven.mpcdf.mpg.de:/raven/u/enourani/
+scp /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/pardiso.lic enourani@raven.mpcdf.mpg.de:/raven/u/enourani/
   
 #ssh to cluster
   
@@ -51,7 +51,7 @@ new_data <- readRDS("alt_50_20_min_48_ind_static_temp_inlaready_wmissing_wks_n15
 formulaM <- used ~ -1 + 
   dem_100_z * weeks_since_emig_n_z +
   TRI_100_z * weeks_since_emig_n_z + 
-  month_temp_z +
+  #month_temp_z + #dont include temperature
   f(stratum, model = "iid", 
     hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
   f(ind1, dem_100_z, model = "iid",
@@ -122,10 +122,6 @@ saveRDS(summ_rndm, file = "rnd_coeff_M_main.rds")
 
 #-----------------------------------------------------------------------------------------------
 # STEP 3: TRANSFER FILES TO LOCAL MACHINE
-## in the cluster, remove the input rds file
-rm INLA_GE/alt_50_20_min_48_ind_static_temp_inlaready_wmissing_wks_n1500.rds
-
 
 ## copy files back to local machine.. from local terminal
-scp -r enourani@raven.mpcdf.mpg.de:/raven/u/enourani/INLA_GE/ /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23
-
+scp enourani@raven.mpcdf.mpg.de:/raven/u/enourani/INLA_GE/*_M_main.rds /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23_no_temp
