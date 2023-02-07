@@ -5,6 +5,8 @@
 
 #setwd("GE_ALPS")
 
+
+
 library(tidyverse)
 library(INLA)
 inla.setOption(pardiso.license = "pardiso.lic")
@@ -27,7 +29,6 @@ weeks_z_info <- readRDS("weeks_since_z_info.rds")
 formulaM <- used ~ -1 + 
   dem_100_z * weeks_since_emig_n_z +
   TRI_100_z * weeks_since_emig_n_z + 
-  month_temp_z +
   f(stratum, model = "iid", 
     hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
   f(ind1, dem_100_z, model = "iid",
@@ -40,8 +41,8 @@ prec.beta <- 1e-4
 
 #STEP 2: build one model per week ------------------------------------------------------------------------
 
-#lapply(weeks, function(x){
- 
+results_list <- list()
+
 for(x in weeks){ 
   #create the new data
   new_data <- alps_data %>%
@@ -51,7 +52,6 @@ for(x in weeks){
   
   #run model
   
-  (b <- Sys.time())
   M_pred <- inla(formulaM, family = "Poisson", 
                  control.fixed = list(
                    mean = mean.beta,
@@ -61,43 +61,38 @@ for(x in weeks){
                  control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
                  control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = F), #deactivate cpo to save computing power
                  inla.mode="experimental")
-  Sys.time() - b
-  
-  
-  #save results
-  
-  # extract info for coefficient plots
-  
-  # posterior means of coefficients
-  graph <- as.data.frame(summary(M_pred)$fixed)
-  colnames(graph)[which(colnames(graph)%in%c("0.025quant","0.975quant"))]<-c("Lower","Upper")
-  colnames(graph)[which(colnames(graph)%in%c("0.05quant","0.95quant"))]<-c("Lower","Upper")
-  colnames(graph)[which(colnames(graph)%in%c("mean"))]<-c("Estimate")
-  
-  graph$Factor <- rownames(graph)
-  
-  saveRDS(graph, file = paste0("graph_M_pred_wk", x, ".rds"))
-  
-  #extract info to make prediction plots
-  
-  used_na <- which(is.na(new_data$used))
-  
-  #extract information for rows that had NAs as response variables
-  preds <- data.frame(location.long = new_data[is.na(new_data$used) ,"location.long"],
-                      location.lat = new_data[is.na(new_data$used) ,"location.lat"],
-                      dem_100_z = new_data[is.na(new_data$used) ,"dem_100_z"],
-                      TRI_100_z = new_data[is.na(new_data$used) ,"TRI_100_z"],
-                      month_temp_z = new_data[is.na(new_data$used) ,"month_temp_z"],
-                      weeks_since_emig_n_z = new_data[is.na(new_data$used) ,"weeks_since_emig_n_z"],
-                      preds = M_pred$summary.fitted.values[used_na,"mean"], 
-                      preds_sd = M_pred$summary.fitted.values[used_na,"sd"]) %>%  
-    mutate(prob_pres = exp(preds)/(1+exp(preds))) #this should be between 0-1
-  
-  
-  saveRDS(preds, file = paste0("preds_M_pred_wk", x, ".rds"))
-  
-  rm(M_pred,preds, graph)
-  gc(gc())
+                 
+                 # posterior means of coefficients
+                 graph <- as.data.frame(summary(M_pred)$fixed)
+                 colnames(graph)[which(colnames(graph)%in%c("0.025quant","0.975quant"))]<-c("Lower","Upper")
+                 colnames(graph)[which(colnames(graph)%in%c("0.05quant","0.95quant"))]<-c("Lower","Upper")
+                 colnames(graph)[which(colnames(graph)%in%c("mean"))]<-c("Estimate")
+                 
+                 graph <- graph %>% 
+                   mutate(Factor = rownames(graph),
+                          week = x)
+
+                 
+                 #extract info to make prediction plots--------------------------------------------------------------------------
+                 used_na <- which(is.na(new_data$used))
+                 
+                 #extract information for rows that had NAs as response variables
+                 preds <- data.frame(location.long = new_data[is.na(new_data$used) ,"location.long"],
+                                     location.lat = new_data[is.na(new_data$used) ,"location.lat"],
+                                     dem_100_z = new_data[is.na(new_data$used) ,"dem_100_z"],
+                                     TRI_100_z = new_data[is.na(new_data$used) ,"TRI_100_z"],
+                                     weeks_since_emig_n_z = new_data[is.na(new_data$used) ,"weeks_since_emig_n_z"],
+                                     preds = M_pred$summary.fitted.values[used_na,"mean"], 
+                                     preds_sd = M_pred$summary.fitted.values[used_na,"sd"]) %>%  
+                   mutate(prob_pres = exp(preds)/(1+exp(preds)),#this should be between 0-1
+                          week = x) 
+                 
+                 week_results <- list(graph, preds)
+                 
+                 results_list <- append(results_list, week_results)
+                 
+                 rm(M_pred,preds, graph, new_data)
+                 gc(gc())
 }
-
-
+                   
+saveRDS(results_list, file = "results_list.rds")
