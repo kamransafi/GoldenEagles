@@ -86,61 +86,50 @@ for (i in y_axis_var){
   
   saveRDS(avg_pred, file = paste0("inla_pred_FEB23_", i,".rds"))
   
-  #create a raster
-  #r <- rast(avg_pred[,c("x", "y", "avg_pres")], crs = "+proj=longlat +datum=WGS84") #use the ggplot code at the end to plot it. reorder the columns
-  
-  
-  #saveRDS(r, file = paste0("inla_pred_w_random_n48_", i,".rds"))
-  
 }
 
 #######use ggplot
 
-r_dem <- readRDS("inla_pred_FEB23_dem_100_z.rds")
-r_rug <- readRDS("inla_pred_FEB23_TRI_100_z.rds")
+#Fill in the NAs to get rid of white spaces without altering the existing values
+#create rasters
+r_dem <- readRDS("inla_pred_FEB23_dem_100_z.rds") %>% 
+  dplyr::select(x,y,avg_pres) %>% 
+  rast(type = "xyz") %>% 
+  focal(w = 7, fun = mean, na.policy = "only", na.rm = T) %>% 
+  as.data.frame(xy = T) %>%
+  rename(avg_pres = focal_mean)
+  
+r_rug <- readRDS("inla_pred_FEB23_TRI_100_z.rds") %>% 
+  dplyr::select(x,y,avg_pres) %>% 
+  rast(type = "xyz") %>% 
+  focal(w = 7, fun = mean, na.policy = "only", na.rm = T) %>% 
+  as.data.frame(xy = T) %>%
+  rename(avg_pres = focal_mean)
 
-X11(width = 6, height = 4)
-
-p_rugg <- ggplot(data = r_rug) +
-  geom_tile(aes(x = x, y = y, fill = avg_pres)) +
-  #scale_fill_gradientn(colours = oce::oceColorsPalette(80), limits = c(0,1), 
-  scale_fill_gradient2(low = "lightslateblue", mid = "seashell2", high = "firebrick1",limits = c(0,1), midpoint = 0.5,
-                       na.value = "white", name = "Intensity of use") +
-  labs(x = "Weeks since dispersal", y = "Terrain Ruggedness \n Index") +
-  theme_classic()
- 
-
-ggsave(plot = p_rugg, filename = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_preds_FEB23_",i, ".png"), 
-       width = 6, height = 4, dpi = 300)
-
-
-
-X11(width = 6, height = 4)
-
+#create plots
 p_dem <- ggplot(data = r_dem) +
   geom_tile(aes(x = x, y = y, fill = avg_pres)) +
-  #scale_fill_gradientn(colours = oce::oceColorsPalette(80), limits = c(0,1), 
   scale_fill_gradient2(low = "lightslateblue", mid = "seashell2", high = "firebrick1",limits = c(0,1), midpoint = 0.5,
                        na.value = "white", name = "Intensity of use") +
   labs(x = "", y = "Elevation \n (m)") +
   theme_classic()
-  
 
-ggsave(plot = p_dem, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_preds_FEB23_dem100.png", 
-       width = 6, height = 4, dpi = 300)
+p_rugg <- ggplot(data = r_rug) +
+  geom_tile(aes(x = x, y = y, fill = avg_pres)) +
+  scale_fill_gradient2(low = "lightslateblue", mid = "seashell2", high = "firebrick1",limits = c(0,1), midpoint = 0.5,
+                       na.value = "white", name = "Intensity of use") +
+  labs(x = "Weeks since dispersal", y = "Terrain Ruggedness \n Index") +
+  theme_classic()
+
 
 #put both plots in one device
 X11(width = 9, height = 4)
 combined <- p_dem + p_rugg & theme(legend.position = "right")
 (p_2  <- combined + plot_layout(guides = "collect", nrow = 2))
 
-
-
-ggsave(plot = p_2, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_preds_interaction_FEB23.png", 
+ggsave(plot = p_2, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_preds_interaction_FEB23_NAsfilled.png", 
        width = 9, height = 4, dpi = 300)
 
-
-#interpolate to get rid of white spaces!!!!!!!!!!!
 
 
 
