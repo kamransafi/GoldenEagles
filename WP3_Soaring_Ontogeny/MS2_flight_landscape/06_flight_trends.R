@@ -39,14 +39,6 @@ flight_summary_ls <- lapply(flight, function (x){
     complete(thermalClust, fill = list(amount_in_burst = 0)) %>% #add zero for instances where a factor level was not observed in a burst
     mutate(total_flight_in_burst = sum(amount_in_burst)) %>% 
     mutate(ratio = amount_in_burst/total_flight_in_burst)
-  
-  #plot----
-  #ggplot(data = ratios, aes(x = weeks_since_emig, y = ratio)) +
-  #  geom_jitter() +
-  #  geom_smooth(method = "lm") +
-  #  facet_wrap(~ thermalClust) +
-  #  theme_classic()
-  #--------
  
   #calculate the ratio of thermal soaring to linear soaring (as number of rows within a burst)
   soaring_ratio <- x %>% 
@@ -56,12 +48,7 @@ flight_summary_ls <- lapply(flight, function (x){
     complete(thermalClust, fill = list(n_rows = 0)) %>% #from library(tidyr). wherever one factor level had no rows, insert a zero
     summarize(soaring_ratio = n_rows[thermalClust == "circular"]/ n_rows[thermalClust == "linear"])
   
-  #plot----
-  #ggplot(data = soaring_ratio, aes(x = weeks_since_emig, y = soaring_ratio)) +
-  #  geom_jitter() +
-  #  geom_smooth(method = "lm")
-  #--------
-  
+  #return as a list
   return(list(flight_summary = ratios, 
               soaring_summary = soaring_ratio))
   
@@ -70,3 +57,30 @@ flight_summary_ls <- lapply(flight, function (x){
 
 
 # STEP 2: exploration -------------------------------------------------------------
+
+#####################all flight modes
+flight_ratios <- lapply(flight_summary_ls, "[[", 1) %>% 
+  reduce(rbind)
+
+saveRDS(flight_ratios, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/flight_ratios_n34.rds")
+
+#plot----
+ggplot(data = flight_ratios %>%  filter(weeks_since_emig <= 135), aes(x = weeks_since_emig, y = ratio)) +
+  geom_jitter() +
+  geom_smooth(method = "lm") +
+  facet_wrap(~ thermalClust) +
+  theme_classic()
+
+#####################circling vs linear soaring
+soaring_ratios <-  lapply(flight_summary_ls, "[[", 2) %>% 
+  reduce(rbind)
+
+saveRDS(soaring_ratios, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/soaring_ratios_n34.rds")
+
+
+#plot----
+ggplot(data = soaring_ratio %>%  filter(weeks_since_emig <= 135), aes(x = weeks_since_emig, y = soaring_ratio)) +
+  geom_jitter() +
+  geom_smooth(method = "gam") +
+  theme_classic()
+
