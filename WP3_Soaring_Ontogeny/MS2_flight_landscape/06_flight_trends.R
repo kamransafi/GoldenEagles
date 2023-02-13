@@ -41,11 +41,11 @@ flight_summary_ls <- lapply(flight, function (x){
     mutate(ratio = amount_in_burst/total_flight_in_burst)
   
   #plot----
-  ggplot(data = ratios, aes(x = weeks_since_emig, y = ratio)) +
-    geom_jitter() +
-    geom_smooth(method = "lm") +
-    facet_wrap(~ thermalClust) +
-    theme_classic()
+  #ggplot(data = ratios, aes(x = weeks_since_emig, y = ratio)) +
+  #  geom_jitter() +
+  #  geom_smooth(method = "lm") +
+  #  facet_wrap(~ thermalClust) +
+  #  theme_classic()
   #--------
  
   #calculate the ratio of thermal soaring to linear soaring (as number of rows within a burst)
@@ -57,9 +57,9 @@ flight_summary_ls <- lapply(flight, function (x){
     summarize(soaring_ratio = n_rows[thermalClust == "circular"]/ n_rows[thermalClust == "linear"])
   
   #plot----
-  ggplot(data = soaring_ratio, aes(x = weeks_since_emig, y = soaring_ratio)) +
-    geom_jitter() +
-    geom_smooth(method = "lm")
+  #ggplot(data = soaring_ratio, aes(x = weeks_since_emig, y = soaring_ratio)) +
+  #  geom_jitter() +
+  #  geom_smooth(method = "lm")
   #--------
   
   return(list(flight_summary = ratios, 
