@@ -101,13 +101,15 @@ for(i in c("Jun_temp", "Oct_temp")){
     slice_sample(n = n, replace = T) %>% 
     mutate(used = NA,
            weeks_since_emig_n = NA, 
+           weeks_since_emig_n_z = NA,
            dem_100 = alps_df_no_na %>%  pull(dem_100), #add these right here, so I won't need to back-transform later
            TRI_100 = alps_df_no_na %>% pull(TRI_100),
            month_temp = alps_df_no_na %>%  pull(i), #include temperature for one of the two months
            dem_100_z = (alps_df_no_na$dem_100 - mean(all_data$dem_100))/sd(all_data$dem_100), #convert these to z-scores based on the mean and variance of the tracking data.
            TRI_100_z = (alps_df_no_na$TRI_100 - mean(all_data$TRI_100))/sd(all_data$TRI_100),
            month_temp_z = (alps_df_no_na %>%  pull(i) - mean(all_data$month_temp))/sd(all_data$month_temp)) %>% 
-    bind_rows(all_data)
+    bind_rows(all_data) %>% 
+    as.data.frame()
   
   saveRDS(alps_data, file = paste0("inla_preds_for_cluster/alps_alt_50_20_min_48_ind_wmissing_", i, ".rds")) 
   

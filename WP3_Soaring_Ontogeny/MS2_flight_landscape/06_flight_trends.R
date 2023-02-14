@@ -18,7 +18,7 @@ load("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/em_fl
 
 # STEP 1: calculate ratios for each burst, (the previous version did this per day) -------------------------------------------------------------
 
-flight_summary_ls <- lapply(flight, function (x){
+flight_summary <- lapply(flight, function (x){
   
   #calculate week and day since emigration
   ind_dates <- emig_fledg_dates %>% 
@@ -34,53 +34,35 @@ flight_summary_ls <- lapply(flight, function (x){
   #calculate the ratio of each mode of flight to total flight time (as number of rows within a burst)
   ratios <- x %>% 
     group_by(local_identifier, weeks_since_emig, days_since_emig, burstID, thermalClust) %>% 
-    summarize(amount_in_burst = n()) %>% 
-    group_by(local_identifier, weeks_since_emig, days_since_emig, burstID) %>% 
-    complete(thermalClust, fill = list(amount_in_burst = 0)) %>% #add zero for instances where a factor level was not observed in a burst
-    mutate(total_flight_in_burst = sum(amount_in_burst)) %>% 
-    mutate(ratio = amount_in_burst/total_flight_in_burst)
- 
-  #calculate the ratio of thermal soaring to linear soaring (as number of rows within a burst)
-  soaring_ratio <- x %>% 
-    group_by(local_identifier, weeks_since_emig, days_since_emig, burstID, thermalClust) %>% #group by all these variables to make sure they are retained in the final data frame
     summarize(n_rows = length(thermalClust)) %>% 
     group_by(local_identifier, weeks_since_emig, days_since_emig, burstID) %>% 
-    complete(thermalClust, fill = list(n_rows = 0)) %>% #from library(tidyr). wherever one factor level had no rows, insert a zero
-    summarize(soaring_ratio = n_rows[thermalClust == "circular"]/ n_rows[thermalClust == "linear"])
+    complete(thermalClust, fill = list(n_rows = 0)) %>% #add zero for instances where a factor level was not observed in a burst
+    mutate(total_flight_in_burst = sum(n_rows)) %>% 
+    mutate(flight_type_to_all = n_rows/total_flight_in_burst,
+           circling_to_linear = n_rows[thermalClust == "circular"]/ n_rows[thermalClust == "linear"]) #calculate the ratio of thermal soaring to linear soaring. 19 bursts have neither ciclring nor linear soaring 
+ 
+  ratios
   
-  #return as a list
-  return(list(flight_summary = ratios, 
-              soaring_summary = soaring_ratio))
+}) %>% 
+  reduce(rbind)
   
-})
-  
+
+saveRDS(flight_summary, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/flight_ratios_n34.rds")
 
 
 # STEP 2: exploration -------------------------------------------------------------
 
-#####################all flight modes
-flight_ratios <- lapply(flight_summary_ls, "[[", 1) %>% 
-  reduce(rbind)
-
-saveRDS(flight_ratios, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/flight_ratios_n34.rds")
-
-#plot----
-ggplot(data = flight_ratios %>%  filter(weeks_since_emig <= 135), aes(x = weeks_since_emig, y = ratio)) +
+#all flight modes
+ggplot(data = flight_summary %>%  filter(weeks_since_emig <= 135), aes(x = weeks_since_emig, y = flight_type_to_all)) +
   geom_jitter() +
   geom_smooth(method = "lm") +
   facet_wrap(~ thermalClust) +
   theme_classic()
 
-#####################circling vs linear soaring
-soaring_ratios <-  lapply(flight_summary_ls, "[[", 2) %>% 
-  reduce(rbind)
-
-saveRDS(soaring_ratios, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/soaring_ratios_n34.rds")
-
-
-#plot----
-ggplot(data = soaring_ratio %>%  filter(weeks_since_emig <= 135), aes(x = weeks_since_emig, y = soaring_ratio)) +
+#circling vs linear soaring
+ggplot(data = flight_summary %>% filter(weeks_since_emig <= 135 & !is.na(circling_to_linear) & !is.infinite(circling_to_linear)) %>% group_by(local_identifier, days_since_emig,burstID) %>%  slice(1), 
+       aes(x = weeks_since_emig, y = circling_to_linear)) +
   geom_jitter() +
-  geom_smooth(method = "gam") +
+  geom_smooth(method = "lm") +
   theme_classic()
 

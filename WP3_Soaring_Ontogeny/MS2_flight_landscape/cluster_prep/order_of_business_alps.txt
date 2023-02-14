@@ -2,7 +2,7 @@
 #the file with all data (no missing values)
 
 #copy over the dataset-----------------------------------------------------------------
-scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/inla_preds_for_cluster/alps_alt_50_20_min_48_ind_wmissing_Jun_temp.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_ALPS/
+scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/inla_preds_for_cluster/alps_alt_50_20_min_48_ind_wmissing_Jun_temp.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/slrm_jobs/
 
 #copy over info for backtransforming the week values
 scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/inla_preds_for_cluster/weeks_since_z_info.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_ALPS/

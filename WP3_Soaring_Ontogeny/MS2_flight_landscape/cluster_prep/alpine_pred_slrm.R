@@ -3,7 +3,7 @@
 #Jan 31, 2023. Konstanz, DE
 
 
-#setwd("GE_ALPS")
+#setwd("slrm_jobs")
 
 
 
@@ -13,17 +13,18 @@ inla.setOption(pardiso.license = "pardiso.lic")
 
 #STEP 1: open data and assign variables -----------------------------------------------------------------
 
-weeks <- c(1, 2, 3, 4, 24, 48, 104)
+
+weeks_z_info <- readRDS("weeks_since_z_info.rds")
+
+weeks <- data.frame(weeks_since_emig_n = c(1, 2, 3, 4, 24, 48, 104)) %>% 
+  rowwise() %>% 
+  mutate(weeks_since_emig_n_z = (weeks_since_emig_n - weeks_z_info$mean_wks)/weeks_z_info$sd_wks) %>% 
+  ungroup() %>% 
+  as.data.frame()
 
 alps_data <- readRDS("alps_alt_50_20_min_48_ind_wmissing_Jun_temp.rds") %>%
   as.data.frame()
 
-#try with a sample to test the cluster
-#alps_data <- alps_data %>%
-#  group_by(used) %>%
-#  slice(1:1000)
-
-weeks_z_info <- readRDS("weeks_since_z_info.rds")
 
 #define variables and formula
 formulaM <- used ~ -1 +
@@ -43,24 +44,32 @@ prec.beta <- 1e-4
 
 results_list <- list()
 
-for(x in weeks){
+for(x in 1:nrow(weeks)){
+  
   #create the new data
   new_data <- alps_data %>%
-    mutate(weeks_since_emig_n = replace_na(weeks_since_emig_n, x)) %>%
-    rowwise() %>%
-    mutate(weeks_since_emig_n_z = (weeks_since_emig_n - weeks_z_info$mean_wks)/weeks_z_info$sd_wks) #estimate z-score based on original data
+    mutate(weeks_since_emig_n = replace_na(weeks_since_emig_n, weeks %>%  slice(x) %>%  pull(weeks_since_emig_n)),
+           weeks_since_emig_n_z = replace_na(weeks_since_emig_n_z, weeks %>%  slice(x) %>%  pull(weeks_since_emig_n_z)))
   
-  #run model
   
+  #try with a sample to test the cluster
+  #new_data <- new_data %>%
+  #  group_by(used) %>%
+  #  slice(1:1000)
+  
+  #run the model
+  #b <- Sys.time()
   M_pred <- inla(formulaM, family = "Poisson",
                  control.fixed = list(
                    mean = mean.beta,
                    prec = list(default = prec.beta)),
                  data = new_data,
-                 #num.threads = 20, # be careful of memory. it was on 20 and 40 before. the job finished, but there was a memory error in the error log.
+                 num.threads = 20, # be careful of memory. it was on 20 and 40 before. the job finished, but there was a memory error in the error log.
                  control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
-                 control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = F), #deactivate cpo to save computing power
+                 control.compute = list(openmp.strategy =  "pardiso", config = TRUE, cpo = F), #deactivate cpo to save computing power
+                 control.inla(strategy = "adaptive", int.strategy = "eb"), #suggested here: https://groups.google.com/g/r-inla-discussion-group/c/RVhTYDCD0qw
                  inla.mode="experimental")
+  #Sys.time()- b
   
   # posterior means of coefficients
   graph <- as.data.frame(summary(M_pred)$fixed)
@@ -91,7 +100,7 @@ for(x in weeks){
   
   results_list <- append(results_list, week_results)
   
-  rm(M_pred,preds, graph, new_data)
+  rm(M_pred, preds, graph, new_data)
   gc(gc())
 }
 

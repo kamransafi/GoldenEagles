@@ -32,7 +32,7 @@ Mode <- function(x, na.rm = FALSE) {
 
 
 #open annotated data
-cmpl_ann <- readRDS("alt_50_20_min_70_ind_static_time_ann_temp.rds") #data with montly temperature added in
+cmpl_ann <- readRDS("alt_50_20_min_70_ind_static_time_ann_temp.rds") #data with monthly temperature added in
 
 cmpl_ann <- cmpl_ann %>% 
   mutate(days_since_emig_n = ceiling(as.numeric(days_since_emig)),#round up
