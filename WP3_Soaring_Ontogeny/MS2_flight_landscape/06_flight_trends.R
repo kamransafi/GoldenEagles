@@ -19,12 +19,14 @@ flight <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/
 #emigration date info
 load("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/em_fl_dt_recurse_70ind.RData") #emig_fledg_dates
 
-# STEP 1: Summarise flight metrics per burst -------------------------------------------------------------
+# STEP 1: Summarize flight metrics per burst -------------------------------------------------------------
 
 #calculate total n-rows of each behavior category for each burst 
 
-flight_summary <- lapply(flight, function (x){
+(b <- Sys.time())
+flight_summary_ls <- lapply(flight, function (x){
   
+  #b <- Sys.time()
   #calculate week and day since emigration and fledging
   ind_dates <- emig_fledg_dates %>% 
     filter(individual.local.identifier == x$local_identifier[1])
@@ -71,12 +73,21 @@ flight_summary <- lapply(flight, function (x){
     ungroup() %>% 
     bind_cols(flapping[,-c(1:4)], thermClust[,-c(1:4)], soarClust[,-c(1:4)])  #bind columns. the order of rows is the same. remove the overlapping columns.
   
+  #Sys.time() -b #59 secs per individual
   flight_summary
   
-})
+  ### also add some measures for vertical speed, wind speed, etc.?
   
+  
+})
 
-#saveRDS(flight_summary, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/flight_ratios_n34.rds")
+Sys.time() - b #22.7 min
+
+saveRDS(flight_summary_ls, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/flight_summary_per_burst_full.rds")
+
+
+# STEP 2: calculate flight metrics -------------------------------------------------------------
+
 
 
 # STEP 2: exploration -------------------------------------------------------------
