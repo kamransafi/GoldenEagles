@@ -41,52 +41,86 @@ flight_summary_ls <- lapply(flight, function (x){
   #summary for behavior (flapping and not flapping). n of rows per category. there is probably a more elegant to do the following in one chunk of code. but I couln't figure out how to make count run on multiple columns 
   flapping <- x %>% 
     mutate(behavior = factor(behavior, levels = c("Flapping", "NotFlapping", "Unclassified"))) %>% #convert to a factor with three levels
-    group_by(local_identifier, weeks_since_emig, days_since_emig, burstID) %>% 
+    group_by(local_identifier, weeks_since_emig, days_since_emig, days_since_fled, burstID) %>% 
     count(behavior) %>% 
     complete(behavior, fill = list(n = 0)) %>%  #add zero for instances where a factor level was not observed in a burst
     ungroup() %>% 
     pivot_wider(names_from = behavior, values_from = n, names_prefix = "n_") %>%  #widen the dataframe. have one column for each category of behavior. nrow is not the n of unique bursts
-    arrange(local_identifier, weeks_since_emig, days_since_emig, burstID) #just an insurance policy. the rows are already ordered by these.
+    arrange(local_identifier, weeks_since_emig, days_since_emig, days_since_fled, burstID) #just an insurance policy. the rows are already ordered by these.
   
   thermClust <-  x %>% 
     mutate(thermalClust = factor(thermalClust, levels = c("circular", "linear", "other"))) %>% #convert to a factor with three levels
-    group_by(local_identifier, weeks_since_emig, days_since_emig, burstID) %>% 
+    group_by(local_identifier, weeks_since_emig, days_since_emig, days_since_fled, burstID) %>% 
     count(thermalClust) %>% 
     complete(thermalClust, fill = list(n = 0)) %>% #add zero for instances where a factor level was not observed in a burst
     ungroup() %>% 
     pivot_wider(names_from = thermalClust, values_from = n, names_prefix = "n_") %>% 
-    arrange(local_identifier, weeks_since_emig, days_since_emig, burstID) 
+    arrange(local_identifier, weeks_since_emig, days_since_emig, days_since_fled, burstID) 
   
   soarClust <- x %>% 
     mutate(soarClust = factor(soarClust, levels = c("soar", "glide"))) %>% #convert to a factor with three levels
-    group_by(local_identifier, weeks_since_emig, days_since_emig, burstID) %>% 
+    group_by(local_identifier, weeks_since_emig, days_since_emig, days_since_fled, burstID) %>% 
     count(soarClust) %>% 
     complete(soarClust, fill = list(n = 0)) %>% #add zero for instances where a factor level was not observed in a burst
     ungroup() %>% 
     pivot_wider(names_from = soarClust, values_from = n, names_prefix = "n_") %>% 
-    arrange(local_identifier, weeks_since_emig, days_since_emig, burstID) 
+    arrange(local_identifier, weeks_since_emig, days_since_emig, days_since_fled, burstID) 
   
-  #append all above. this dataframe will have one row per burst.
+  #append all above. this dataframe will have one row per burst. Also calculate min, max & median of vertical speed, odba, and wind u and v estimated from the thermals.
   flight_summary <- x %>% 
-    group_by(local_identifier, weeks_since_emig, days_since_emig, burstID) %>% 
-    summarise(n_rows_burst = n()) %>%  #nrow of the burst
+    group_by(local_identifier, weeks_since_emig, days_since_emig, days_since_fled, burstID) %>% 
+    summarise(med_odba = median(odbaMedian, na.rm = T),
+              max_odba = max(odbaMedian, na.rm = T),
+              min_odba = min(odbaMedian, na.rm = T),
+              med_vertspd = median(vertSpeed_smooth, na.rm = T),
+              max_vertspd = max(vertSpeed_smooth, na.rm = T),
+              min_vertspd = min(vertSpeed_smooth, na.rm = T),
+              med_windx = median(windX, na.rm = T),
+              max_windx = max(windX, na.rm = T),
+              min_windx = min(windX, na.rm = T),
+              med_windy = median(windY, na.rm = T),
+              max_windy = max(windY, na.rm = T),
+              min_windy = min(windY, na.rm = T),
+              n_rows_burst = n()) %>%  #nrow of the burst
     ungroup() %>% 
-    bind_cols(flapping[,-c(1:4)], thermClust[,-c(1:4)], soarClust[,-c(1:4)])  #bind columns. the order of rows is the same. remove the overlapping columns.
+    bind_cols(flapping[,-c(1:5)], thermClust[,-c(1:5)], soarClust[,-c(1:5)]) %>%   #bind columns. the order of rows is the same. remove the overlapping columns.
+    rename(n_flap_Unclassified = n_Unclassified, #rename vague columns for clarity
+           n_soaring_other = n_other)
   
   #Sys.time() -b #59 secs per individual
   flight_summary
-  
-  ### also add some measures for vertical speed, wind speed, etc.?
-  
-  
+
 })
 
-Sys.time() - b #22.7 min
+Sys.time() - b #23 min
 
 saveRDS(flight_summary_ls, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/flight_summary_per_burst_full.rds")
 
 
-# STEP 2: calculate flight metrics -------------------------------------------------------------
+# STEP 2: calculate flight metrics for post-dispersal -------------------------------------------------------------
+
+
+#transform to a dataframe for easier plotting
+flight_summary_df <- flight_summary_ls %>% 
+  reduce(rbind) %>% 
+  mutate(max_wind_speed = sqrt(max_windx^2 + max_windy ^2),
+         flapping_ratio = n_Flapping/n_NotFlapping,
+         circling_to_all = n_circular/n_rows_burst,
+         circling_to_linear = n_circular/n_linear) #calculate wind speed
+
+
+
+ratios <- lapply(flight_summary_ls, function(x){
+  
+  #make plots for the whole period?
+  
+  #filter for post-dispersal and calculate metrics
+  x_post_d <- x %>% 
+    filter(days_since_emig > 0) %>% 
+    
+  
+  
+})
 
 
 
@@ -95,9 +129,17 @@ saveRDS(flight_summary_ls, file = "/home/enourani/ownCloud/Work/Projects/GE_onto
 flight_summary <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/flight_ratios_n34.rds")
 
 #all flight modes
-ggplot(data = flight_summary %>%  filter(weeks_since_emig <= 135), aes(x = weeks_since_emig, y = flight_type_to_all)) +
+ggplot(data = flight_summary_df, aes(x = days_since_fled, y = circling_to_linear, group = local_identifier)) +
+  geom_line() +
   geom_jitter() +
-  geom_smooth(method = "lm") +
+  geom_smooth(method = "gam") 
+
+
+ggplot(data = flight_summary_df %>%  filter(weeks_since_emig <= 135), aes(x = weeks_since_emig, y = circling_to_linear)) +
+  geom_jitter() +
+  geom_smooth(method = "gam") 
+
++
   facet_wrap(~ thermalClust) +
   theme_classic()
 
