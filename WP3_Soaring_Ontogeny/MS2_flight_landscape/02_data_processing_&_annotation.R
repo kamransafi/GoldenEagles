@@ -13,7 +13,7 @@ library(parallel)
 library(CircStats)
 library(circular)
 library(fitdistrplus)
-library(raster)
+library(terra)
 
 wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
 meters_proj <- CRS("+proj=moll +ellps=WGS84") #replace this with utm N32
@@ -288,55 +288,33 @@ barplot(names.arg = mn_summary$mn, height = mn_summary$data, col = as.factor(mn_
 
 load("alt_50_20_min_70_ind.RData") #used_av_track
 
-#manually annotate with static variables: elevation, slope, ruggedness (difference between the maximum and the minimum value of a cell and its 8 surrounding cells),
+#manually annotate with static variables: elevation, terrain ruggedness (difference between the maximum and the minimum value of a cell and its 8 surrounding cells),
 #unevenness in slope, aspect and elevation (TPI). (difference between the value of a cell and the mean value of its 8 surrounding cells)
-#martina aggregates all to 100 m resolution
+#previous version aggregated all to 100 m resolution, but I ran into memory issues with the Raven HPC for making predictions at the Alpine region scale. So, try 200 m instead
 
-dem_east <- raster("/home/enourani/ownCloud/Work/GIS_files/EU_DEM/eu_dem_v11_E40N20/eu_dem_v11_E40N20.TIF")
-dem_west <- raster("/home/enourani/ownCloud/Work/GIS_files/EU_DEM/eu_dem_v11_E30N20/eu_dem_v11_E30N20.TIF")
-
-dem <- merge(dem_east,dem_west)
-
-writeRaster(dem, "EU_40N30N_dem_merged.TIF")
-
-dem <- raster("EU_40N30N_dem_merged.TIF")
-
-slope <- terrain(dem, opt = "slope", unit = "degrees")
-aspect <- terrain(dem, opt = "aspect", unit = "degrees")
-TRI <- terrain(dem, opt = "tri", unit = "degrees")
-TPI <- terrain(dem, opt = "TPI", unit = "degrees")
-
-#estimate slope and aspect unevenness
-sl_uneven <- terrain(slope, opt = "TPI", unit = "degrees")
-as_uneven <- terrain(aspect, opt = "TPI", unit = "degrees")
-
-#aggregate raster cells to 100 m resolution
-dem_100 <- raster::aggregate(x = dem, fact = 4, filename = "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/dem_100.tif")
-slope_100 <- raster::aggregate(x = slope, fact = 4, filename = "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/slope_100.tif")
-aspect_100 <- raster::aggregate(x = aspect, fact = 4, filename = "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/aspect_100.tif")
-sl_uneven_100 <- raster::aggregate(x = sl_uneven, fact = 4, filename = "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/slope_TPI_100.tif")
-as_uneven_100 <- raster::aggregate(x = as_uneven, fact = 4, filename = "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/aspect_TPI_100.tif")
-TRI_100 <- raster::aggregate(x = TRI, fact = 4, filename = "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/TRI_100.tif")
-TPI_100 <- raster::aggregate(x = TPI, fact = 4, filename = "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/TPI_100.tif")
+#100m layers were built in the earlier version of this script
+dem_200 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/dem_200.tif")
+TRI_200 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/tri_200.tif")
 
 #create a stack using raster paths
-topo <- stack(list("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/dem_100.tif", 
-                   "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/slope_100.tif", 
-                   "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/aspect_100.tif",
-                   "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/slope_TPI_100.tif",
-                   "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/aspect_TPI_100.tif",
-                   "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/TRI_100.tif", 
-                   "/home/enourani/Desktop/golden_eagle_static_layers/whole_region/TPI_100.tif"))
+topo <- c(dem_200,TRI_200)
+names(topo) <- c("dem_200", "TRI_200")
 
-#code got lost, but I reprojected the tracking data to match topo, then extract the values and projected the tracking data back to latlong
-#file is saved as: alt_50_20_min_70_ind_static_ann.RData
-
-
-
+#reproject tracking data to match topo, extract values from topo, convert back to wgs and save as a dataframe
+topo_ann_df <- used_av_track %>% 
+  st_as_sf(coords = c("location.long", "location.lat"), crs = wgs) %>% 
+  st_transform(crs = crs(topo)) %>% 
+  as("SpatVector") %>% 
+  extract(x = topo, y = ., bind = T) %>%
+  project(wgs) %>% 
+  cbind(crds(., df = T)) %>% 
+  as.data.frame()
+  
+saveRDS(topo_ann_df, file = "alt_50_20_min_70_ind_static_200_ann.rds")
 
 # STEP 6: annotation: days since fledging and emigration ----------------------------------------------------------------
 
-load("alt_50_20_min_70_ind_static_ann.RData") #topo_ann_df ... n_distinct(topo_ann_df$individual.local.identifier) = 53
+topo_ann_df <- readRDS("alt_50_20_min_70_ind_static_200_ann.rds") # n_distinct(topo_ann_df$individual.local.identifier) = 53
 
 #open emigration information
 #open file containing emigration dates
@@ -366,7 +344,7 @@ cmpl_ann <- lapply(split(topo_ann_df, topo_ann_df$individual.local.identifier), 
 }) %>% 
   reduce(rbind)
 
-save(cmpl_ann, file = "alt_50_20_min_70_ind_static_time_ann.RData")
+saveRDS(cmpl_ann, file = "alt_50_20_min_70_ind_static_200m_time_ann.rds")
 
 
 #mid step: save as csv for annotating with temperature to account for weather conditions.
