@@ -346,7 +346,7 @@ cmpl_ann <- lapply(split(topo_ann_df, topo_ann_df$individual.local.identifier), 
 
 saveRDS(cmpl_ann, file = "alt_50_20_min_70_ind_static_200m_time_ann.rds")
 
-
+#### i did not redo the below with 200 m terrain file. temp is not included in the model anymore
 #mid step: save as csv for annotating with temperature to account for weather conditions.
 
 cmpl_ann_w <- cmpl_ann %>% 
