@@ -15,7 +15,7 @@ setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
 # PLOT 1: coefficient plots ----------------------------------------------------------------------------------------------------
 
-graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23_no_temp/graph_M_main.rds")
+graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23_no_temp_200m/graph_M_main200.rds")
 
 #remove weeks since dispersal
 graph <- graph[graph$Factor != "weeks_since_emig_n_z",]
@@ -25,9 +25,6 @@ VarNames <- VarOrder
 
 graph$Factor <- factor(graph$Factor, levels = VarOrder)
 levels(graph$Factor) <- VarNames
-
-#min <- min(graph$Lower,na.rm = T)
-#max <- max(graph$Upper,na.rm = T)
 
 graph$Factor_n <- as.numeric(graph$Factor)
 
@@ -45,21 +42,17 @@ coefs <- ggplot(graph, aes(x = Estimate, y = Factor)) +
   theme_classic()
   
 
-ggsave(plot = coefs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_coefs_static_FEB23.png", 
+ggsave(plot = coefs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_coefs_static200_FEB23.png", 
        width = 4.7, height = 2.7, dpi = 300)
 
 
 # PLOT 2: interaction plots ----------------------------------------------------------------------------------------------------
 
-all_data <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_temp_inlaready_wks.rds")
-preds <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23_no_temp/preds_M_main.rds")
+all_data <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_200_inlaready_wks.rds")
+preds <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23_no_temp_200m/preds_M_main200.rds")
 
-y_axis_var <- c("dem_100_z", "TRI_100_z")
+y_axis_var <- c("dem_200_z", "TRI_200_z")
 x_axis_var <- "weeks_since_emig_n_z"
-
-#labels <- data.frame(var = c("dem_100_z", "TRI_100_z","weeks_since_emig_n_z"),
-#                     label = c("Altitude (m.asl)", "Terrain ruggedness index", "Weeks since dispersal"))
-
 
 #extract center and scale values for time variable, to be used for back transformation. The y-axis attributes will be extracted in the for loop
 x_axis_attr_scale <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:scale')
@@ -67,9 +60,6 @@ x_axis_attr_center <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:c
 
 for (i in y_axis_var){
   
-  #fitted_df <- preds %>% 
-  #  mutate(new_data[is.na(new_data$used), i])
-  #extract scale and center values needed to back transform the scaled values
   i_scale <- attr(all_data[,colnames(all_data) == i],'scaled:scale')
   i_center <- attr(all_data[,colnames(all_data) == i],'scaled:center')
   
@@ -84,7 +74,7 @@ for (i in y_axis_var){
            x = which(names(.) == x_axis_var)) %>% #weeks since emig
     as.data.frame()
   
-  saveRDS(avg_pred, file = paste0("inla_pred_FEB23_", i,".rds"))
+  saveRDS(avg_pred, file = paste0("inla_pred_FEB23_200m_", i,".rds"))
   
 }
 
@@ -92,14 +82,14 @@ for (i in y_axis_var){
 
 #Fill in the NAs to get rid of white spaces without altering the existing values
 #create rasters
-r_dem <- readRDS("inla_pred_FEB23_dem_100_z.rds") %>% 
+r_dem <- readRDS("inla_pred_FEB23_200m_dem_200_z.rds") %>% 
   dplyr::select(x,y,avg_pres) %>% 
   rast(type = "xyz") %>% 
   focal(w = 7, fun = mean, na.policy = "only", na.rm = T) %>% 
   as.data.frame(xy = T) %>%
   rename(avg_pres = focal_mean)
   
-r_rug <- readRDS("inla_pred_FEB23_TRI_100_z.rds") %>% 
+r_rug <- readRDS("inla_pred_FEB23_200m_TRI_200_z.rds") %>% 
   dplyr::select(x,y,avg_pres) %>% 
   rast(type = "xyz") %>% 
   focal(w = 7, fun = mean, na.policy = "only", na.rm = T) %>% 
@@ -127,31 +117,29 @@ X11(width = 9, height = 4)
 combined <- p_dem + p_rugg & theme(legend.position = "right")
 (p_2  <- combined + plot_layout(guides = "collect", nrow = 2))
 
-ggsave(plot = p_2, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_preds_interaction_FEB23_NAsfilled.png", 
+ggsave(plot = p_2, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_preds_interaction_FEB23_200m_NAsfilled.png", 
        width = 9, height = 4, dpi = 300)
-
-
-
+#the plot ws so much more clear for the 100m res :( consider trying with 100m again! tile the alpine region for predictions!
 
 # PLOT 3: individual variation plots ----------------------------------------------------------------------------------------------------
 
-rnd <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23_no_temp/rnd_coeff_M_main.rds")
+rnd <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23_no_temp_200m/rnd_coeff_M_main200.rds")
 
-graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23_no_temp/graph_M_main.rds")
+graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23_no_temp_200m/graph_M_main200.rds")
 
 #!!!!!!!!make sure to add the coefficient to these.
 names <- rnd[[2]]$ID
 
 dem <- rnd[[2]] %>% 
-  mutate(coef = mean + graph %>% filter(Factor == "dem_100_z") %>% pull(Estimate),
-         lower = .[,4] +  graph %>% filter(Factor == "dem_100_z") %>% pull(Lower),
-         upper = .[,6] +  graph %>% filter(Factor == "dem_100_z") %>% pull(Upper),
+  mutate(coef = mean + graph %>% filter(Factor == "dem_200_z") %>% pull(Estimate),
+         lower = .[,4] +  graph %>% filter(Factor == "dem_200_z") %>% pull(Lower),
+         upper = .[,6] +  graph %>% filter(Factor == "dem_200_z") %>% pull(Upper),
          variable = "DEM")
 
 two_vars <- rnd[[3]] %>% 
-  mutate(coef = mean + graph %>% filter(Factor == "TRI_100_z") %>% pull(Estimate),
-         lower = .[,4] +  graph %>% filter(Factor == "TRI_100_z") %>% pull(Lower),
-         upper = .[,6] +  graph %>% filter(Factor == "TRI_100_z") %>% pull(Upper),
+  mutate(coef = mean + graph %>% filter(Factor == "TRI_200_z") %>% pull(Estimate),
+         lower = .[,4] +  graph %>% filter(Factor == "TRI_200_z") %>% pull(Lower),
+         upper = .[,6] +  graph %>% filter(Factor == "TRI_200_z") %>% pull(Upper),
          variable = "TRI") %>% 
   bind_rows(dem)
 
@@ -161,11 +149,9 @@ cols <- c(DEM = "lightcoral",
 #plot two_vars
 X11(width = 7, height = 9)
 (coefs_inds <- ggplot(two_vars, aes(x = coef, y = ID, color = variable)) +
-    # geom_vline(xintercept = 0, linetype="dashed", 
-    #             color = "gray25", size = 0.5) +
-    geom_vline(xintercept = graph %>% filter(Factor == "dem_100_z") %>% pull(Estimate), linetype="dashed", 
+    geom_vline(xintercept = graph %>% filter(Factor == "dem_200_z") %>% pull(Estimate), linetype="dashed", 
                color = "lightcoral", size = 0.5) +
-    geom_vline(xintercept = graph %>% filter(Factor == "TRI_100_z") %>% pull(Estimate), linetype="dashed", 
+    geom_vline(xintercept = graph %>% filter(Factor == "TRI_200_z") %>% pull(Estimate), linetype="dashed", 
                color = "cornflowerblue", size = 0.5) +
     geom_point(size = 2, position = position_dodge(width = .7))  +
     geom_linerange(aes(xmin = lower, xmax = upper), size = 0.8, position = position_dodge(width = .7)) +
@@ -173,7 +159,7 @@ X11(width = 7, height = 9)
     labs(x = "Estimate", y = "") +
     theme_classic()) 
 
-ggsave(plot = coefs_inds, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/ind_coefs_FEB23.png", 
+ggsave(plot = coefs_inds, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/ind_coefs_FEB23_200m.png", 
        width = 7.5, height = 10, dpi = 300)
 
 
