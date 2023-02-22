@@ -1,0 +1,53 @@
+#Scripts for estimating flight metrics for all golden eagles pre and post dispersal
+##update: did not run it on the cluster in the end. Took 23 min on one core on this PC.
+
+#From terminal on local system: (make sure to be on MPI internet, use VPN)
+#The file with all data (no missing values)
+
+scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/Golden_eagle_wind_behav_full_Nov_2022.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/flight_metrics/input/
+
+#emigration date info
+scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/em_fl_dt_recurse_70ind.RData enourani@raven.mpcdf.mpg.de:/raven/u/enourani/flight_metrics/input/
+
+#ssh to cluster
+  
+# if not on MPI network: 
+ssh gate.mpcdf.mpg.de
+ssh raven.mpcdf.mpg.de
+
+
+#if on MPI network:
+ssh enourani@raven.mpcdf.mpg.de
+
+
+#load R
+module purge
+module load gcc/10 R/4.2 gdal gsl/2.4
+
+#open R in new screen
+screen -S flight
+R
+
+#to detach screen anytime, ctr+A,D
+#to go back to the scree: screen -r myScreenName
+#list of screens: screen -list
+#kill screen: screen -S myScreenName -X quit 
+
+######in R (follows from 06_flight_trends.R)
+
+library(tidyverse)
+library(lubridate)
+
+setwd("flight_metrics")
+
+### open input files
+flight <- readRDS("input/Golden_eagle_wind_behav_full_Nov_2022.rds") #%>%  #one element per ind
+#reduce(rbind)
+
+#emigration date info
+load("input/em_fl_dt_recurse_70ind.RData") #emig_fledg_dates
+
+
+
+
+

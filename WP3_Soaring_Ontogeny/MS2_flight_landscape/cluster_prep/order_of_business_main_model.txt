@@ -4,7 +4,7 @@
 #From terminal on local system: (make sure to be on MPI internet, use VPN)
 #The file with all data (no missing values)
 
-scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_temp_inlaready_wmissing_wks_n1500.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/INLA_GE/
+scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_200_inlaready_wmissing_wks_n1500.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/INLA_GE/
   
 #coy over paradiso license
 scp /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/pardiso.lic enourani@raven.mpcdf.mpg.de:/raven/u/enourani/
@@ -42,45 +42,43 @@ library(INLA)
 inla.setOption(pardiso.license = "pardiso.lic")
 
 #open file
-new_data <- readRDS("alt_50_20_min_48_ind_static_temp_inlaready_wmissing_wks_n1500.rds")
+new_data <- readRDS("alt_50_20_min_48_ind_static_200_inlaready_wmissing_wks_n1500.rds")
 
 #-----------------------------------------------------------------------------------------------
-# STEP 1: MODEL WITH NO MISSING VALUES. predictors: dem, tri, temperature. include missing values for plotting the interactions
+# STEP 1: MODEL WITH NO MISSING VALUES. predictors: dem, tri. include missing values for plotting the interactions
 
 #define variables and formula
-formulaM <- used ~ -1 + 
-  dem_100_z * weeks_since_emig_n_z +
-  TRI_100_z * weeks_since_emig_n_z + 
-  #month_temp_z + #dont include temperature
-  f(stratum, model = "iid", 
+formulaM <- used ~ -1 +
+  dem_200_z * weeks_since_emig_n_z +
+  TRI_200_z * weeks_since_emig_n_z +
+  f(stratum, model = "iid",
     hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
-  f(ind1, dem_100_z, model = "iid",
-    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) + 
-  f(ind2, TRI_100_z,  model = "iid",
+  f(ind1, dem_200_z, model = "iid",
+    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) +
+  f(ind2, TRI_200_z,  model = "iid",
     hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
 
 mean.beta <- 0
 prec.beta <- 1e-4 
 
 #run model
-(b <- Sys.time())
-M_main <- inla(formulaM, family = "Poisson", 
-               control.fixed = list(
-                 mean = mean.beta,
-                 prec = list(default = prec.beta)),
-               data = new_data, 
-               num.threads = 20,
-               control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
-               control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T),
-               inla.mode="experimental")
-Sys.time() - b  # 2.3 minutes
+M_main <-  inla(formulaM, family = "Poisson",
+                 control.fixed = list(
+                   mean = mean.beta,
+                   prec = list(default = prec.beta)),
+                 data = new_data,
+                 num.threads = 20, 
+                 control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
+                 control.compute = list(openmp.strategy =  "pardiso", config = TRUE, cpo = T), #deactivate cpo to save computing power
+                 control.inla(strategy = "adaptive", int.strategy = "eb"),
+                 inla.mode="experimental", verbose = T)
 
 
 #extract model vlidation results
 eval <- data.frame(CPO = mean(M_main$cpo$cpo, na.rm = T),
                    Mlik = as.numeric(M_main$mlik[,1][2])) 
 
-saveRDS(eval, file = "eval_M_main.rds")
+saveRDS(eval, file = "eval_M_main200.rds")
 
 # extract info for coefficient plots
 
@@ -92,7 +90,7 @@ colnames(graph)[which(colnames(graph)%in%c("mean"))]<-c("Estimate")
 
 graph$Factor <- rownames(graph)
 
-saveRDS(graph, file = "graph_M_main.rds")
+saveRDS(graph, file = "graph_M_main200.rds")
 
 
 #-----------------------------------------------------------------------------------------------
@@ -103,25 +101,25 @@ saveRDS(graph, file = "graph_M_main.rds")
 used_na <- which(is.na(new_data$used))
 
 #extract information for rows that had NAs as response variables
-preds <- data.frame(dem_100_z = new_data[is.na(new_data$used) ,"dem_100_z"],
-                    TRI_100_z = new_data[is.na(new_data$used) ,"TRI_100_z"],
+preds <- data.frame(dem_200_z = new_data[is.na(new_data$used) ,"dem_200_z"],
+                    TRI_200_z = new_data[is.na(new_data$used) ,"TRI_200_z"],
                     weeks_since_emig_n_z = new_data[is.na(new_data$used) ,"weeks_since_emig_n_z"],
                     preds = M_main$summary.fitted.values[used_na,"mean"]) %>% 
   mutate(prob_pres = exp(preds)/(1+exp(preds))) #this should be between 0-1
 
 
-saveRDS(preds, file = "preds_M_main.rds")
+saveRDS(preds, file = "preds_M_main200.rds")
 
 
 #extract info for ind-specific variation
 
 summ_rndm <- M_main$summary.random
 
-saveRDS(summ_rndm, file = "rnd_coeff_M_main.rds")
+saveRDS(summ_rndm, file = "rnd_coeff_M_main200.rds")
 
 
 #-----------------------------------------------------------------------------------------------
 # STEP 3: TRANSFER FILES TO LOCAL MACHINE
 
 ## copy files back to local machine.. from local terminal
-scp enourani@raven.mpcdf.mpg.de:/raven/u/enourani/INLA_GE/*_M_main.rds /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23_no_temp
+scp enourani@raven.mpcdf.mpg.de:/raven/u/enourani/INLA_GE/*_M_main200.rds /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23_no_temp_200m

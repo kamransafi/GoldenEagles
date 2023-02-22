@@ -103,8 +103,10 @@ saveRDS(flight_summary_ls, file = "/home/enourani/ownCloud/Work/Projects/GE_onto
 #transform to a dataframe for easier plotting
 flight_summary_df <- flight_summary_ls %>% 
   reduce(rbind) %>% 
+  filter(between(weeks_since_emig, 1, 135)) %>% 
   mutate(max_wind_speed = sqrt(max_windx^2 + max_windy ^2),
          flapping_ratio = n_Flapping/n_NotFlapping,
+         flapping_to_all = n_Flapping/n_rows_burst,
          circling_to_all = n_circular/n_rows_burst,
          circling_to_linear = n_circular/n_linear) #calculate wind speed
 
@@ -126,16 +128,30 @@ ratios <- lapply(flight_summary_ls, function(x){
 
 # STEP 2: exploration -------------------------------------------------------------
 
-flight_summary <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/flight_ratios_n34.rds")
+flight_summary_df <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/flight_summary_per_burst_full.rds") %>% 
+  reduce(rbind) %>% 
+  filter(weeks_since_emig <= 135) #filter for weeks since dispersal to match the landscape scale
 
-#all flight modes
-ggplot(data = flight_summary_df, aes(x = days_since_fled, y = circling_to_linear, group = local_identifier)) +
-  geom_line() +
+dd <- flight_summary_df %>%  filter(circling_to_all > 0)
+
+ggplot(data = flight_summary_df %>%  filter(circling_to_all > 0), 
+       aes(x = 1/weeks_since_emig, y = circling_to_all, group = local_identifier, color = local_identifier)) +
   geom_jitter() +
-  geom_smooth(method = "gam") 
+  geom_smooth(method = "lm") 
 
 
-ggplot(data = flight_summary_df %>%  filter(weeks_since_emig <= 135), aes(x = weeks_since_emig, y = circling_to_linear)) +
+ggplot(data = flight_summary_df %>% drop_na(circling_to_all) %>% filter(is.finite(circling_to_all) ), 
+       aes(x = weeks_since_emig, y = circling_to_all, group = local_identifier, color = local_identifier)) +
+  geom_jitter() +
+  geom_smooth(method = "lm") 
+
+ggplot(data = flight_summary_df %>% drop_na(flapping_to_all) %>% filter(is.finite(flapping_to_all)), 
+       aes(x = days_since_fled, y = flapping_to_all, group = local_identifier, color = local_identifier)) +
+  geom_jitter() +
+  geom_smooth(method = "lm") 
+
+
+ggplot(data = flight_summary_df %>%  , aes(x = weeks_since_emig, y = circling_to_linear)) +
   geom_jitter() +
   geom_smooth(method = "gam") 
 

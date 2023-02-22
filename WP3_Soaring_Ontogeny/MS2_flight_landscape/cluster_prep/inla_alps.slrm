@@ -28,7 +28,7 @@ export SCR_DIR=/ptmp/enourani/scratch #define a path to later create a scratch d
 ##### create a scratch directory and copy over all the files that I want to use
 mkdir -p $SCR_DIR #-p flag allows creation of nested directories. dollar sign means this variable has been defined before
 cd $SCR_DIR
-cp -p $HOME/slrm_jobs/alps_alt_50_20_min_48_ind_wmissing_Jun_temp.rds .
+cp -p $HOME/slrm_jobs/alps_alt_50_20_min_48_ind_static200_wmissing.rds .
 cp -p $HOME/slrm_jobs/pardiso.lic .
 cp -p $HOME/slrm_jobs/weeks_since_z_info.rds .
 cp -p $HOME/slrm_jobs/$FILENAME .

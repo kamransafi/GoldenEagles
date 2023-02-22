@@ -2,7 +2,7 @@
 #the file with all data (no missing values)
 
 #copy over the dataset-----------------------------------------------------------------
-scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/inla_preds_for_cluster/alps_alt_50_20_min_48_ind_wmissing_Jun_temp.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/slrm_jobs/
+scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/inla_preds_for_cluster/alps_alt_50_20_min_48_ind_static200_wmissing.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/slrm_jobs/
 
 #copy over info for backtransforming the week values
 scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/inla_preds_for_cluster/weeks_since_z_info.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_ALPS/
@@ -34,7 +34,10 @@ R
 
 ######in R
 
-setwd("GE_ALPS")
+
+#setwd("slrm_jobs")
+
+
 
 library(tidyverse)
 library(INLA)
@@ -42,104 +45,111 @@ inla.setOption(pardiso.license = "pardiso.lic")
 
 #STEP 1: open data and assign variables -----------------------------------------------------------------
 
-weeks <- c(1, 2, 3, 4, 24, 48, 104) 
-
-alps_data <- readRDS("alps_alt_50_20_min_48_ind_wmissing_Jun_temp.rds") %>% 
-as.data.frame()
 
 weeks_z_info <- readRDS("weeks_since_z_info.rds")
 
+weeks <- data.frame(weeks_since_emig_n = c(1, 2, 3, 4, 24, 48, 104)) %>% 
+  rowwise() %>% 
+  mutate(weeks_since_emig_n_z = (weeks_since_emig_n - weeks_z_info$mean_wks)/weeks_z_info$sd_wks) %>% 
+  ungroup() %>% 
+  as.data.frame()
+
+alps_data <- readRDS("alps_alt_50_20_min_48_ind_static200_wmissing.rds") %>%
+  as.data.frame()
+
+
 #define variables and formula
-formulaM <- used ~ -1 + 
-  dem_100_z * weeks_since_emig_n_z +
-  TRI_100_z * weeks_since_emig_n_z + 
-  month_temp_z +
-  f(stratum, model = "iid", 
+formulaM <- used ~ -1 +
+  dem_200_z * weeks_since_emig_n_z +
+  TRI_200_z * weeks_since_emig_n_z +
+  f(stratum, model = "iid",
     hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
-  f(ind1, dem_100_z, model = "iid",
-    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) + 
-  f(ind2, TRI_100_z,  model = "iid",
+  f(ind1, dem_200_z, model = "iid",
+    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) +
+  f(ind2, TRI_200_z,  model = "iid",
     hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
 
 mean.beta <- 0
-prec.beta <- 1e-4 
+prec.beta <- 1e-4
 
 #STEP 2: build one model per week ------------------------------------------------------------------------
 
-lapply(weeks, function(x){
+results_list <- list()
+
+for(x in 1:nrow(weeks)){
   
   #create the new data
-  new_data <- alps_data %>%
-  mutate(weeks_since_emig_n = replace_na(weeks_since_emig_n, x)) %>%
-    rowwise() %>%
-    mutate(weeks_since_emig_n_z = (weeks_since_emig_n - weeks_z_info$mean_wks)/weeks_z_info$sd_wks) #estimate z-score based on original data
-
-
-#try with a sample
-#strata <- sample(unique(new_data$stratum), 100)
-#new_data <- new_data %>% 
-#filter(stratum %in% strata)
-
-  #run model
+  #new_data <- alps_data %>%
+   # mutate(weeks_since_emig_n = replace_na(weeks_since_emig_n, weeks %>%  slice(x) %>%  pull(weeks_since_emig_n)),
+    #       weeks_since_emig_n_z = replace_na(weeks_since_emig_n_z, weeks %>%  slice(x) %>%  pull(weeks_since_emig_n_z)))
   
-  (b <- Sys.time())
-  M_pred <- inla(formulaM, family = "Poisson", 
-               control.fixed = list(
-                 mean = mean.beta,
-                 prec = list(default = prec.beta)),
-               data = new_data, 
-               num.threads = 20,
-               control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
-               control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = F), #deactivate cpo to save computing power
-               inla.mode="experimental")
-Sys.time() - b
-
-
-  #save results
+ # new_data <- alps_data %>%
+  #  mutate(weeks_since_emig_n = replace_na(weeks_since_emig_n, weeks[x,"weeks_since_emig_n"]),
+   #        weeks_since_emig_n_z = replace_na(weeks_since_emig_n_z, weeks[x,"weeks_since_emig_n_z"]))
   
-  # extract info for coefficient plots
+  new_data <- alps_data
+  new_data[is.na(new_data$weeks_since_emig_n),"weeks_since_emig_n"] <- weeks[x,"weeks_since_emig_n"]
+  new_data[is.na(new_data$weeks_since_emig_n_z),"weeks_since_emig_n_z"] <- weeks[x,"weeks_since_emig_n_z"]
+  
+  #try with a sample to test the cluster
+  #new_data <- new_data %>%
+  #  group_by(used) %>%
+  #  slice(1:1000)
+  
+  #run the model
+  #b <- Sys.time()
+  M_pred <- inla(formulaM, family = "Poisson",
+                 control.fixed = list(
+                   mean = mean.beta,
+                   prec = list(default = prec.beta)),
+                 data = new_data,
+                 num.threads = 1, # be careful of memory. it was on 20 and 40 before. the job finished, but there was a memory error in the error log.
+                 control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
+                 control.compute = list(openmp.strategy =  "pardiso", config = TRUE, cpo = F), #deactivate cpo to save computing power
+                 control.inla(strategy = "adaptive", int.strategy = "eb"),
+                 inla.mode="experimental", verbose = T)
+  #Sys.time()- b #25 min for one model
   
   # posterior means of coefficients
   graph <- as.data.frame(summary(M_pred)$fixed)
   colnames(graph)[which(colnames(graph)%in%c("0.025quant","0.975quant"))]<-c("Lower","Upper")
   colnames(graph)[which(colnames(graph)%in%c("0.05quant","0.95quant"))]<-c("Lower","Upper")
   colnames(graph)[which(colnames(graph)%in%c("mean"))]<-c("Estimate")
-
-  graph$Factor <- rownames(graph)
   
-  saveRDS(graph, file = paste0("graph_M_pred_wk", x, ".rds"))
+  graph <- graph %>%
+    mutate(Factor = rownames(graph),
+           week = weeks[x,"weeks_since_emig_n"])
   
-  #extract info to make prediction plots
   
+  #extract info to make prediction plots--------------------------------------------------------------------------
   used_na <- which(is.na(new_data$used))
   
   #extract information for rows that had NAs as response variables
-  preds <- data.frame(location.long = new_data[is.na(new_data$used) ,"location.long"],
-                      location.lat = new_data[is.na(new_data$used) ,"location.lat"],
-                      dem_100_z = new_data[is.na(new_data$used) ,"dem_100_z"],
-                      TRI_100_z = new_data[is.na(new_data$used) ,"TRI_100_z"],
-                      month_temp_z = new_data[is.na(new_data$used) ,"month_temp_z"],
+  preds <- data.frame(location.long = new_data[is.na(new_data$used) ,"x"],
+                      location.lat = new_data[is.na(new_data$used) ,"y"],
+                      dem_200_z = new_data[is.na(new_data$used) ,"dem_200_z"],
+                      TRI_200_z = new_data[is.na(new_data$used) ,"TRI_200_z"],
                       weeks_since_emig_n_z = new_data[is.na(new_data$used) ,"weeks_since_emig_n_z"],
-                      preds = M_pred$summary.fitted.values[used_na,"mean"], 
-                      preds_sd = M_pred$summary.fitted.values[used_na,"sd"]) %>%  
-    mutate(prob_pres = exp(preds)/(1+exp(preds))) #this should be between 0-1
+                      preds = M_pred$summary.fitted.values[used_na,"mean"],
+                      preds_sd = M_pred$summary.fitted.values[used_na,"sd"]) %>%
+    mutate(prob_pres = exp(preds)/(1+exp(preds)),#this should be between 0-1
+           week = weeks[x,"weeks_since_emig_n"])
   
+  week_results <- list(graph, preds)
   
-  saveRDS(preds, file = paste0("preds_M_pred_wk", x, ".rds"))
+  results_list <- append(results_list, week_results)
   
-})
+  rm(M_pred, preds, graph, new_data)
+  gc(gc())
+}
+
+saveRDS(results_list, file = "results_list.rds")
 
 
 #STEP 3: copy results over to local system -------------------------------------------------------------------
 
-#on cluster: remove the data files
-#move results to a different folder
-#rm GE_ALPS/alps_alt_50_20_min_48_ind_wmissing_Jun_temp.rds
-#rm GE_ALPS/weeks_since_z_info.rds
-
-
 #from local terminal
 
-scp -r enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_ALPS/ /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results_alps/alps_preds_Jan23
+scp -r enourani@raven.mpcdf.mpg.de:/raven/u/enourani/results_list.rds /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results_alps/alps_preds_Feb23
 
 
