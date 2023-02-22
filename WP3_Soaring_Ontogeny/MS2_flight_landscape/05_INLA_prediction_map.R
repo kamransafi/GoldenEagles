@@ -66,7 +66,6 @@ alps_df_no_na <- alps_df %>%
 saveRDS(alps_df_no_na, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alps_topo_200m_df.rds")
 
 
-
 # STEP 2: create new dataset for predictions ----------------------------------------------------------------
 
 #open alps topo and temp data
@@ -79,29 +78,25 @@ all_data <- readRDS("alt_50_20_min_48_ind_static_200_inlaready_wks.rds") %>%
 
 
 set.seed(500)
-n <- nrow(alps_df_no_na) 
+n <- nrow(alps_df_no_na) #number of new rows to be added to the training set
 
-#unique combo of tri and dem values 
-n_unique <- alps_df_no_na %>% 
-  distinct(dem_200, TRI_200) %>% 
-  nrow() #4875021
-  
 #prep data for week one, then (on the cluster) loop over weeks and just change the week number and run the model. 
-#previous version had one file per month
 
 alps_data <- all_data %>%
   group_by(stratum) %>% 
   slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
   ungroup() %>% 
   slice_sample(n = n, replace = T) %>% 
+  dplyr::select(-c("dem_200", "TRI_200")) %>%  #remove the rows that will be replaced by the alpine data. location.lat and location.long will only be added for the alpine rows, and not the original
+  bind_cols(alps_df_no_na) %>% 
   mutate(used = NA,
          weeks_since_emig_n = NA, 
          weeks_since_emig_n_z = NA,
-         dem_200 = alps_df_no_na %>%  pull(dem_200), #add these right here, so I won't need to back-transform later
-         TRI_200 = alps_df_no_na %>% pull(TRI_200),
-         dem_200_z = (alps_df_no_na$dem_200 - mean(all_data$dem_200))/sd(all_data$dem_200), #convert these to z-scores based on the mean and variance of the tracking data.
-         TRI_200_z = (alps_df_no_na$TRI_200 - mean(all_data$TRI_200))/sd(all_data$TRI_200)) %>% 
-  bind_rows(all_data) %>% 
+         # dem_200 = alps_df_no_na %>%  pull(dem_200), #add these right here, so I won't need to back-transform later
+         # TRI_200 = alps_df_no_na %>% pull(TRI_200),
+         dem_200_z = (dem_200 - mean(all_data$dem_200))/sd(all_data$dem_200), #convert these to z-scores based on the mean and variance of the tracking data.
+         TRI_200_z = (TRI_200 - mean(all_data$TRI_200))/sd(all_data$TRI_200)) %>% 
+  bind_rows(all_data %>%  mutate(location.lat = NA, location.long = NA)) %>% #location.lat and location.long will only be added for the alpine rows, and not the original. assign NAs here to match columns names for row-bind
   as.data.frame()
 
 saveRDS(alps_data, file = "inla_preds_for_cluster/alps_alt_50_20_min_48_ind_static200_wmissing.rds")
@@ -118,13 +113,14 @@ saveRDS(weeks_since_z_info, file = "inla_preds_for_cluster/weeks_since_z_info.rd
 # STEP 3: make sure model coefficients match the original model's ----------------------------------------------------------------
 
 #list coefficient files to make sure they match the original model. check! :D
-graph_files <- list.files("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results_alps/alps_preds_Jan23/GE_ALPS/", pattern = "graph", full.names = T)
+raven_output <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results_alps/alps_preds_Feb23/results_list.rds")
+graph_ls <- raven_output[seq(1,length(raven_output),2)] #extract graph info
+
 
 #(write a ftn?) plot the coefficients
-lapply(graph_files, function(wk){
+lapply(graph_ls, function(wk){
   
-  graph <- readRDS(wk)
-  graph <- graph[graph$Factor != "weeks_since_emig_n_z",]
+  graph <- wk[wk$Factor != "weeks_since_emig_n_z",]
   if(class(graph$Factor) != "character"){droplevels(graph$Factor)}
   VarOrder <- rev(unique(graph$Factor))
   VarNames <- VarOrder
@@ -152,7 +148,7 @@ lapply(graph_files, function(wk){
   
   
   ggsave(plot = coefs, 
-         filename = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/weekly_alps_preds_jan23/inla_coeffs_48ind_", str_sub(wk,-7,-5),".png"), 
+         filename = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/weekly_alps_preds_Feb23/inla_coeffs_48ind_wk", wk$week[1],".png"), 
          width = 4.7, height = 2.7, dpi = 300) #they are all the same. so should be OK
   
 })
@@ -160,25 +156,58 @@ lapply(graph_files, function(wk){
 
 # STEP 4: create the prediction maps: one for each week ----------------------------------------------------------------
 
-#was thinking to also include a map of sd for each week, but I didnt save the sd info in the prediction results. if planning to
-#repeat for more weeks, save the sd in the results.
+#some thoughts:
+#was thinking to also include a map of sd for each week
 #figure out what to do with values of TRI and TPI that are outside the range of the training data
 #option 1: create a new raster layer with these regions. overlay this with the prediction raster with a gray fill
 
+#open prediction data
+raven_output <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results_alps/alps_preds_Feb23/results_list.rds")
+preds_ls <- raven_output[seq(2,length(raven_output),2)] #extract predictions
+
+#open original data. to use for back-transformation of dem and tri
+all_data <- readRDS("alt_50_20_min_48_ind_static_200_inlaready_wmissing_wks_n1500.rds") 
+
+#create one map per week
+lapply(preds_ls, function(wk){
+  
+  preds <- wk %>% 
+    mutate(TRI_200 = (TRI_200_z * sd(all_data$TRI_200)) + mean(all_data$TRI_200),  #backtransform the z-scores
+           dem_200 = (dem_200_z * sd(all_data$dem_200)) + mean(all_data$dem_200)) %>% 
+    dplyr::select(-c("location.lat", "location.long")) ### the lat and long are not for the alps region. they were just copied from the original dataset when making the new_data. FIX IN LATER TRIALS
+  #match the prediction values to the alps_df
+  #full_join(alps_topo_df, by = c("dem_200", "tri_200"))
+  
+  #append the predictions to the original alps topo data. 
+  alps_preds <- alps_df_no_na %>% 
+    left_join(preds, by = c("dem_200", "TRI_200"))
+  
+  r <- rast(preds[,c("location.long", "location.lat", "prob_pres")], crs = wgs) #use the ggplot code at the end to plot it. reorder the columns
+  
+})
+
+ggplot(data = preds) +
+  geom_tile(aes(x = location.long, y = location.lat, fill = prob_pres)) +
+  scale_fill_gradient2(low = "lightslateblue", mid = "seashell2", high = "firebrick1",limits = c(0,1), midpoint = 0.5,
+                       na.value = "white", name = "Intensity of use") +
+  labs(x = "", y = "Elevation \n (m)") +
+  theme_classic()
+
+#open Apline perimeter layer
+#tri_200 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/tri_200.tif")
+Alps <- st_read("/home/enourani/ownCloud/Work/GIS_files/Alpine_perimeter/Alpine_Convention_Perimeter_2018_v2.shp") %>% 
+#  st_transform(crs(tri_200)) %>% 
+  as("SpatVector")
+
 
 #open original data
-all_data <- readRDS("alt_50_20_min_48_ind_static_temp_inlaready_wks.rds") 
+all_data <- readRDS("alt_50_20_min_48_ind_static_200_inlaready_wmissing_wks_n1500.rds") 
 alps_df_no_na <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alps_topo_200m_temp_df.rds")
 #list prediction files
- pred_files <- list.files("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results_alps/alps_preds_Jan23/GE_ALPS/", 
-                          pattern = "preds", full.names = T)
+# pred_files <- list.files("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results_alps/alps_preds_Jan23/GE_ALPS/", 
+#                          pattern = "preds", full.names = T)
 
-tri_200 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/tri_200.tif")
- 
-#open Apline perimeter layer
- Alps <- st_read("/home/enourani/ownCloud/Work/GIS_files/Alpine_perimeter/Alpine_Convention_Perimeter_2018_v2.shp") %>% 
-   st_transform(crs(tri_200)) %>% 
-   as("SpatVector")
+
 # 
 # #explore the variation in the predictions for each week
 # lapply(pred_files, function(wk){
@@ -203,30 +232,11 @@ tri_200 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/
 
  
 #open new data
-new_data <- readRDS("inla_preds_for_cluster/alps_alt_50_20_min_48_ind_wmissing_Jun_temp.rds")
+new_data <- readRDS("inla_preds_for_cluster/alps_alt_50_20_min_48_ind_static200_wmissing.rds")
 
 used_na <- which(is.na(new_data$used)) #the NA rows are at the beginning of new data
 
-#create one map per week
-lapply(pred_files, function(wk){
 
-  preds <- readRDS(wk) %>% 
-    mutate(wk_n = str_sub(wk,-7,-5),
-           #backtransform the z-scores
-           TRI_200 = (TRI_200_z * sd(all_data$TRI_200)) + mean(all_data$TRI_200),  
-           dem_200 = (dem_200_z * sd(all_data$dem_200)) + mean(all_data$dem_200),
-           month_temp = (month_temp_z * sd(all_data$month_temp)) + mean(all_data$month_temp),
-           weeks_since_emig_n = (weeks_since_emig_n_z * sd(all_data$weeks_since_emig_n)) + mean(all_data$weeks_since_emig_n)) #%>% #this will have one value. because each lapply round includes infor for one week
-    #match the prediction values to the alps_df
-    #full_join(alps_topo_df, by = c("dem_200", "tri_200"))
-
-  #append the predictions to the original alps topo data. 
-  alps_preds <- alps_df_no_na %>% 
-  left_join(preds, by = c("dem_200", "TRI_200"))
-  
-  r <- rast(alps_preds[,c("x", "y", "prob_pres")], crs = crs(Alps)) #use the ggplot code at the end to plot it. reorder the columns
-  
-})
 
 
 #for plotting, create a raster stack, with one layer per week.
