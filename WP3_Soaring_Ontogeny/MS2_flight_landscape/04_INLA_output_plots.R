@@ -2,7 +2,6 @@
 #Jul 19. 2022. Konstanz, DE
 #Elham Nourani
 
-
 #load packages
 library(tidyverse)
 library(terra)
@@ -15,7 +14,7 @@ setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
 # PLOT 1: coefficient plots ----------------------------------------------------------------------------------------------------
 
-graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23_no_temp_200m/graph_M_main200.rds")
+graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb_23_200m_limitedTRI/graph_M_main200.rds")
 
 #remove weeks since dispersal
 graph <- graph[graph$Factor != "weeks_since_emig_n_z",]
@@ -42,14 +41,14 @@ coefs <- ggplot(graph, aes(x = Estimate, y = Factor)) +
   theme_classic()
   
 
-ggsave(plot = coefs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_coefs_static200_FEB23.png", 
+ggsave(plot = coefs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_coefs_static200_limitTRI.png", 
        width = 4.7, height = 2.7, dpi = 300)
 
 
 # PLOT 2: interaction plots ----------------------------------------------------------------------------------------------------
 
 all_data <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_200_inlaready_wks.rds")
-preds <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23_no_temp_200m/preds_M_main200.rds")
+preds <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb_23_200m_limitedTRI/preds_M_main200.rds")
 
 y_axis_var <- c("dem_200_z", "TRI_200_z")
 x_axis_var <- "weeks_since_emig_n_z"
@@ -74,7 +73,7 @@ for (i in y_axis_var){
            x = which(names(.) == x_axis_var)) %>% #weeks since emig
     as.data.frame()
   
-  saveRDS(avg_pred, file = paste0("inla_pred_FEB23_200m_", i,".rds"))
+  saveRDS(avg_pred, file = paste0("inla_pred_FEB23_200m_limitTRI_", i,".rds"))
   
 }
 
@@ -82,14 +81,14 @@ for (i in y_axis_var){
 
 #Fill in the NAs to get rid of white spaces without altering the existing values
 #create rasters
-r_dem <- readRDS("inla_pred_FEB23_200m_dem_200_z.rds") %>% 
+r_dem <- readRDS("inla_pred_FEB23_200m_limitTRI_dem_200_z.rds") %>% 
   dplyr::select(x,y,avg_pres) %>% 
   rast(type = "xyz") %>% 
   focal(w = 7, fun = mean, na.policy = "only", na.rm = T) %>% 
   as.data.frame(xy = T) %>%
   rename(avg_pres = focal_mean)
   
-r_rug <- readRDS("inla_pred_FEB23_200m_TRI_200_z.rds") %>% 
+r_rug <- readRDS("inla_pred_FEB23_200m_limitTRI_TRI_200_z.rds") %>% 
   dplyr::select(x,y,avg_pres) %>% 
   rast(type = "xyz") %>% 
   focal(w = 7, fun = mean, na.policy = "only", na.rm = T) %>% 
@@ -123,9 +122,9 @@ ggsave(plot = p_2, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny
 
 # PLOT 3: individual variation plots ----------------------------------------------------------------------------------------------------
 
-rnd <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23_no_temp_200m/rnd_coeff_M_main200.rds")
+rnd <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb_23_200m_limitedTRI/rnd_coeff_M_main200.rds")
 
-graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23_no_temp_200m/graph_M_main200.rds")
+graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb_23_200m_limitedTRI/graph_M_main200.rds")
 
 #!!!!!!!!make sure to add the coefficient to these.
 names <- rnd[[2]]$ID

@@ -156,41 +156,53 @@ lapply(graph_ls, function(wk){
 
 # STEP 4: create the prediction maps: one for each week ----------------------------------------------------------------
 
-#some thoughts:
-#was thinking to also include a map of sd for each week
 #figure out what to do with values of TRI and TPI that are outside the range of the training data
 #option 1: create a new raster layer with these regions. overlay this with the prediction raster with a gray fill
+# check to see if the range of values in the training and the prediction dataset are different.
+
+alps_data <- readRDS("inla_preds_for_cluster/alps_alt_50_20_min_48_ind_static200_wmissing.rds")
+new <- alps_data[is.na(alps_data$used),]
+og <- alps_data[!is.na(alps_data$used),]
+
+max(new$dem_200) > max(og$dem_200) #TRUE.... in the final maps, grey out the area where the distributions dont match
+max(new$TRI_200) > max(og$TRI_200) #FALSE
+
+hist(new$dem_200)
+hist(og$dem_200, fill = "red", col = "red", add = T) #The ranges overlap. n
+
+hist(new$TRI_200)
+hist(og$TRI_200, fill = "red", col = "red", add = T) #The ranges overlap. n
 
 #open prediction data
 raven_output <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results_alps/alps_preds_Feb23/results_list.rds")
 preds_ls <- raven_output[seq(2,length(raven_output),2)] #extract predictions
 
+###################### prediction maps
 #open original data. to use for back-transformation of dem and tri
 all_data <- readRDS("alt_50_20_min_48_ind_static_200_inlaready_wmissing_wks_n1500.rds") 
 
 #create one map per week
-lapply(preds_ls, function(wk){
+r_ls <- lapply(preds_ls, function(wk){
   
-  preds <- wk %>% 
-    mutate(TRI_200 = (TRI_200_z * sd(all_data$TRI_200)) + mean(all_data$TRI_200),  #backtransform the z-scores
-           dem_200 = (dem_200_z * sd(all_data$dem_200)) + mean(all_data$dem_200)) %>% 
-    dplyr::select(-c("location.lat", "location.long")) ### the lat and long are not for the alps region. they were just copied from the original dataset when making the new_data. FIX IN LATER TRIALS
-  #match the prediction values to the alps_df
-  #full_join(alps_topo_df, by = c("dem_200", "tri_200"))
+  #check the distribution of predicted values
+  png(paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/weekly_alps_preds_dec2/histograms/wk_",
+             wk$weeks_since_emig_n[1],"_distr_preds_200m.png"),
+      width = 4.7, height = 2.7, units = "in", res = 300)  
+  hist(wk$prob_pres)
+  dev.off()
   
-  #append the predictions to the original alps topo data. 
-  alps_preds <- alps_df_no_na %>% 
-    left_join(preds, by = c("dem_200", "TRI_200"))
-  
-  r <- rast(preds[,c("location.long", "location.lat", "prob_pres")], crs = wgs) #use the ggplot code at the end to plot it. reorder the columns
+  r <- wk %>% 
+    drop_na(location.lat) %>%  #figure out why there are NAs
+    dplyr::select(c("location.long", "location.lat", "prob_pres")) %>% 
+    rast(crs = crs(TRI_200)) #use the ggplot code at the end to plot it. reorder the columns
   
 })
 
-ggplot(data = preds) +
+ggplot(data = wk %>% drop_na(location.lat)) +
   geom_tile(aes(x = location.long, y = location.lat, fill = prob_pres)) +
-  scale_fill_gradient2(low = "lightslateblue", mid = "seashell2", high = "firebrick1",limits = c(0,1), midpoint = 0.5,
-                       na.value = "white", name = "Intensity of use") +
-  labs(x = "", y = "Elevation \n (m)") +
+  #scale_fill_gradient2(low = "lightslateblue", mid = "seashell2", high = "firebrick1",limits = c(0,1), midpoint = 0.5,
+  #                     na.value = "white", name = "Intensity of use") +
+  # labs(x = "", y = "Elevation \n (m)") +
   theme_classic()
 
 #open Apline perimeter layer

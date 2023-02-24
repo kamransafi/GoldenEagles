@@ -46,7 +46,7 @@ for(x in 1:nrow(weeks)){
   new_data[is.na(new_data$weeks_since_emig_n_z),"weeks_since_emig_n_z"] <- weeks[x,"weeks_since_emig_n_z"]
   
   #run the model
-  b <- Sys.time()
+  #b <- Sys.time()
   M_pred <- inla(formulaM, family = "Poisson",
                  control.fixed = list(
                    mean = mean.beta,
@@ -57,7 +57,7 @@ for(x in 1:nrow(weeks)){
                  control.compute = list(openmp.strategy =  "pardiso", config = TRUE, cpo = F), #deactivate cpo to save computing power
                  control.inla(strategy = "adaptive", int.strategy = "eb"),
                  inla.mode="experimental", verbose = F)
-  Sys.time()- b #25 min for one model
+  #Sys.time()- b #25 min for one model
   
   # posterior means of coefficients
   graph <- as.data.frame(summary(M_pred)$fixed)
@@ -80,16 +80,6 @@ for(x in 1:nrow(weeks)){
     mutate(preds = M_pred$summary.fitted.values[used_na,"mean"],
            preds_sd = M_pred$summary.fitted.values[used_na,"sd"]) %>% 
     mutate(prob_pres = exp(preds)/(1+exp(preds)))
-  
-  # preds <- data.frame(location.long = new_data[is.na(new_data$used) ,"location.long"],
-  #                     location.lat = new_data[is.na(new_data$used) ,"location.lat"],
-  #                     dem_200_z = new_data[is.na(new_data$used) ,"dem_200_z"],
-  #                     TRI_200_z = new_data[is.na(new_data$used) ,"TRI_200_z"],
-  #                     weeks_since_emig_n_z = new_data[is.na(new_data$used) ,"weeks_since_emig_n_z"],
-  #                     preds = M_pred$summary.fitted.values[used_na,"mean"],
-  #                     preds_sd = M_pred$summary.fitted.values[used_na,"sd"]) %>%
-  #   mutate(prob_pres = exp(preds)/(1+exp(preds)),#this should be between 0-1
-  #          week = weeks[x,"weeks_since_emig_n"])
   
   week_results <- list(graph, preds)
   

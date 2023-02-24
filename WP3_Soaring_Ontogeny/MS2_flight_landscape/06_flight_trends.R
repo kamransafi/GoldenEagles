@@ -101,32 +101,36 @@ saveRDS(flight_summary_ls, file = "/home/enourani/ownCloud/Work/Projects/GE_onto
 
 
 #transform to a dataframe for easier plotting
-flight_summary_df <- flight_summary_ls %>% 
+flight_summary_df <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/flight_summary_per_burst_full.rds") %>% 
   reduce(rbind) %>% 
   filter(between(weeks_since_emig, 1, 135)) %>% 
   mutate(max_wind_speed = sqrt(max_windx^2 + max_windy ^2),
+         med_wind_speed = sqrt(med_windx^2 + med_windy^2),
          flapping_ratio = n_Flapping/n_NotFlapping,
          flapping_to_all = n_Flapping/n_rows_burst,
          circling_to_all = n_circular/n_rows_burst,
-         circling_to_linear = n_circular/n_linear) #calculate wind speed
+         circling_to_linear = n_circular/n_linear)
 
 
+#summaries per day OR week
+wk_summaries <- flight_summary_df %>% 
+  group_by(local_identifier, weeks_since_emig) %>%
+  summarize_at(c("max_wind_speed","med_wind_speed","flapping_ratio", "flapping_to_all", "circling_to_all", "circling_to_linear"), mean, na.rm = T)
 
-ratios <- lapply(flight_summary_ls, function(x){
-  
-  #make plots for the whole period?
-  
-  #filter for post-dispersal and calculate metrics
-  x_post_d <- x %>% 
-    filter(days_since_emig > 0) %>% 
-    
-  
-  
-})
+# STEP 2:plots -------------------------------------------------------------
 
+ggplot(data = wk_summaries, aes(x = weeks_since_emig, y = circling_to_all, group = local_identifier, color = local_identifier)) +
+  geom_point(show.legend = F) +
+  geom_smooth(method = "lm", show.legend = F)
 
+#overall trend
 
-# STEP 2: exploration -------------------------------------------------------------
+ggplot(data = wk_summaries, aes(x = weeks_since_emig, y = circling_to_all)) +
+  geom_point(show.legend = F) +
+  ylim(0,1) +
+  geom_smooth(method = "lm", show.legend = F)
+
+# STEP xx: some old exploration -------------------------------------------------------------
 
 flight_summary_df <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/flight_summary_per_burst_full.rds") %>% 
   reduce(rbind) %>% 

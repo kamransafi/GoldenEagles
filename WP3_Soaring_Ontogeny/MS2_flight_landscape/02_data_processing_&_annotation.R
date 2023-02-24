@@ -292,7 +292,7 @@ load("alt_50_20_min_70_ind.RData") #used_av_track
 #unevenness in slope, aspect and elevation (TPI). (difference between the value of a cell and the mean value of its 8 surrounding cells)
 #previous version aggregated all to 100 m resolution, but I ran into memory issues with the Raven HPC for making predictions at the Alpine region scale. So, try 200 m instead
 
-#100m layers were built in the earlier version of this script
+#200m layers were built in the earlier version of this script
 dem_200 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/dem_200.tif")
 TRI_200 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/tri_200.tif")
 
@@ -304,11 +304,11 @@ names(topo) <- c("dem_200", "TRI_200")
 topo_ann_df <- used_av_track %>% 
   st_as_sf(coords = c("location.long", "location.lat"), crs = wgs) %>% 
   st_transform(crs = crs(topo)) %>% 
-  as("SpatVector") %>% 
-  extract(x = topo, y = ., bind = T) %>%
+  #as("SpatVector") %>% 
+  extract(x = topo, y = ., method = "simple", bind = T) %>%
   project(wgs) %>% 
-  cbind(crds(., df = T)) %>% 
-  as.data.frame()
+  data.frame(., geom(.)) %>% 
+  dplyr::select(-c("geom", "part", "hole"))
   
 saveRDS(topo_ann_df, file = "alt_50_20_min_70_ind_static_200_ann.rds")
 

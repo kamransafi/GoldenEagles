@@ -71,7 +71,7 @@ M_main <-  inla(formulaM, family = "Poisson",
                  control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
                  control.compute = list(openmp.strategy =  "pardiso", config = TRUE, cpo = T), #deactivate cpo to save computing power
                  control.inla(strategy = "adaptive", int.strategy = "eb"),
-                 inla.mode="experimental", verbose = T)
+                 inla.mode="experimental", verbose = F)
 
 
 #extract model vlidation results
@@ -122,4 +122,4 @@ saveRDS(summ_rndm, file = "rnd_coeff_M_main200.rds")
 # STEP 3: TRANSFER FILES TO LOCAL MACHINE
 
 ## copy files back to local machine.. from local terminal
-scp enourani@raven.mpcdf.mpg.de:/raven/u/enourani/INLA_GE/*_M_main200.rds /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb23_no_temp_200m
+scp enourani@raven.mpcdf.mpg.de:/raven/u/enourani/INLA_GE/*_M_main200.rds /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb_23_200m_limitedTRI

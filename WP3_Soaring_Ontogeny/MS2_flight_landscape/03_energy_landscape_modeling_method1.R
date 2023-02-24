@@ -115,7 +115,9 @@ cmpl_ann <- cmpl_ann %>%
 
 # STEP 4: standardize variables ----------------------------------------------------------------
 
+#there are some rows that are way high in TRI. compared to the 99% quantile (22.05), some rows are over 100!! remove the very extreme ones
 all_data <- cmpl_ann %>% 
+  filter(TRI_200 < quantile(all_data$TRI_200, 0.9999)) %>% #99.99% quantile!! 41.6
   mutate_at(c("dem_200", "TRI_200", "weeks_since_emig_n", "days_since_emig_n"),
             list(z = ~(scale(.)))) 
 
@@ -125,13 +127,21 @@ all_data <- cmpl_ann %>%
 # control for monthly temperature....
 
 form1a <- used ~ dem_200_z * weeks_since_emig_n_z + 
-  TRI_100_z * weeks_since_emig_n_z + 
-  month_temp_z +
+  TRI_200_z * weeks_since_emig_n_z + 
   strata(stratum)
 
 ssf <- clogit(form1a, data = all_data)
 summary(ssf)
 plot_summs(ssf)
+
+form1a <- used ~ dem_200_z * TRI_200_z + 
+  strata(stratum)
+
+form1a <- used ~ dem_200_z * TRI_200_z * weeks_since_emig_n + 
+  strata(stratum)
+
+form1a <- used ~ weeks_since_emig_n + 
+  strata(stratum)
 
 # INLA formula using interaction terms for time and predictor variables.
 
@@ -140,7 +150,7 @@ all_data <- all_data %>%
   mutate(ind1 = factor(individual.local.identifier),
          ind2 = factor(individual.local.identifier))
 
-saveRDS(all_data, file = "alt_50_20_min_48_ind_static_200_inlaready_wks.rds")
+saveRDS(all_data, file = "alt_50_20_min_48_ind_static_200_inlaready_wks.rds") #this has the limit on TRI range
 
 
 all_data <- readRDS("alt_50_20_min_48_ind_static_200_inlaready_wks.rds")
@@ -159,7 +169,7 @@ new_data <- all_data %>%
   mutate(used = NA,
          weeks_since_emig_n = sample(seq(min(all_data$weeks_since_emig_n),max(all_data$weeks_since_emig_n), length.out = 10), n, replace = T), 
          dem_200_z = sample(seq(min(all_data$dem_200_z),max(all_data$dem_200_z), length.out = 10), n, replace = T),
-         TRI_200_z = sample(seq(min(all_data$TRI_200_z),max(all_data$TRI_200_z), length.out = 10), n, replace = T)) %>% 
+         TRI_200_z = sample(seq(min(all_data$TRI_200_z),quantile(all_data$TRI_200_z, 0.99), length.out = 10), n, replace = T)) %>% #because of the outliers, do 
   full_join(all_data)
 
 saveRDS(new_data,"alt_50_20_min_48_ind_static_200_inlaready_wmissing_wks_n1500.rds")
