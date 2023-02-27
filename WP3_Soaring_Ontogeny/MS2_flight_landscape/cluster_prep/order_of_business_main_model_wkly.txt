@@ -1,0 +1,121 @@
+#Scripts for modeling the energy landscape for golden eagles past dispersal
+#data contains missing values which will allow me to make predictions to plot the interaction
+
+#From terminal on local system: (make sure to be on MPI internet, use VPN)
+#The file with all data (no missing values)
+
+scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_temp_inlaready_wmissing_wks_n1500.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/INLA_GE/
+  
+#coy over paradiso license
+scp /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/pardiso.lic enourani@raven.mpcdf.mpg.de:/raven/u/enourani/
+  
+#ssh to cluster
+  
+# if not on MPI network: 
+ssh gate.mpcdf.mpg.de
+ssh raven.mpcdf.mpg.de
+
+
+#if on MPI network:
+ssh enourani@raven.mpcdf.mpg.de
+
+
+#load R
+module purge
+module load gcc/10 R/4.2 gdal gsl/2.4
+
+#open R in new screen
+screen -S inlaGE
+R
+
+#to detach screen anytime, ctr+A,D
+#to go back to the scree: screen -r myScreenName
+#list of screens: screen -list
+#kill screen: screen -S myScreenName -X quit 
+
+######in R ##############################################################################
+
+setwd("INLA_GE")
+
+library(tidyverse)
+library(INLA)
+inla.setOption(pardiso.license = "pardiso.lic")
+
+#open file
+all_data <- readRDS("alt_50_20_min_48_ind_static_temp_inlaready_wmissing_wks_n1500.rds") %>% 
+  filter(TRI_100 < quantile(TRI_100,.99)) %>% #remove TRI outliers 
+  mutate(TRI_100_z = scale(TRI_100)) #recalculate the z score
+
+wk_ids <- all_data %>% 
+  group_by(weeks_since_emig_n) %>% 
+  summarize(n = n()) %>% 
+  filter(n > 1000) %>% 
+  pull(weeks_since_emig_n) #121 weeks remain
+
+#define variables and formula
+formulaM <- used ~ -1 +
+  dem_100_z + TRI_100_z +
+  f(stratum, model = "iid",
+    hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
+  f(ind1, dem_100_z, model = "iid",
+    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) +
+  f(ind2, TRI_100_z,  model = "iid",
+    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
+
+mean.beta <- 0
+prec.beta <- 1e-4 
+
+lapply(wk_ids, function(wk){
+  
+  #----------------------------------------------------- STEP 1: filter for week number wk
+  data <- all_data %>% 
+    filter(weeks_since_emig_n == wk)
+  
+  #----------------------------------------------------- STEP 2: model! 
+  #(b <- Sys.time())
+  M_main <- inla(formulaM, family = "Poisson",
+                 control.fixed = list(
+                   mean = mean.beta,
+                   prec = list(default = prec.beta)),
+                 data = data,
+                 num.threads = 20, #if making alpine preds, set to 1 to have enough memory allocated to the thread
+                 control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
+                 control.compute = list(openmp.strategy =  "pardiso", config = TRUE, cpo = T), #consider deactivating cpo to save computing power
+                 control.inla(strategy = "adaptive", int.strategy = "eb"),
+                 inla.mode="experimental", verbose = F)
+  
+  #Sys.time() - b # 4 seconds
+  
+  #quick coeffs plot: Efxplot(M_main)
+  
+  #----------------------------------------------------- STEP 3: extract model coefficients
+  graph <- as.data.frame(summary(M_main)$fixed)
+  colnames(graph)[which(colnames(graph)%in%c("0.025quant","0.975quant"))]<-c("Lower","Upper")
+  colnames(graph)[which(colnames(graph)%in%c("0.05quant","0.95quant"))]<-c("Lower","Upper")
+  colnames(graph)[which(colnames(graph)%in%c("mean"))]<-c("Estimate")
+  
+  graph$Factor <- rownames(graph)
+  
+  saveRDS(graph, file = paste0("weekly_output/graph_M_main100_wk_", wk, ".rds"))
+  
+  #----------------------------------------------------- STEP 4: extract individual variation
+  
+  summ_rndm <- M_main$summary.random
+  saveRDS(summ_rndm, file = paste0("weekly_output/rnd_coeff_M_main100_wk_", wk, ".rds"))
+  
+  
+  #----------------------------------------------------- STEP 5: clean up
+  
+  rm(M_main, data, graph, summ_rndm)
+  
+  gc(gc())
+  
+})
+
+
+
+#-----------------------------------------------------------------------------------------------
+# STEP 3: TRANSFER FILES TO LOCAL MACHINE
+
+## copy files back to local machine.. from local terminal
+scp -r enourani@raven.mpcdf.mpg.de:/raven/u/enourani/INLA_GE/weekly_output/ /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/weekly_Feb23
