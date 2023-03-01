@@ -32,6 +32,9 @@ years <- unique(year(cmpl_ann$timestamp))
 #unique months
 mnths <- c(1:12) %>% str_pad(2,"left","0")
 
+####################################### DOWNLOAD MONONTHLY DATA ###############################################
+
+
 # STEP 2: Download data from CDS -----------------------------------------------------------------------------------------------
 
 #prepare the connection
@@ -166,3 +169,80 @@ Oct_r <- ncdf_list[ncdf_list %>%
 
 writeRaster(Oct_r, file = "avg_temp_10yr_Oct.tif")
 
+
+
+####################################### DOWNLOAD DAILY DATA ###############################################
+
+#STEP 2: download
+
+#unique months
+days <- c(1:31) %>% str_pad(2,"left","0")
+
+#prepare the connection
+path <- "/home/enourani/.local/lib/python2.7/site-packages/"
+cdsapi <- import_from_path("cdsapi", path = path)
+
+server = cdsapi$Client()
+
+output_path <- "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/data/daily_temp_cds/"
+
+#try all months and years at once wont work
+
+for(i in years){
+  for(j in mnths){
+    
+    request <- r_to_py(list(
+      product_type = "reanalysis",
+      variable ="2m_temperature",
+      year = i,
+      month = j,
+      time = "12:00",
+      day = days,
+      area = area,  # North, West, South, East.
+      format = "netcdf",
+      dataset_short_name = "reanalysis-era5-single-levels"
+    ))
+    
+    server$retrieve("reanalysis-era5-single-levels",
+                    request,
+                    target = paste0(output_path,"temp_data_", j, "_", i, ".nc")) 
+    
+  }
+  
+}
+
+#STEP 3: process
+
+ncdf_list <- list.files("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/data/daily_temp_cds", full.names = T)
+
+#extract temperature values for each point of the ssf input dataset. do it by day-month-year 
+mnth_yr_ls <- split(cmpl_ann, list(year(cmpl_ann$timestamp), month(cmpl_ann$timestamp)))
+
+#remove empty elements
+mnth_yr_ls <- mnth_yr_ls[lapply(mnth_yr_ls, nrow) > 0]
+
+
+data_temp <- lapply(mnth_yr_ls, function(x){
+  
+  mnth_yr <- paste(unique(month(x$timestamp)) %>% str_pad(2,"left","0"),  unique(year(x$timestamp)) %>% as.character(), sep = "_")
+  
+  #open corresponding temp data as a raster
+  temp_r <- ncdf_list[ncdf_list %>% 
+                        str_which(mnth_yr)] %>% 
+    rast() %>% 
+    as("SpatRaster")
+  
+  x_temp <- x %>% 
+    st_as_sf(coords = c("location.long", "location.lat"), crs = wgs) %>% 
+   extract(x = temp_r, y = ., layer = paste0("t2m_", day(.$timestamp)), bind = T) %>% 
+    as.data.frame(geom = "XY") %>% 
+    rename(location.long = x,
+           location.lat = y,
+           t2m = value)
+  
+  x_temp
+  
+}) %>% 
+  reduce(rbind)
+
+saveRDS(data_temp, "alt_50_20_min_70_ind_static_time_ann_dailytemp.rds") #data_temp

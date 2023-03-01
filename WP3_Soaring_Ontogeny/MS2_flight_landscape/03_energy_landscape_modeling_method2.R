@@ -39,12 +39,17 @@ all_data <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soarin
 wk_ids <- all_data %>% 
   group_by(weeks_since_emig_n) %>% 
   summarize(n = n()) %>% 
-  filter(n > 1000) %>% 
+  filter(n > 900) %>% 
   pull(weeks_since_emig_n) #121 weeks remain
+
+all_data <- all_data %>%
+  mutate(TPI_100_z = scale(TPI_100),
+         slope_100_z = scale(slope_100))
+
 
 #define variables and formula
 formulaM <- used ~ -1 +
-  dem_100_z + TRI_100_z +
+  dem_100_z * TRI_100_z +
   f(stratum, model = "iid",
     hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
   f(ind1, dem_100_z, model = "iid",
@@ -55,7 +60,7 @@ formulaM <- used ~ -1 +
 mean.beta <- 0
 prec.beta <- 1e-4 
 
-lapply(wk_ids, function(wk){
+graph_ls <- lapply(wk_ids, function(wk){
   
   #----------------------------------------------------- STEP 1: filter for week number wk
   data <- all_data %>% 
@@ -69,7 +74,7 @@ lapply(wk_ids, function(wk){
                    mean = mean.beta,
                    prec = list(default = prec.beta)),
                  data = data,
-                 num.threads = 20, #if making alpine preds, set to 1 to have enough memory allocated to the thread
+                 num.threads = 8, #if making alpine preds, set to 1 to have enough memory allocated to the thread
                  control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
                  control.compute = list(openmp.strategy =  "pardiso", config = TRUE, cpo = T), #consider deactivating cpo to save computing power
                  control.inla(strategy = "adaptive", int.strategy = "eb"),
@@ -89,93 +94,23 @@ lapply(wk_ids, function(wk){
   colnames(graph)[which(colnames(graph)%in%c("mean"))]<-c("Estimate")
   
   graph$Factor <- rownames(graph)
-  
-  saveRDS(graph, file = paste0("graph_M_main100_wk_", wk, ".rds"))
+  graph$week <- wk
+  graph
+  #saveRDS(graph, file = paste0("graph_M_main100_wk_", wk, ".rds"))
 
   
   #----------------------------------------------------- STEP 5: extract individual variation
   
-  summ_rndm <- M_main$summary.random
-  saveRDS(summ_rndm, file = paste0("rnd_coeff_M_main100_wk_", wk, ".rds"))
+  #summ_rndm <- M_main$summary.random
+  #saveRDS(summ_rndm, file = paste0("rnd_coeff_M_main100_wk_", wk, ".rds"))
   
   
   #----------------------------------------------------- STEP 6: clean up
   
-  rm(M_main, data, graph, summ_rndm)
-  
-  gc(gc())
+  #rm(M_main, data, graph, summ_rndm)
+
   
 })
 
 
-### script started for running the models and alpine preds simultaneously. but then decided to only run the model on training dataset as above.
-# lapply(wk_ids, function(wk){
-#   
-#   #----------------------------------------------------- STEP 1: filter for week number wk
-#   data <- all_data %>% 
-#     filter(weeks_since_emig_n == wk)
-#   
-#   #----------------------------------------------------- STEP 2: add new data for alpine predictions
-#   set.seed(400)
-#   
-#   #n needs to be large enough to cover the whole range of 
-#   n <- nrow(alps_df) 
-#   
-#   new_data <- data %>%
-#     group_by(stratum) %>% 
-#     slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
-#     ungroup() %>% 
-#     slice_sample(n = n, replace = T) %>% 
-#     dplyr::select(-c("dem_100", "TRI_100", "location.long", "location.lat")) %>%  #remove the columns that will be replaced by the alpine data. location.lat and location.long will only be added for the alpine rows, and not the original
-#     bind_cols(alps_df) %>%  
-#     mutate(used = NA,
-#            dem_100_z = (dem_100 - mean(all_data$dem_100))/sd(all_data$dem_100), #convert these to z-scores based on the mean and variance of the tracking data.
-#            TRI_100_z = (TRI_100 - mean(all_data$TRI_100))/sd(all_data$TRI_100)) %>% 
-#     bind_rows(data %>%  mutate(location.lat = NA, location.long = NA)) %>% #location.lat and location.long will only be added for the alpine rows, and not the original.
-#     as.data.frame(data)
-#   
-#   #----------------------------------------------------- STEP 3: model! 
-#   (b <- Sys.time())
-#   
-#   M_pred <- inla(formulaM, family = "Poisson",
-#                  control.fixed = list(
-#                    mean = mean.beta,
-#                    prec = list(default = prec.beta)),
-#                  data = new_data,
-#                  num.threads = 1, #to have enough memory allocated to the thread, set to 1
-#                  control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
-#                  control.compute = list(openmp.strategy =  "pardiso", config = TRUE, cpo = T), #consider deactivating cpo to save computing power
-#                  control.inla(strategy = "adaptive", int.strategy = "eb"),
-#                  inla.mode="experimental", verbose = F)
-#   
-#   Sys.time() - b # 3 seconds
-#   
-#   #quick coeffs plot: Efxplot(M_main)
-#   
-#   #----------------------------------------------------- STEP 4: extract model coefficients
-#   graph <- as.data.frame(summary(M_pred)$fixed)
-#   colnames(graph)[which(colnames(graph)%in%c("0.025quant","0.975quant"))]<-c("Lower","Upper")
-#   colnames(graph)[which(colnames(graph)%in%c("0.05quant","0.95quant"))]<-c("Lower","Upper")
-#   colnames(graph)[which(colnames(graph)%in%c("mean"))]<-c("Estimate")
-#   
-#   graph <- graph %>%
-#     mutate(Factor = rownames(graph),
-#            week = wk)
-#   
-#   #----------------------------------------------------- STEP 5: extract predictions
-#   used_na <- which(is.na(new_data$used))
-#   
-#   #extract information for rows that had NAs as response variables. append to the original new_data (with NAs as used)
-#   preds <- new_data %>% 
-#     filter(is.na(used)) %>% 
-#     dplyr::select(c("location.long", "location.lat", "dem_100", "TRI_100", "dem_100_z", "TRI_100_z", "weeks_since_emig_n")) %>% 
-#     mutate(preds = M_pred$summary.fitted.values[used_na,"mean"],
-#            preds_sd = M_pred$summary.fitted.values[used_na,"sd"]) %>% 
-#     mutate(prob_pres = exp(preds)/(1+exp(preds)))
-#   
-#   #----------------------------------------------------- STEP 5: extract individual variation
-#   
-#   summ_rndm <- M_pred$summary.random
-#   
-#   
-# })
+
