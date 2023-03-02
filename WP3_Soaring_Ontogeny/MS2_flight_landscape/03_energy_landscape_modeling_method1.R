@@ -1,6 +1,7 @@
 #script for analysis of golden eagle data for the dynamics of the energy landscape manuscript: modeling the energy landscape
 #follows on from embc_segmentation.R and data_processing_&_annotation.R (and temp_download_&prep.R)
-#only includes static variables
+#only includes static variables. 
+#try adding daily temp to see. seems like dem and temp are interacting!.. from 03_method2
 #Feb 22. 2022. Elham Nourani. Konstanz, DE
 
 library(tidyverse)
@@ -33,101 +34,24 @@ Mode <- function(x, na.rm = FALSE) {
 
 
 #open annotated data
-cmpl_ann <- readRDS("alt_50_20_min_70_ind_static_200m_time_ann.rds") #data with 200m terrain
-
-cmpl_ann <- cmpl_ann %>% 
-  mutate(days_since_emig_n = ceiling(as.numeric(days_since_emig)),#round up
-         weeks_since_emig_n = ceiling(as.numeric(weeks_since_emig))) #135 unique weeks. median =  30.00, 3rd quart. = 61
-
-# STEP 1: data exploration ----------------------------------------------------------------
-
-#number of days available for each individual
-# cmpl_ann %>% 
-#   group_by(individual.local.identifier) %>% 
-#   summarize(max_week = max(ceiling(as.numeric(weeks_since_emig)))) %>% #round up days since emigration. we don't want zeros
-#   ggplot(aes(x = individual.local.identifier, y = max_week)) +
-#   geom_col()
-# 
-# cmpl_ann %>% 
-#   group_by(individual.local.identifier) %>% 
-#   summarize(max_week = max(ceiling(as.numeric(weeks_since_emig)))) %>% 
-#   summarize(mode = Mode(max_week), #  22
-#             median = median(max_week), # 62.5
-#             mean = mean(max_week)) #  63
-# 
-# 
-# #terrain ~ days since emigration ..... no patterns in the plots
-# 
-# plot(cmpl_ann[cmpl_ann$used == 1, c("weeks_since_emig_n", "dem_100")])
-# plot(cmpl_ann[cmpl_ann$used == 1, c("weeks_since_emig_n", "TRI_100")])
-# 
-# ggplot(cmpl_ann[cmpl_ann$used == 1 & cmpl_ann$weeks_since_emig_n <= 60,], aes(as.numeric(weeks_since_emig_n), TRI_100)) +
-#   geom_point() +
-#   stat_smooth(aes(group = individual.local.identifier), method = "lm") +
-#   #geom_smooth() +
-#   theme_minimal() +
-#   theme(legend.position = "none")
-# 
-# 
-# # STEP 2: summary plots ----------------------------------------------------------------
-# 
-# #one set of boxplots for select days: 10, 50 , 100, 500
-# 
-# data_int <- cmpl_ann %>%
-#   filter(weeks_since_emig_n %in% c(1, 2, 4, 10, 50, 100)) %>% 
-#   mutate(weeks_f = as.factor(weeks_since_emig_n))
-# 
-# #the 200m terrain file only has dem and tri
-# 
-# variables <- c("dem_100", "slope_100", "aspect_100", "TRI_100", "TPI_100", "slope_TPI_100", "aspect_TPI_100" )
-# 
-# X11(width = 6, height = 9)
-# 
-# png("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/box_plots_n48.png", width = 6, height = 9, units = "in", res = 300)
-# 
-# par(mfrow= c(4,2), 
-#     oma = c(0,0,3,0), 
-#     las = 1,
-#     mgp = c(0,1,0))
-# for(i in 1:length(variables)){
-#   boxplot(data_int[,variables[i]] ~ data_int[,"weeks_f"], data = data_int, boxfill = NA, border = NA, main = variables[i], xlab = "", ylab = "")
-#   if(i == 1){
-#     legend("topleft", legend = c("used","available"), fill = c(alpha("darkgoldenrod1", 0.9),"gray"), bty = "n", cex = 0.8)
-#   }
-#   boxplot(data_int[data_int$used == 1, variables[i]] ~ data_int[data_int$used == 1,"weeks_f"], outcol = alpha("black", 0.2),
-#           yaxt = "n", xaxt = "n", add = T, boxfill = alpha("darkgoldenrod1", 0.9),  lwd = 0.7, outpch = 20, outcex = 0.8,
-#           boxwex = 0.25, at = 1:length(unique(data_int[data_int$used == 1, "weeks_f"])) - 0.15)
-#   boxplot(data_int[data_int$used == 0, variables[i]] ~ data_int[data_int$used == 0, "weeks_f"], outcol = alpha("black", 0.2),
-#           yaxt = "n", xaxt = "n", add = T, boxfill = "grey", lwd = 0.7, outpch = 20, outcex = 0.8,
-#           boxwex = 0.25, at = 1:length(unique(data_int[data_int$used == 1 , "weeks_f"])) + 0.15)
-#   
-# }
-# dev.off()
-# 
-# 
-# # STEP 3: check for collinearity ----------------------------------------------------------------
-# 
-# cmpl_ann %>% 
-#   dplyr::select(c("dem_100", "slope_100", "aspect_100", "TRI_100", "TPI_100", "slope_TPI_100", "aspect_TPI_100", "month_temp" , "weeks_since_emig_n")) %>% 
-#   correlate() %>% 
-#   corrr::stretch() %>% 
-#   filter(abs(r) > 0.6) #slope and TRI are correlated (.98)
-
-# STEP 4: standardize variables ----------------------------------------------------------------
-
-#there are some rows that are way high in TRI. compared to the 99% quantile (22.05), some rows are over 100!! remove the very extreme ones
-all_data <- cmpl_ann %>% 
-  filter(TRI_200 < quantile(all_data$TRI_200, 0.9999)) %>% #99.99% quantile!! 41.6
-  mutate_at(c("dem_200", "TRI_200", "weeks_since_emig_n", "days_since_emig_n"),
-            list(z = ~(scale(.)))) 
+all_data <- readRDS("alt_50_20_min_70_ind_static_time_ann_dailytemp.rds") %>% 
+  filter(TRI_100 < quantile(TRI_100,.99)) %>% #remove TRI outliers 
+  mutate(ind1 = factor(individual.local.identifier), # INLA formula using interaction terms for time and predictor variables. repeat for random effects
+         ind2 = factor(individual.local.identifier),
+         ind3 = factor(individual.local.identifier),
+         days_since_emig_n = ceiling(as.numeric(days_since_emig)),#round up
+         weeks_since_emig_n = ceiling(as.numeric(weeks_since_emig))) %>% 
+  mutate_at(c("dem_100", "TRI_100", "t2m", "weeks_since_emig_n"), list(z = ~(scale(.))))  #calculate the z scores
+  
+saveRDS(all_data, file = "alt_50_20_min_48_ind_static_100_daytemp_inlaready_wks.rds") #this has the limit on TRI range
 
 # STEP 5: ssf modeling ----------------------------------------------------------------
 
 ## mid_step: investigate using clogit
 # control for monthly temperature....
 
-form1a <- used ~ dem_200_z * weeks_since_emig_n_z + 
-  TRI_200_z * weeks_since_emig_n_z + 
+form1a <- used ~ dem_100_z * weeks_since_emig_n_z *t2m_z + 
+  TRI_100_z * weeks_since_emig_n_z + 
   strata(stratum)
 
 ssf <- clogit(form1a, data = all_data)
@@ -143,36 +67,117 @@ form1a <- used ~ dem_200_z * TRI_200_z * weeks_since_emig_n +
 form1a <- used ~ weeks_since_emig_n + 
   strata(stratum)
 
-# INLA formula using interaction terms for time and predictor variables.
-
-#repeat the random effect
-all_data <- all_data %>% 
-  mutate(ind1 = factor(individual.local.identifier),
-         ind2 = factor(individual.local.identifier))
-
-saveRDS(all_data, file = "alt_50_20_min_48_ind_static_200_inlaready_wks.rds") #this has the limit on TRI range
-
-
-all_data <- readRDS("alt_50_20_min_48_ind_static_200_inlaready_wks.rds")
-
-#add one new row to unique strata instead of entire empty copies of strata. assign week since emigration and terrain values on a regular grid, so we can make a raster later on
-set.seed(500)
-
-#n needs to be large enough to cover the whole range of 
-n <- 1500
+#use the clogit to make predictions. 
+n <- 1000
 
 new_data <- all_data %>%
   group_by(stratum) %>% 
   slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
   ungroup() %>% 
-  slice_sample(n = n, replace = F) %>% 
+  slice_sample(n = n, replace = T) %>% 
+  mutate(used = NA,
+         weeks_since_emig_n = sample(seq(min(all_data$weeks_since_emig_n),max(all_data$weeks_since_emig_n), length.out = 20), n, replace = T), 
+         dem_100_z = sample(seq(min(all_data$dem_100_z),max(all_data$dem_100_z), length.out = 20), n, replace = T),
+         TRI_100_z = sample(seq(min(all_data$TRI_100_z),max(all_data$TRI_100_z), length.out = 20), n, replace = T),
+         t2m_z = sample(seq(min(all_data$t2m_z),max(all_data$t2m_z), length.out = 20), n, replace = T))
+
+
+#predict using the model
+preds <- predict(ssf, newdata = new_data, type = "risk")
+preds_pr <- new_data %>% 
+  mutate(preds = preds) %>% 
+  rowwise %>% 
+  mutate(probs = preds/(preds+1))
+
+#prepare for plotting
+y_axis_var <- c("dem_100_z", "TRI_100_z")
+x_axis_var <- "weeks_since_emig_n_z"
+
+#extract center and scale values for time variable, to be used for back transformation. The y-axis attributes will be extracted in the for loop
+x_axis_attr_scale <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:scale')
+x_axis_attr_center <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:center')
+
+for (i in y_axis_var){
+  
+  i_scale <- attr(all_data[,colnames(all_data) == i],'scaled:scale')
+  i_center <- attr(all_data[,colnames(all_data) == i],'scaled:center')
+  
+  #summarize values, so each (x,y) combo has one probability value
+  avg_pred <- preds_pr %>% 
+    group_by_at(c(which(names(preds_pr) == i),which(names(preds_pr) == x_axis_var))) %>%  #group by weeks since emigration and i
+    summarise(avg_pres = mean(probs)) %>% 
+    ungroup() %>% 
+    mutate(dplyr::select(.,all_of(i)) * i_scale + i_center, #back-transform the values for plotting
+           dplyr::select(.,all_of(x_axis_var)) * x_axis_attr_scale + x_axis_attr_center ) %>% #these columns replace the original columns 1 and 2
+    rename(x = which(names(.) == x_axis_var), #weeks since emig
+           y = which(names(.) == i)) %>% #y axis variables
+    dplyr::select(c("x","y","avg_pres")) %>%  #reorder the columns for making xyz raster
+    as.data.frame()
+  
+  #saveRDS(avg_pred, file = paste0("inla_pred_clogit_", i,".rds"))
+  
+  r <- avg_pred %>% 
+    rast(type = "xyz") %>% 
+    focal(w = 7, fun = max, na.policy = "only", na.rm = T) %>% 
+    as.data.frame(xy = T) %>%
+    rename(avg_pres = focal_mean)
+  
+  saveRDS(r, file = paste0("inla_pred_clogit_", i,".rds"))
+  
+  #coordinates(avg_pred) <-~ x + y
+  #gridded(avg_pred) <- TRUE
+  #r <- raster(avg_pred) #many NA values....
+}
+
+
+#create plots
+p_dem <- readRDS("inla_pred_clogit_dem_100_z.rds") %>% 
+  ggplot() +
+  geom_tile(aes(x = x, y = y, fill = avg_pres)) +
+  scale_fill_gradient2(low = "#005AB5", mid = "seashell2", high = "#D41159",limits = c(0,1), midpoint = 0.5,
+                       na.value = "white", name = "Intensity of use") +
+  labs(x = "", y = "Elevation \n (m)") +
+  theme_classic()
+
+p_rugg <- readRDS("inla_pred_clogit_TRI_100_z.rds") %>% 
+  ggplot() +
+  geom_tile(aes(x = x, y = y, fill = avg_pres)) +
+  scale_fill_gradient2(low = "#005AB5", mid = "seashell2", high = "#D41159",limits = c(0,1), midpoint = 0.5,
+                       na.value = "white", name = "Intensity of use") +
+  labs(x = "Weeks since dispersal", y = "Terrain Ruggedness \n Index") +
+  theme_classic()
+
+
+#put both plots in one device
+X11(width = 9, height = 4)
+combined <- p_dem + p_rugg & theme(legend.position = "right")
+(p_2  <- combined + plot_layout(guides = "collect", nrow = 2))
+
+
+
+
+
+
+#######
+#add one new row to unique strata instead of entire empty copies of strata. assign week since emigration and terrain values on a regular grid, so we can make a raster later on
+set.seed(7777)
+
+#n needs to be large enough to cover the whole range of 
+n <- 1000
+
+new_data <- all_data %>%
+  group_by(stratum) %>% 
+  slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
+  ungroup() %>% 
+  slice_sample(n = n, replace = T) %>% 
   mutate(used = NA,
          weeks_since_emig_n = sample(seq(min(all_data$weeks_since_emig_n),max(all_data$weeks_since_emig_n), length.out = 10), n, replace = T), 
-         dem_200_z = sample(seq(min(all_data$dem_200_z),max(all_data$dem_200_z), length.out = 10), n, replace = T),
-         TRI_200_z = sample(seq(min(all_data$TRI_200_z),quantile(all_data$TRI_200_z, 0.99), length.out = 10), n, replace = T)) %>% #because of the outliers, do 
+         dem_100_z = sample(seq(min(all_data$dem_100_z),max(all_data$dem_100_z), length.out = 10), n, replace = T),
+         TRI_100_z = sample(seq(min(all_data$TRI_100_z),max(all_data$TRI_100_z), length.out = 10), n, replace = T),
+         t2m_z = sample(seq(min(all_data$t2m_z),max(all_data$t2m_z), length.out = 10), n, replace = T)) %>% #set to the mean of temperature. it is zero, because we are working with a z-score 
   full_join(all_data)
 
-saveRDS(new_data,"alt_50_20_min_48_ind_static_200_inlaready_wmissing_wks_n1500.rds")
+saveRDS(new_data,"alt_50_20_min_48_ind_static_daytemp_100_inlaready_wmissing_wks_n1000.rds")
 
 
 #the model will be run on the cluster. see cluster_prep/order_of_business_main_model.txt
