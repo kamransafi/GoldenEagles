@@ -5,12 +5,28 @@
 #Elham Nourani, PhD.
 
 
+library(tidyverse)
+library(magrittr)
+library(corrr)
+library(jtools) #to plot coeffs of clogit
+library(INLA)
+library(fields)
+library(raster)
+library(survival)
+library(ggregplot)
+library(terra)
+library(gstat) #for interpolations
+library(rastervis) #remotes::install_github("oscarperpinan/rastervis")
+library(patchwork) #patching up interaction plots
+library(oce) #color palette for interaction plots
+library(patchwork) #patching up interaction plots
 
 
+setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
-saveRDS(all_data, file = "alt_50_20_min_48_ind_static_100_daytemp_inlaready_wks.rds") #this has the limit on TRI range
+all_data <- readRDS("alt_50_20_min_48_ind_static_100_daytemp_inlaready_wks.rds") #this has the limit on TRI range
 
-# STEP 5: ssf modeling ----------------------------------------------------------------
+# STEP 1: ssf modeling ----------------------------------------------------------------
 
 ## mid_step: investigate using clogit
 # control for monthly temperature....
@@ -21,19 +37,35 @@ form1a <- used ~ dem_100_z * weeks_since_emig_n_z *t2m_z +
 
 ssf <- clogit(form1a, data = all_data)
 summary(ssf)
-plot_summs(ssf)
 
-form1a <- used ~ dem_200_z * TRI_200_z + 
-  strata(stratum)
+X11(width = 14, height = 12)
+coefs <- plot_summs(ssf, point.size = 7, point.shape = 16) +
+  labs(y = NULL) +
+  labs(x = NULL) +
+  scale_y_discrete( labels = c("Elevation:Weeks since dispersal:Temperature", "Weeks since dispersal:Ruggedness", "Week since dispersal: Temperature","Elevation:Temperature",
+                               "Elevation:Weeks since dispersal","Ruggedness",  "Temperature",  "Elevation")) +
+  theme_classic() +
+  theme(axis.text.y = element_text(face="bold", size = 20),
+                axis.text.x = element_text(face="bold", size = 20))
+  
 
-form1a <- used ~ dem_200_z * TRI_200_z * weeks_since_emig_n + 
-  strata(stratum)
+ggsave(plot = coefs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/clogit_coeffs.png", 
+       width = 14, height = 12, dpi = 500)
 
-form1a <- used ~ weeks_since_emig_n + 
-  strata(stratum)
 
-#use the clogit to make predictions. 
-n <- 1000
+# STEP 2: predict using the ssf  ----------------------------------------------------------------
+
+#to make sure the predictions cover the parameter space, create a dataset with all possible combinations
+grd_dem <- expand.grid(x = seq(from = min(all_data$weeks_since_emig_n_z), to = max(all_data$weeks_since_emig_n_z), by = 0.15),
+                   y = seq(from = min(all_data$dem_100_z), to = max(all_data$dem_100_z), by = 0.15))
+
+grd_tri <- expand.grid(x = seq(from = min(all_data$weeks_since_emig_n_z), to = max(all_data$weeks_since_emig_n_z), by = 0.15),
+                       y = seq(from = min(all_data$TRI_100_z), to = max(all_data$TRI_100_z), by = 0.15))
+
+grd_temp <- expand.grid(x = seq(from = min(all_data$t2m_z), to = max(all_data$t2m_z), by = 0.15),
+                       y = seq(from = min(all_data$dem_100_z), to = max(all_data$dem_100_z), by = 0.15))
+
+n <- nrow(grd_dem) #the dem grid has more number of rows, so use it
 
 new_data <- all_data %>%
   group_by(stratum) %>% 
@@ -83,15 +115,12 @@ for (i in y_axis_var){
   
   r <- avg_pred %>% 
     rast(type = "xyz") %>% 
-    focal(w = 7, fun = max, na.policy = "only", na.rm = T) %>% 
+    focal(w = 7, fun = median, na.policy = "only", na.rm = T) %>% 
     as.data.frame(xy = T) %>%
-    rename(avg_pres = focal_mean)
+    rename(avg_pres = focal_median)
   
   saveRDS(r, file = paste0("inla_pred_clogit_", i,".rds"))
-  
-  #coordinates(avg_pred) <-~ x + y
-  #gridded(avg_pred) <- TRUE
-  #r <- raster(avg_pred) #many NA values....
+
 }
 
 
@@ -118,3 +147,26 @@ X11(width = 9, height = 4)
 combined <- p_dem + p_rugg & theme(legend.position = "right")
 (p_2  <- combined + plot_layout(guides = "collect", nrow = 2))
 
+
+
+
+#interpolate. for visualization purposes
+dem_r <- readRDS("inla_pred_clogit_dem_100_z.rds")
+dem_rast <- dem_r %>% 
+  rast(type = "xyz") 
+
+surf.1 <- Tps(as.matrix(dem_r[, c(1,2)], col = 2), dem_r[,3])
+
+grd <- expand.grid(x = seq(from = ext(dem_rast)[1],to = ext(dem_rast)[2],by = 2),
+                   y = seq(from = ext(dem_rast)[3],to = ext(dem_rast)[4],by = 2))
+
+grd$coords <- matrix(c(grd$x,grd$y),ncol=2)
+
+surf.1.pred <- predict.Krig(surf.1,grd$coords)
+interpdf <- data.frame(grd$coords, surf.1.pred)
+
+colnames(interpdf) <- c("weeks","dem","prob_pres")
+
+coordinates(interpdf) <- ~ weeks + dem
+gridded(interpdf) <- TRUE
+interpr <- raster(interpdf)

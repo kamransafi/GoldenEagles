@@ -25,9 +25,16 @@ wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
 
 # STEP 0: open data ----------------------------------------------------------------
 #open prepared data. use 100m res throughout 
-all_data <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_temp_inlaready_wmissing_wks_n1500.rds") %>% 
+all_data <- readRDS("alt_50_20_min_70_ind_static_time_ann_dailytemp.rds") %>% 
   filter(TRI_100 < quantile(TRI_100,.99)) %>% #remove TRI outliers 
-  mutate(TRI_100_z = scale(TRI_100)) #recalculate the z score
+  mutate_at(c("dem_100", "slope_100", "aspect_100", "slope_TPI_100", "aspect_TPI_100", "TRI_100", "t2m"),
+            list(z = ~(scale(.)))) %>%  #calculate the z scores
+  mutate(ind1 = factor(individual.local.identifier),
+         ind2 = factor(individual.local.identifier),
+         ind3 = factor(individual.local.identifier),
+         days_since_emig_n = ceiling(as.numeric(days_since_emig)),#round up
+         weeks_since_emig_n = ceiling(as.numeric(weeks_since_emig)))
+  
   
 #open alpine tri_dem data. From 05_INLA_prediction_map.R
 #alps_df <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alps_topo_100m_temp_df.rds")
@@ -39,17 +46,13 @@ all_data <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soarin
 wk_ids <- all_data %>% 
   group_by(weeks_since_emig_n) %>% 
   summarize(n = n()) %>% 
-  filter(n > 900) %>% 
+  filter(n > 1000) %>% 
   pull(weeks_since_emig_n) #121 weeks remain
-
-all_data <- all_data %>%
-  mutate(TPI_100_z = scale(TPI_100),
-         slope_100_z = scale(slope_100))
 
 
 #define variables and formula
 formulaM <- used ~ -1 +
-  dem_100_z * TRI_100_z +
+  dem_100_z * t2m_z + TRI_100_z * t2m_z +
   f(stratum, model = "iid",
     hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
   f(ind1, dem_100_z, model = "iid",

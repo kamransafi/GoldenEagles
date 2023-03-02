@@ -245,4 +245,4 @@ data_temp <- lapply(mnth_yr_ls, function(x){
 }) %>% 
   reduce(rbind)
 
-saveRDS(data_temp, "alt_50_20_min_70_ind_static_time_ann_dailytemp.rds") #data_temp
+saveRDS(data_temp, "alt_50_20_min_70_ind_static_time_ann_dailytemp.rds")

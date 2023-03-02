@@ -39,7 +39,7 @@ coeffs <- ggplot(graph_df, aes(x = week, y = Estimate, group = Factor, color = F
                 position = position_dodge(0.1)) +
   geom_smooth(method = "gam") +
   theme_classic() +
-  scale_color_manual(values=c('#999999','#E69F00', "#6CA7FF"))
+  scale_color_manual(values = c('#999999','#E69F00', "#6CA7FF", "#75CC3F", "#CDA4E7"))
 
 ggplot(graph_df, aes(x = week, y = Estimate, color = Factor)) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
@@ -50,7 +50,7 @@ ggplot(graph_df, aes(x = week, y = Estimate, color = Factor)) +
                 position = position_dodge(0.1)) +
   geom_smooth(method = "gam") +
   theme_classic() +
-  scale_color_manual(values=c('#999999','#E69F00', "#6CA7FF")) +
+  scale_color_manual(values = c('#999999','#E69F00', "#6CA7FF", "#75CC3F", "#CDA4E7")) +
   facet_wrap(~Factor)
 
 ggsave(plot = coeffs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/weekly_coeff_trends.png", width = 6, height = 3, dpi = 300)

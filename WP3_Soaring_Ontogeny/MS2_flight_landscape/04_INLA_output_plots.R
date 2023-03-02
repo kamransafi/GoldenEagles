@@ -14,7 +14,7 @@ setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
 # PLOT 1: coefficient plots ----------------------------------------------------------------------------------------------------
 
-graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb_23_200m_limitedTRI/graph_M_main200.rds")
+graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Mar23_temp_100/graph_M_main100.rds")
 
 #remove weeks since dispersal
 graph <- graph[graph$Factor != "weeks_since_emig_n_z",]
@@ -34,9 +34,9 @@ coefs <- ggplot(graph, aes(x = Estimate, y = Factor)) +
   geom_vline(xintercept = 0, linetype="dashed", 
              color = "gray", size = 0.5) +
   geom_point(color = "cornflowerblue", size = 2)  +
-  xlim(-0.1,0.6) +
-  scale_y_discrete(name = "",
-                   labels = c("Weeks since dispersal * TRI","Weeks since dispersal * DEM", "TRI", "DEM")) +
+  #xlim(-0.1,0.6) +
+  #scale_y_discrete(name = "",
+  #                 labels = c("Weeks since dispersal * TRI","Weeks since dispersal * DEM", "TRI", "DEM")) +
   geom_linerange(aes(xmin = Lower, xmax = Upper),color = "cornflowerblue", size = 1) +
   theme_classic()
   
@@ -47,10 +47,10 @@ ggsave(plot = coefs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontoge
 
 # PLOT 2: interaction plots ----------------------------------------------------------------------------------------------------
 
-all_data <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_200_inlaready_wks.rds")
-preds <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb_23_200m_limitedTRI/preds_M_main200.rds")
+all_data <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_100_daytemp_inlaready_wks.rds")
+preds <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Mar23_temp_100/preds_M_main100.rds")
 
-y_axis_var <- c("dem_200_z", "TRI_200_z")
+y_axis_var <- c("dem_100_z", "TRI_100_z")
 x_axis_var <- "weeks_since_emig_n_z"
 
 #extract center and scale values for time variable, to be used for back transformation. The y-axis attributes will be extracted in the for loop
@@ -73,7 +73,7 @@ for (i in y_axis_var){
            x = which(names(.) == x_axis_var)) %>% #weeks since emig
     as.data.frame()
   
-  saveRDS(avg_pred, file = paste0("inla_pred_FEB23_200m_limitTRI_", i,".rds"))
+  saveRDS(avg_pred, file = paste0("inla_pred_Mar23_100_", i,".rds"))
   
 }
 
@@ -81,14 +81,14 @@ for (i in y_axis_var){
 
 #Fill in the NAs to get rid of white spaces without altering the existing values
 #create rasters
-r_dem <- readRDS("inla_pred_FEB23_200m_limitTRI_dem_200_z.rds") %>% 
+r_dem <- readRDS("inla_pred_Mar23_100_dem_100_z.rds") %>% 
   dplyr::select(x,y,avg_pres) %>% 
   rast(type = "xyz") %>% 
   focal(w = 7, fun = mean, na.policy = "only", na.rm = T) %>% 
   as.data.frame(xy = T) %>%
   rename(avg_pres = focal_mean)
   
-r_rug <- readRDS("inla_pred_FEB23_200m_limitTRI_TRI_200_z.rds") %>% 
+r_rug <- readRDS("inla_pred_Mar23_100_TRI_100_z.rds") %>% 
   dplyr::select(x,y,avg_pres) %>% 
   rast(type = "xyz") %>% 
   focal(w = 7, fun = mean, na.policy = "only", na.rm = T) %>% 
