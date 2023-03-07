@@ -1,0 +1,102 @@
+#Scripts for modeling the energy landscape for golden eagles past dispersal
+#data contains missing values which will allow me to make predictions to plot the interaction
+
+#From terminal on local system: (make sure to be on MPI internet, use VPN)
+#The file with all data (no missing values)
+
+scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_100_daytemp_inlaready_wks.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/clogit_model/
+  
+scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alps_topo_100m_temp_df.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/clogit_model/  
+  
+  #coy over paradiso license
+  scp /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/pardiso.lic enourani@raven.mpcdf.mpg.de:/raven/u/enourani/
+  
+  #ssh to cluster
+  
+  # if not on MPI network: 
+  ssh gate.mpcdf.mpg.de
+ssh raven.mpcdf.mpg.de
+
+
+#if on MPI network:
+ssh enourani@raven.mpcdf.mpg.de
+
+
+#load R
+module purge
+module load gcc/10 R/4.2 gdal gsl/2.4
+
+#open R in new screen
+screen -S inlaGE
+R
+
+#to detach screen anytime, ctr+A,D
+#to go back to the scree: screen -r myScreenName
+#list of screens: screen -list
+#kill screen: screen -S myScreenName -X quit 
+
+######in R
+
+setwd("clogit_model")
+
+library(tidyverse)
+library(survival)
+
+
+#open file
+all_data <- readRDS("alt_50_20_min_48_ind_static_100_daytemp_inlaready_wks.rds") %>% 
+  dplyr::select(c("location.long", "location.lat", "track", "stratum", "step_length", "turning_angle", "used","weeks_since_emig_n", "weeks_since_emig_n_z", 
+                  "dem_100", "dem_100_z", "TRI_100", "TRI_100_z", "t2m_z", "t2m"))
+
+#-----------------------------------------------------------------------------------------------
+# STEP 1: MODEL
+
+form1a <- used ~ dem_100_z * weeks_since_emig_n_z *t2m_z + 
+  TRI_100_z * weeks_since_emig_n_z + 
+  strata(stratum)
+
+ssf <- clogit(form1a, data = all_data)
+
+#-----------------------------------------------------------------------------------------------
+# STEP 2: EXTRACT & SAVE PREDICTIONS
+alps_df_no_na <- readRDS("alps_topo_100m_temp_df.rds")
+
+n <- nrow(alps_df_no_na)
+
+
+preds_ls <- lapply(c(1:24), function(i){
+  
+  new_data <- all_data %>%
+    group_by(stratum) %>% 
+    slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
+    ungroup() %>% 
+    slice_sample(n = n, replace = T) %>% 
+    dplyr::select(-c("dem_100", "TRI_100","location.long", "location.lat")) %>%  #remove the rows that will be replaced by the alpine data. location.lat and location.long will only be added for the alpine rows, and not the original
+    bind_cols(alps_df_no_na) %>% 
+    mutate(used = NA,
+           weeks_since_emig_n = i,
+           weeks_since_emig_n_z = (i - mean(all_data$weeks_since_emig_n))/sd(all_data$weeks_since_emig_n),
+           dem_100_z = (dem_100 - mean(all_data$dem_100))/sd(all_data$dem_100), #convert these to z-scores based on the mean and variance of the tracking data.
+           TRI_100_z = (TRI_100 - mean(all_data$TRI_100))/sd(all_data$TRI_100))
+  
+  #predict using the model
+  preds <- predict(ssf, newdata = new_data, type = "risk")
+  preds_prob <- preds/(preds+1)
+  
+  preds_pr <- new_data %>% 
+    mutate(preds = preds,
+           probs = preds_prob,
+           week = i)
+
+preds_pr
+
+})
+
+#save the output
+saveRDS(preds_ls, file = "predictions_ls.rds")
+
+#-----------------------------------------------------------------------------------------------
+# STEP 3: TRANSFER FILES TO LOCAL MACHINE
+
+## copy files back to local machine.. from local terminal
+scp enourani@raven.mpcdf.mpg.de:/raven/u/enourani/clogit_model/predictions_ls.rds /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/clogit_Mar23
