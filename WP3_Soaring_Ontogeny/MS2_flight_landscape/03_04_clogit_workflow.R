@@ -16,7 +16,7 @@ library(survival)
 library(ggregplot)
 library(terra)
 library(gstat) #for interpolations
-library(rastervis) #remotes::install_github("oscarperpinan/rastervis")
+#library(rastervis) #remotes::install_github("oscarperpinan/rastervis")
 library(patchwork) #patching up interaction plots
 library(oce) #color palette for interaction plots
 library(patchwork) #patching up interaction plots
@@ -33,7 +33,7 @@ all_data <- readRDS("alt_50_20_min_48_ind_static_100_daytemp_inlaready_wks.rds")
 ## mid_step: investigate using clogit
 # control for monthly temperature....
 
-form1a <- used ~ dem_100_z * weeks_since_emig_n_z *t2m_z + 
+form1a <- used ~ dem_100_z * weeks_since_emig_n_z * t2m_z + 
   TRI_100_z * weeks_since_emig_n_z + 
   strata(stratum)
 
@@ -236,13 +236,15 @@ all_data <- readRDS("alt_50_20_min_48_ind_static_100_daytemp_inlaready_wks.rds")
 
 alps_df_no_na <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alps_topo_100m_temp_df.rds")
 
-#open to extract crs
-#TRI_100 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/TPI_100.tif")
+
 
 n <- nrow(alps_df_no_na)
 
 #first to 4th week, after 6 months, after  a year, after 1.5 years
-lapply(c(1:4,24,52,76), function(i){
+lapply(c(1:24,52,76), function(i){
+  
+  wk <- i %>% str_pad(2,"left","0")
+  
   new_data <- all_data %>%
     group_by(stratum) %>% 
     slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
@@ -263,9 +265,11 @@ lapply(c(1:4,24,52,76), function(i){
   preds_pr <- new_data %>% 
     mutate(preds = preds,
            probs = preds_prob,
-           week = i)
+           week = wk)
+  
+  
 
-  saveRDS(preds_pr, file = paste0("clogit_alp_pred_week_", i, ".rds"))
+  saveRDS(preds_pr, file = paste0("clogit_alp_pred_week_", wk, ".rds"))
   
   #r <- preds_pr %>% 
   #  dplyr::select(c("location.long", "location.lat", "probs")) %>% 
@@ -275,6 +279,7 @@ lapply(c(1:4,24,52,76), function(i){
 
 file_ls <- list.files(pattern = "clogit_alp_pred", full.names = T) 
 
+#save plots
 lapply(file_ls, function(x){
 
   p <- readRDS(x) %>% 
@@ -284,9 +289,92 @@ lapply(file_ls, function(x){
                        na.value = "white", name = "Intensity of use") +
    labs(x = "", y = "", title = paste0("week ", str_sub(x,24,-5), " since dispersal")) +
   theme_classic()
-
-  ggsave(plot = p, filename = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/clogit_alps_wk_", str_sub(x,24,-5), ".png"), 
+  
+  ggsave(plot = p, filename = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/clogit_alps_wk_", str_sub(x, 24, -5), ".png"), 
          width = 9, height = 6, dpi = 300)
 
 })
+
+################################## trends in suitable areas ###########
+
+#create 2 dataframes: 1) lat, long and suitability of each cell for each week; 2) lat, long, suitability class and area of each class in each week
+
+probs_df <- data.frame()
+areas_df <- data.frame()
+
+#list the weekly prediction files
+file_ls <- list.files(pattern = "clogit_alp_pred_week", full.names = T) 
+
+#open one sample file as a raster for extracting the resolution. the res will be used later on to calculate the area of each suitability category
+r <- readRDS(file_ls[[1]]) %>%
+  dplyr::select(c("location.long", "location.lat", "probs")) %>% 
+  rast(type = "xyz", crs = crs(rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/TPI_100.tif"))) 
+
+
+#create matrix for reclassification. The first two columns are "from" "to" of the input values, and the third column "becomes" 
+classes <- matrix(c(c(0, .3, .6, .7, .8, .9), 
+                  c(.3, .6, .7, .8, .9, 1.1),
+                  c(1, 2, 3, 4, 5, 6)), ncol = 3, nrow = 6, byrow = F)
+
+
+
+lapply(file_ls, function(x){
+  
+  
+  df_p <- readRDS(x) %>%
+    dplyr::select(c("location.long", "location.lat", "probs")) %>% 
+    rast(type = "xyz", crs = crs(TRI_100)) %>% 
+    classify(rcl = classes, include.lowest = T) #classify the raster into suitability categories
+  
+  names(r) <- "suitability"
+  
+  r_a <- r %>% 
+    as.data.frame() %>% 
+    group_by(suitability) %>% 
+    tally() %>% 
+    mutate(area = n * res(r)[1] * res(r)[2]) #calculate the area of each category
+  
+  #calculate area under different suitability categories
+  
+})
+
+
+
+##################################################
+
+weeks <- unlist(lapply(file_ls, function(x) str_sub(x, 24, -5))) 
+
+rasters_ls <- lapply(file_ls, function(x){
+
+  r <- readRDS(x) %>%
+  dplyr::select(c("location.long", "location.lat", "probs")) %>% 
+    rast(type = "xyz", crs = crs(TRI_100)) 
+  
+  #in the same lapply call, calculate the total area over 0.7 suitability
+  
+
+})
+
+names(rasters_ls) <- weeks
+
+
+
+#subtract the rasters
+rev_ls1 <- rev(rasters_ls)
+rev_ls1[length(rev_ls1)] <- NULL
+
+
+rev_ls2 <- rev(rasters_ls)
+rev_ls2[1] <- NULL
+
+
+diffs_ls2 <- lapply(rev(rasters_ls))
+
+
+diff <- rev(rasters_ls)[[6]]- rev(rasters_ls)[[7]]
+
+diff_non_zero <- diff[diff$probs != 0]
+
+
+
 
