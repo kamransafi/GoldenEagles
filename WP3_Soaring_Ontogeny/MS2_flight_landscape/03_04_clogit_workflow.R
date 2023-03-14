@@ -297,21 +297,14 @@ lapply(file_ls, function(x){
 
 ################################## trends in suitable areas ###########
 
-#create 2 dataframes: 1) lat, long and suitability of each cell for each week; 2) lat, long, suitability class and area of each class in each week
-# 
-# probs_df <- data.frame()
-# areas_df <- data.frame()
-
+#empty raster stack to store reclassified rasters
 p_stack <- NULL
+
+#empty list to store frequency of each suitability clss
+freq_ls <- list()
   
 #list the weekly prediction files
 file_ls <- list.files(pattern = "clogit_alp_pred_week", full.names = T) 
-
-# #open one sample file as a raster for extracting the resolution. the res will be used later on to calculate the area of each suitability category
-# r <- readRDS(file_ls[[1]]) %>%
-#   dplyr::select(c("location.long", "location.lat", "probs")) %>% 
-#   rast(type = "xyz", crs = crs(rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/TPI_100.tif"))) 
-
 
 #create matrix for reclassification. The first two columns are "from" "to" of the input values, and the third column "becomes" 
 classes <- matrix(c(c(0, .3, .5, .7, .85), 
@@ -319,9 +312,6 @@ classes <- matrix(c(c(0, .3, .5, .7, .85),
                   c(1, 2, 3, 4, 5)), ncol = 3, nrow = 5, byrow = F)
 
 
-
-#lapply(file_ls, function(x){
-  
 for (i in file_ls){ 
  
   r_p <- readRDS(x) %>%
@@ -337,24 +327,8 @@ for (i in file_ls){
  #estimate frequency of each class
    freq_r <- r_p %>% 
      freq()
-   
-   
-  r_wgs <- r_p %>% 
-    project("+proj=longlat +datum=WGS84 +no_defs") 
-    
-  #calculate the area under different suitability categories
-  df_a <- r_wgs %>% 
-    cellSize(unit = "km") %>% 
-    as.data.frame(row.names = NULL, xy = T) %>% 
-    full_join(r_wgs %>% as.data.frame(row.names=NULL, xy = T)) %>% 
-    group_by(suitability) %>% 
-    summarize(area = sum())
-    tally() %>% 
-    mutate(area = n * res(r)[1] * res(r)[2]) #calculate the area of each category
-  
-  #calculate area under different suitability categories
  
-     
+   freq_ls[[length(freq_ls) + 1]] <- freq_r 
 }
 
 
