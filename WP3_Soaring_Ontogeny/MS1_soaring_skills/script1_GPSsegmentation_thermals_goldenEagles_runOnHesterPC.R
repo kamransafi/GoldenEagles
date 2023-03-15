@@ -1,5 +1,5 @@
 
-## This is an example script wrote by Martin but run on Hester's computer using data that are not on Martina's computer
+## This is an example script wrote by Martina but run on Hester's computer using data that are not on Martina's computer
 ## The output of the script are GPS data per individual classified into soaring and gliding and circular and linear.
 ## The names of the output files are animalID_classifiedBursts_df and were sent by Hester to Martina.
 
@@ -80,7 +80,7 @@ llply(flsToDO, function(f){
   load(f) #object mv
   animalID <- mv@idData$local_identifier
   # with cumsum R assigns the same value to all consecutive locations for which the condition is false (timelag <= 1 sec)
-  mv$burstID <- c(0, cumsum(mv$timelag.sec[2:n.locs(mv)] != minResol))  #from row 2 (since the first is NA)
+  mv$burstID <- c(0, cumsum(mv$timelag.sec[2:n.locs(mv)] > minResol))  #from row 2 (since the first is NA)
   # with table we can count all locations with the same ID (each one is a separate burst) and keep those high resolution bursts that have at least a certain number of locations (= minBurstDuration)
   burstDuration <- as.data.frame(table(mv$burstID))
   burstsToKeep <- burstDuration$Var1[which(burstDuration$Freq >= minBurstDuration)]
