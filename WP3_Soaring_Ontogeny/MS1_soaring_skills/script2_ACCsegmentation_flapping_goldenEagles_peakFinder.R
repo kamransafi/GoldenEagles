@@ -103,7 +103,7 @@ lapply(fls, function(f){
       new_nSamplesPerBurst <- round(tot_nSamplesInBurst/burstDurationSec) * newDurationSec #number of samples in 1.2 s bursts (same as the short bursts)
       # we could think of vary newDurationSec and check which duration, multiplied by the above, returns a number that is multiple of 3 (for which number%%3==0) in a separate function "findPossibleDuration"
       if(new_nSamplesPerBurst%%nAxes != 0){stop("The number of samples in the burst is not a multiple of the number of axes. A burst cannot have a variable number of samples per axis.")}
-      nNewShortBursts <- floor(tot_nSamplesInBurst/new_nSamplesPerBurst) #number of new shorter bursts are we gonna create from the original long burst (we take floor because the extra observations that are not enough for a new burst gets excluded)
+      nNewShortBursts <- floor(tot_nSamplesInBurst/new_nSamplesPerBurst) #number of new shorter bursts we are going to create from the original long burst (we take floor because the extra observations that are not enough for a new burst gets excluded)
       rawSamples_splitNewBursts <- split(rawSamples[1:(new_nSamplesPerBurst*nNewShortBursts)], rep(1:nNewShortBursts, each=new_nSamplesPerBurst))
       # Potentially here reduce frequency, function "findPossibleFrequency"
       # reduceBy <- round(samplFreq/newWishedFreq) #first it has to be split per axis, and then for each axis take every second value
@@ -271,7 +271,7 @@ detectCores()
 doParallel::registerDoParallel(4) 
 
 setwd("/home/mscacco/ownCloud/Martina/ProgettiVari/GoldenEagles_WindMapsFromThermals/ContributionToElhamsPaper")
-source("/home/mscacco/ownCloud/Martina/PHD/R_functions/functionAccToGps_March2022.R")
+source("/home/mscacco/ownCloud/Martina/ProgettiVari/GoldenEagles_WindMapsFromThermals/ContributionToElhamsPaper/GoldenEagles_ElHeMa_scripts/WP3_Soaring_Ontogeny/MS1_soaring_skills/functionAccToGps_March2022.R")
 
 # setwd("/draco/ptmp/mscacco/eagles/") #in cluster
 # source("functionAccToGps_March2022.R")
