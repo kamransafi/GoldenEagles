@@ -81,9 +81,12 @@ minBurstDuration <- 30 # we want bursts of at least 30 secs
 
 swV <- 2 #smoothing window of 5 seconds (< min burst duration, 2 before 2 after each loc) for vertical speed for later classification
 swT <- 12 #smoothing window of 29 seconds for thermalling behaviour (according to Rolf/Bart's paper) (we changed it to smooth window of 21 sec)
-circlDegrees <- 250 #degrees of rotation to be achieved in the time defined by swT*2
+circlDegrees <- 200 #degrees of rotation to be achieved in the time defined by swT*2
 minBehavDuration <- 5 #minimum duration in seconds of a specific behaviour, when less than this and if in between two segments of a different behaviour it will be incorporated in the previous and follwoing segment 
-minThermalDuration <- 30 #minimum duration for a circling event to be considered as thermalling
+minThermalDuration <- 20 #minimum duration for a circling event to be considered as thermalling
+minGroundSpeed <- 3.5 #minimum ground speed expected during flight (in golden eagles good bursts of flight had a minimum gr speed = 5 m/s)
+minN_classifiedObs <- 30 #minimum number of classified observations (non-other behaviour) in a burst, for keeping a burst
+# golden eagles have bursts of 15 min = 900 secs, we could consider bursts where at least 30% of observations are classified
 
 #llply(fls, function(f){ #for parallel
 lapply(fls, function(f){
@@ -127,9 +130,9 @@ lapply(fls, function(f){
     HRdf$soarClust <- factor(soarClust, levels=c("soar","glide"))  
     # Now classify thermalling only based on turning angle (cumulated to a 25 s time window in previous step)
     HRdf$flightClust <- "other"
-    HRdf$flightClust[which(HRdf$soarClust=="soar" & HRdf$turnAngle_smooth >= circlDegrees)] <- "circular soaring" #complete 150 degrees in 15 sec
-    HRdf$flightClust[which(HRdf$soarClust=="soar" & HRdf$flightClust != "circular soaring")] <- "linear soaring"
-    HRdf$flightClust[which(HRdf$soarClust=="glide")] <- "gliding"
+    HRdf$flightClust[which(HRdf$gr.speed >= minGroundSpeed & HRdf$soarClust=="soar" & HRdf$turnAngle_smooth >= circlDegrees)] <- "circular soaring" #complete 150 degrees in 15 sec
+    HRdf$flightClust[which(HRdf$gr.speed >= minGroundSpeed & HRdf$soarClust=="soar" & HRdf$flightClust != "circular soaring")] <- "linear soaring"
+    HRdf$flightClust[which(HRdf$gr.speed >= minGroundSpeed & HRdf$soarClust=="glide")] <- "gliding"
     HRdf$flightClust <- factor(HRdf$flightClust, levels=c("circular soaring","linear soaring","gliding","other"))
     
     # Add some steps of smoothing based on duration of behaviours:
@@ -152,15 +155,18 @@ lapply(fls, function(f){
           if(behavDuration$timelag.sec[i] <= minBehavDuration & behavDuration$flightClust_smooth[i-1] == behavDuration$flightClust_smooth[i+1]){
             behavDuration$flightNum_smooth[c(i, i+1)] <- behavDuration$flightNum_smooth[i-1]
             behavDuration$flightClust_smooth[c(i, i+1)] <- behavDuration$flightClust_smooth[i-1]
-          }}
-      }
+          }else if(behavDuration$timelag.sec[i] <= minBehavDuration & behavDuration$flightClust_smooth[i-1] != behavDuration$flightClust_smooth[i+1]){
+            behavDuration$flightNum_smooth[c(i)] <- behavDuration$flightNum_smooth[i-1]
+            behavDuration$flightClust_smooth[c(i)] <- behavDuration$flightClust_smooth[i-1]
+          }
+        }
       if(nrow(behavDuration)==2){
         if(any(behavDuration$timelag.sec <= minBehavDuration)){
           longestBehav <- which.max(behavDuration$timelag.sec)
           behavDuration$flightNum_smooth <- behavDuration$flightNum_smooth[longestBehav]
           behavDuration$flightClust_smooth <- behavDuration$flightClust_smooth[longestBehav]
         }
-      }
+      }}
       b <- merge(b, behavDuration[c("flightNum","flightNum_smooth","flightClust_smooth")], by="flightNum", all.x=T)
       
       # recalculate segment duration based on smoothed classification and reclassify as linear soaring all circling that lasts < 30 seconds
@@ -179,22 +185,27 @@ lapply(fls, function(f){
       b <- merge(b, behavDuration_smooth[c("flightNum_smooth","flightNum_smooth2","flightClust_smooth2")], by="flightNum_smooth", all.x=T)
       # finally check the classification of the time window at the start and end of the track
       # these first and last points can only be classified as either gliding or linear, as their classification was only based on vertical speed but not turning angle
-      # so if at the start or end there is linear soaring, but they are preceded or followed by circluar soaring, they become circular
+      # so if at the start or end there is linear soaring, but they are preceded or followed by circular soaring, they become circular
       behavDuration_smooth2 <- merge(aggregate(timelag.sec~flightNum_smooth2, data=b, FUN=sum), 
                                      aggregate(flightClust_smooth2~flightNum_smooth2, data=b, FUN=unique), by="flightNum_smooth2")
       behavDuration_smooth2$flightNum_smooth3 <- behavDuration_smooth2$flightNum_smooth2
       behavDuration_smooth2$flightClust_smooth3 <- behavDuration_smooth2$flightClust_smooth2
       if(nrow(behavDuration_smooth2) >= 2){
-        if(behavDuration_smooth2$timelag.sec[1] <= swT & 
-           behavDuration_smooth2$flightClust_smooth2[1] == "linear soaring" & behavDuration_smooth2$flightClust_smooth2[2] == "circular soaring"){
+        if(behavDuration_smooth2$timelag.sec[1]==1){
+          behavDuration_smooth2$flightNum_smooth3[1] <- behavDuration_smooth2$flightNum_smooth3[2]
+        }else if(behavDuration_smooth2$timelag.sec[1] <= swT & 
+                 behavDuration_smooth2$flightClust_smooth2[1] == "linear soaring" & behavDuration_smooth2$flightClust_smooth2[2] == "circular soaring"){
           behavDuration_smooth2$flightNum_smooth3[1] <- behavDuration_smooth2$flightNum_smooth3[2]
           behavDuration_smooth2$flightClust_smooth3[1] <- "circular soaring"
         }
-        if(behavDuration_smooth2$timelag.sec[nrow(behavDuration_smooth2)] <= swT & 
-           behavDuration_smooth2$flightClust_smooth2[nrow(behavDuration_smooth2)] == "linear soaring" & behavDuration_smooth2$flightClust_smooth2[nrow(behavDuration_smooth2)-1] == "circular soaring"){
+        if(behavDuration_smooth2$timelag.sec[nrow(behavDuration_smooth2)]==1){
+          behavDuration_smooth2$flightNum_smooth3[nrow(behavDuration_smooth2)] <- behavDuration_smooth2$flightNum_smooth3[nrow(behavDuration_smooth2)-1]
+        }else if(behavDuration_smooth2$timelag.sec[nrow(behavDuration_smooth2)] <= swT & 
+                 behavDuration_smooth2$flightClust_smooth2[nrow(behavDuration_smooth2)] == "linear soaring" & behavDuration_smooth2$flightClust_smooth2[nrow(behavDuration_smooth2)-1] == "circular soaring"){
           behavDuration_smooth2$flightNum_smooth3[nrow(behavDuration_smooth2)] <- behavDuration_smooth2$flightNum_smooth3[nrow(behavDuration_smooth2)-1]
           behavDuration_smooth2$flightClust_smooth3[nrow(behavDuration_smooth2)] <- "circular soaring"
-        }}
+        }
+      }
       # merge with burst
       b <- merge(b, behavDuration_smooth2[c("flightNum_smooth2","flightNum_smooth3","flightClust_smooth3")], by="flightNum_smooth2", all.x=T)
       
@@ -203,6 +214,11 @@ lapply(fls, function(f){
       
       return(b) #return each classified and smoothed burst to a list
     }, .parallel=T) # to make it run in parallel use llply (instead of lapply) with .parallel=T
+    
+    # Here we could decide to set a minimum number of classified observations (!= other) for a burst to be considered
+    #summary(sapply(burst_ls_class_smooth,nrow)) #usual duration of a burst
+    nClassObs <- sapply(burst_ls_class_smooth, function(b) length(which(b$flightClust_smooth3 != "other")))
+    burst_ls_class_smooth <- burst_ls_class_smooth[nClassObs >= minN_classifiedObs]
     
     # Rbind all bursts and save classified and smoothed dataframe per individual
     HRdf_smooth <- as.data.frame(rbindlist(burst_ls_class_smooth))
@@ -224,6 +240,7 @@ library(plotly)
 library(data.table)
 
 burst_ls_class_smooth <- split(HRdf_smooth, HRdf_smooth$burstID)
+set.seed(1512)
 randomBursts <- sample(1:length(burst_ls_class_smooth), 100)
 
 lapply(burst_ls_class_smooth[randomBursts], function(b){
@@ -267,7 +284,7 @@ lapply(burst_ls_class_smooth[randomBursts], function(b){
   # snapshot3d(paste0("newGPSsegmentation_March2023/segmentationPlots/",animalID,"_burst",unique(b$burstID),"_smooth3D.png"), width = 600, height = 600)
 })
 
-someBursts <- c("6","32", "2983", '3026', "3071", '6975')
+someBursts <- c("6","32", "2983", '3026', "3071", '6975', "7100", "7164", "3023", "3029", "3163")
 # interactive 3D plots with plot_ly just for a few bursts
 lapply(burst_ls_class_smooth[someBursts], function(b){
   animalID <- unique(b$local_identifier)
@@ -295,7 +312,9 @@ lapply(burst_ls_class_smooth[someBursts], function(b){
     add_trace(data = b, x=~location_long, y=~location_lat, z=~height_above_ellipsoid, 
               colors=pal, color=~flightClust_smooth3,
               type="scatter3d", mode="markers",
-              text=~paste0("vert.speed: ", round(vert.speed,2),"\n",flightClust_smooth3),
+              text=~paste0("vert.speed: ", round(vert.speed,2),"\n",
+                           "turn.angle: ",round(turnAngle_smooth,2),"\n",
+                           "ground.speed: ",round(gr.speed,2)),
               marker = list(size = 5),
               showlegend = T, inherit = F) %>%
     layout(title = paste0("Animal ",unique(b$local_identifier)," - burst ",unique(b$burstID)),
