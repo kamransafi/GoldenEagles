@@ -326,58 +326,27 @@ for (i in file_ls){
   
  #estimate frequency of each class
    freq_r <- r_p %>% 
-     freq()
+     freq() #in the next update, add week number to this data.frame
  
    freq_ls[[length(freq_ls) + 1]] <- freq_r 
 }
 
-
-ad <- r_p %>%
-  project("+proj=longlat +datum=WGS84 +no_defs") %>%
-  cellSize()
-
-df_a <- r_wgs %>%
-  zonal(x = cellSize(., unit = "km"), z = .) #get summary of each zone
-as.data.frame() %>%
-  group_by(suitability) %>%
-  tally() %>%
-  mutate(area = n * res(r)[1] * res(r)[2]) #calculate the area of each category
-
-
-##################################################
-
-weeks <- unlist(lapply(file_ls, function(x) str_sub(x, 24, -5))) 
-
-rasters_ls <- lapply(file_ls, function(x){
-
-  r <- readRDS(x) %>%
-  dplyr::select(c("location.long", "location.lat", "probs")) %>% 
-    rast(type = "xyz", crs = crs(TRI_100)) 
   
-  #in the same lapply call, calculate the total area over 0.7 suitability
+wk <- c(1:24,52,76) %>% str_pad(2,"left","0")
   
+names(freq_ls) <- wk 
+names(p_stack) <- wk
 
-})
+#prep data for plotting
+data <- freq_ls %>% 
+  bind_rows(.id = "week") %>% 
+  rename(suitability = value)
 
-names(rasters_ls) <- weeks
+#make a stacked bar plot of different suitability classes
 
+ggplot(data, aes(fill = suitability, y = count, x = week)) + 
+  geom_bar(position = "stack", stat = "identity")
 
-
-#subtract the rasters
-rev_ls1 <- rev(rasters_ls)
-rev_ls1[length(rev_ls1)] <- NULL
-
-
-rev_ls2 <- rev(rasters_ls)
-rev_ls2[1] <- NULL
-
-
-diffs_ls2 <- lapply(rev(rasters_ls))
-
-
-diff <- rev(rasters_ls)[[6]]- rev(rasters_ls)[[7]]
-
-diff_non_zero <- diff[diff$probs != 0]
 
 
 

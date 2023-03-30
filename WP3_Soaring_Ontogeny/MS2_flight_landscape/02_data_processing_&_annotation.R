@@ -1,6 +1,6 @@
 #script for analysis of golden eagle data for the dynamics of the energy landscape manuscript: random step generation and annotation
 #follows on from embc_segmentation.R
-#the first attempt will only include static variables. reasons: 1) movebank annotation isn't working and 2) res of static variables is higher
+#the first attempt will only include static variables. res of static variables is higher
 #Jan 28. 2022. Elham Nourani. Konstanz, DE
 
 library(tidyverse)
@@ -15,7 +15,7 @@ library(circular)
 library(fitdistrplus)
 library(terra)
 
-wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
+wgs <- crs("+proj=longlat +datum=WGS84 +no_defs")
 meters_proj <- CRS("+proj=moll +ellps=WGS84") #replace this with utm N32
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
@@ -24,23 +24,26 @@ source("/home/enourani/ownCloud/Work/Projects/functions.R")
 
 # STEP 1: open data and filter out non-commuting flights ----------------------------------------------------------------
 
-bc_output <- readRDS("embc_output_70ind.rds") #n = 57
+bc_output <- readRDS("embc_output_20min_61ind.rds") #n = 61.. some of these have very few data points
 
 flight <- bc_output %>% 
-  filter(embc_clst_smth == 4) #use the smoothed values of clustering
+  filter(embc_clst_smth %in% c(3,4)) #use the smoothed values of clustering. include both levels 3 and 4
 
-save(flight, file = "flight_only_70ind.RData") #n = 56
+saveRDS(flight, file = "flight_only_20min_56ind.rds") #n = 56
+
+#did I filter for post dispersal!??? NO! this is prepping the whole dataset for SSF
 
 # STEP 2: variogram to decide on data resolution ----------------------------------------------------------------
 
-#create move object
-load("flight_only_70ind.RData") #flight
-mv <- move(x = flight$location.long, y = flight$location.lat, time = flight$timestamp, proj = wgs, data = flight, animal = flight$individual.local.identifier)
-tel <- as.telemetry(mv)
+flight <- readRDS("flight_only_20min_56ind.rds")
+
+tel <- as.telemetry(flight)
 sv <- lapply(tel, variogram)
 
+xlim <- c(0,60 %#% "minute") # 0-12 hour window
+
 var <- sv[[23]]
-plot(var, CTMM = variogram.fit(var, interactive = F),xlim=xlim)
+plot(var, CTMM = variogram.fit(var, interactive = F),xlim = xlim)
 plot(var, CTMM = variogram.fit(var, interactive = F), level = 0.5)
 
 level <- c(0.5,0.95) # 50% and 95% CIs
@@ -51,16 +54,17 @@ plot(var,xlim=xlim,level=level)
 
 # STEP 3: step selection prep- generate alternative steps ----------------------------------------------------------------
 
-load("flight_only_70ind.RData") #flight
+flight <- readRDS("flight_only_20min_56ind.rds")
+
 #create move object
 mv <- move(x = flight$location.long, y = flight$location.lat, time = flight$timestamp, proj = wgs, data = flight, animal = flight$individual.local.identifier)
 
-hr <- 20 #minutes; determine the sub-sampling interval
-tolerance <- 5 #minutes; tolerance for sub-sampling
+hr <- 60 #minutes; determine the sub-sampling interval
+tolerance <- 10 #minutes; tolerance for sub-sampling
 n_alt <- 50 #number of alternative steps.
 
 #prepare cluster for parallel computation
-mycl <- makeCluster(5) #the number of CPUs to use (adjust this based on your machine)
+mycl <- makeCluster(10) #the number of CPUs to use (adjust this based on your machine)
 
 clusterExport(mycl, c("mv", "hr", "tolerance", "n_alt","wgs", "meters_proj", "NCEP.loxodrome.na")) #define the variable that will be used within the ParLapply call
 
@@ -75,8 +79,6 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
 })
 
 (b <- Sys.time()) 
-
-#used_av_ls <- parLapply(mycl, move_ls, function(group){ # for each group (ie. unique species-flyway combination)
   
   sp_obj_ls <- parLapply(mycl, split(mv), function(track){ #for each individual (i.e. track),
     
@@ -133,9 +135,9 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
     Filter(function(x) length(x) > 1, .) #remove segments with no observation
   
   Sys.time() - b 
-  stopCluster(mycl) #n = 53
+  stopCluster(mycl) #n = 55
   
-  save(sp_obj_ls, file = paste0("sl_", hr, "_min_70_ind.RData"))
+  saveRDS(sp_obj_ls, file = paste0("sl_", hr, "_min_55_ind.rds")) #tolerance of 10 min
   
   #--STEP 4: estimate step length and turning angle distributions
   #put everything in one df
@@ -226,10 +228,10 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
         #put used and available points together
         df <- used_point@data %>%  
           slice(rep(row_number(), n_alt+1)) %>% #paste each row n_alt times for the used and alternative steps
-          mutate(location.long = c(head(coords.x1,1),rnd_sp@coords[,1]), #the coordinates were called x and y in the previous version
-                 location.lat = c(head(coords.x2,1),rnd_sp@coords[,2]),
-                 turning_angle = c(head(turning_angle,1),deg(rnd_sp$turning_angle)),
-                 step_length = c(head(step_length,1),rnd_sp$step_length),
+          mutate(location.long = c(head(coords.x1,1), rnd_sp@coords[,1]), #the coordinates were called x and y in the previous version
+                 location.lat = c(head(coords.x2,1), rnd_sp@coords[,2]),
+                 turning_angle = c(head(turning_angle,1), deg(rnd_sp$turning_angle)),
+                 step_length = c(head(step_length,1), rnd_sp$step_length),
                  used = c(1,rep(0,n_alt)))  %>%
           dplyr::select(-c("coords.x1","coords.x2")) %>% 
           rowwise() %>% 
@@ -247,14 +249,14 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
   }) %>% 
     reduce(rbind)
 
-  Sys.time() - b 
+  Sys.time() - b # 
   stopCluster(mycl) 
 
   
 used_av_track <- used_av_track %>% 
   mutate(stratum = paste(individual.local.identifier, burst_id, step_id, sep = "_"))
   
-save(used_av_track, file = paste0("alt_", n_alt, "_", hr, "_min_70_ind.RData")) #772497; n = 53
+saveRDS(used_av_track, file = paste0("alt_", n_alt, "_", hr, "_min_55_ind.rds")) 
 
 
 
