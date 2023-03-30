@@ -31,7 +31,7 @@ flight <- bc_output %>%
 
 saveRDS(flight, file = "flight_only_20min_56ind.rds") #n = 56
 
-#did I filter for post dispersal!??? NO! this is prepping the whole dataset for SSF
+#did I filter for post dispersal!??? yes!!
 
 # STEP 2: variogram to decide on data resolution ----------------------------------------------------------------
 
@@ -171,10 +171,13 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
   dev.off()
   
   #--STEP 5: produce alternative steps
+  
+  sp_obj_ls <- readRDS("sl_60_min_55_ind.rds")
+  
   #prepare cluster for parallel computation
   mycl <- makeCluster(10) #the number of CPUs to use (adjust this based on your machine)
   
-  clusterExport(mycl, c("mv", "hr", "mu", "kappa", "fit.gamma1", "tolerance", "n_alt","wgs", "meters_proj", "NCEP.loxodrome.na")) #define the variable that will be used within the ParLapply call
+  clusterExport(mycl, c("sp_obj_ls", "hr", "mu", "kappa", "fit.gamma1", "tolerance", "n_alt","wgs", "meters_proj", "NCEP.loxodrome.na")) #define the variable that will be used within the ParLapply call
   
   clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
     library(sf)
@@ -258,11 +261,9 @@ used_av_track <- used_av_track %>%
   
 saveRDS(used_av_track, file = paste0("alt_", n_alt, "_", hr, "_min_55_ind.rds")) 
 
-
-
 # STEP 4: summary stats ----------------------------------------------------------------
 
-load("alt_50_20_min_70_ind.RData") #used_av_track
+load("alt_50_60_min_55_ind.rds") #used_av_track
 
 used_av_track %>% 
   mutate(yr_mn = paste(year(timestamp), month(timestamp), sep = "_"),
@@ -286,79 +287,81 @@ mn_summary <- used_av_track %>%
 
 barplot(names.arg = mn_summary$mn, height = mn_summary$data, col = as.factor(mn_summary$individual.local.identifier), beside = F)
 
-# STEP 5: annotation: static ----------------------------------------------------------------
+# STEP 5: annotation: life stages ----------------------------------------------------------------
 
-load("alt_50_20_min_70_ind.RData") #used_av_track
+used_av_track <- readRDS("alt_50_60_min_55_ind.rds") #used_av_track
 
-#manually annotate with static variables: elevation, terrain ruggedness (difference between the maximum and the minimum value of a cell and its 8 surrounding cells),
+emig_dates <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/fleding_emigration_timing_Mar2023.rds")
+
+used_av_track <- used_av_track %>% 
+  left_join(emig_dates %>% dplyr::select(c("individual.local.identifier", "emigration_dt")), by = "individual.local.identifier") %>% 
+  mutate(days_since_emig = difftime(timestamp,emigration_dt, units = c("days")) %>% as.numeric() %>%  ceiling(),
+         weeks_since_emig = difftime(timestamp,emigration_dt, units = c("weeks")) %>% as.numeric() %>%  ceiling())
+
+
+# STEP 6: annotation: static ----------------------------------------------------------------
+
+#manually annotate with static variables: elevation, terrain ruggedness index (difference between the maximum and the minimum value of a cell and its 8 surrounding cells),
 #unevenness in slope, aspect and elevation (TPI). (difference between the value of a cell and the mean value of its 8 surrounding cells)
-#previous version aggregated all to 100 m resolution, but I ran into memory issues with the Raven HPC for making predictions at the Alpine region scale. So, try 200 m instead
+#try with 100 m resolution
 
-#200m layers were built in the earlier version of this script
-dem_200 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/dem_200.tif")
-TRI_200 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/tri_200.tif")
-
+#100m layers were built in the earlier version of this script
+dem_100 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/dem_100.tif")
+TRI_100 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/TRI_100.tif")
+slope_TPI_100 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/slope_TPI_100.tif")
+  
 #create a stack using raster paths
-topo <- c(dem_200,TRI_200)
-names(topo) <- c("dem_200", "TRI_200")
+topo <- c(dem_100, TRI_100, slope_TPI_100)
+names(topo) <- c("dem_100", "TRI_100", "slope_TPI_100")
 
 #reproject tracking data to match topo, extract values from topo, convert back to wgs and save as a dataframe
 topo_ann_df <- used_av_track %>% 
   st_as_sf(coords = c("location.long", "location.lat"), crs = wgs) %>% 
   st_transform(crs = crs(topo)) %>% 
-  #as("SpatVector") %>% 
   extract(x = topo, y = ., method = "simple", bind = T) %>%
   project(wgs) %>% 
   data.frame(., geom(.)) %>% 
-  dplyr::select(-c("geom", "part", "hole"))
+  dplyr::select(-c("geom", "part", "hole")) %>% 
+  rename(location.long = x,
+         location.lat = y)
   
-saveRDS(topo_ann_df, file = "alt_50_20_min_70_ind_static_200_ann.rds")
-
-# STEP 6: annotation: days since fledging and emigration ----------------------------------------------------------------
-
-topo_ann_df <- readRDS("alt_50_20_min_70_ind_static_200_ann.rds") # n_distinct(topo_ann_df$individual.local.identifier) = 53
-
-#open emigration information
-#open file containing emigration dates
-load("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/em_fl_dt_recurse_70ind.RData") #emig_fledg_dates
-
-#remove individuals with very narrow post-fledging period. They are a combination of dead, adult, etc. only 5 are in my subset of 53 anyway.
-inds_to_remove <- emig_fledg_dates %>% 
-  mutate(post_fledging_duration = difftime(emigration_dt,fledging_dt, units = "days")) %>% 
-  filter(post_fledging_duration <= 30 )
-
-topo_ann_df <- topo_ann_df %>% 
-  filter(!(individual.local.identifier %in% inds_to_remove$individual.local.identifier)) #n_distinct = 48
-
-
-cmpl_ann <- lapply(split(topo_ann_df, topo_ann_df$individual.local.identifier), function(x){
+cmpl_ann <- topo_ann_df %>% 
+  mutate(row_id = row_number()) #add this here so I can stitch the files back together after movebank annotation
   
-  ind_dates <- emig_fledg_dates %>% 
-    filter(individual.local.identifier == unique(x$individual.local.identifier))
   
-  x <- x %>% 
-    mutate(days_since_emig = difftime(timestamp,ind_dates$emigration_dt, units = c("days")),
-           weeks_since_emig = difftime(timestamp,ind_dates$emigration_dt, units = c("weeks")),
-           days_since_fled = difftime(timestamp,ind_dates$fledging_dt, units = c("days")),
-           weeks_since_fled = difftime(timestamp,ind_dates$fledging_dt, units = c("weeks")))
-  
-  x
-}) %>% 
-  reduce(rbind)
+saveRDS(cmpl_ann, file = "alt_50_60_min_55_ind_static_100.rds")
 
-saveRDS(cmpl_ann, file = "alt_50_20_min_70_ind_static_200m_time_ann.rds")
+# STEP 7: annotation: weather ----------------------------------------------------------------
 
-#### i did not redo the below with 200 m terrain file.
-#mid step: save as csv for annotating with temperature to account for weather conditions.
+topo_ann_df <- readRDS("alt_50_60_min_55_ind_static_100.rds")
 
-cmpl_ann_w <- cmpl_ann %>% 
+#split into 3 files to be suitable for movebank requests
+
+cmpl_ann_m <- cmpl_ann %>% 
+  dplyr::select(c("timestamp", "location.long", "location.lat")) %>%  #only select the absolutely necessary columns. so that there are no NAs in the data and hopefully Movebank won't complain
   mutate(timestamp = paste(as.character(timestamp),"000",sep = ".")) %>% 
     as.data.frame()
 
-#row numbers are over a million, so do separate into two dfs for annotation
-colnames(cmpl_ann_w)[c(26,27)] <- c("location-long","location-lat") #rename columns to match movebank format
+n_each <- nrow(cmpl_ann_m)/3
 
-write.csv(cmpl_ann_w, "inla_input_for_annotation_70inds.csv")
+f1 <- cmpl_ann_m %>% 
+  slice(1:n_each)
+
+f2 <- cmpl_ann %>% 
+  slice((n_each+1):(n_each*2))
+
+f3 <- cmpl_ann %>% 
+  slice(((n_each*2)+1):nrow(cmpl_ann))
+
+#row numbers are over a million, so do separate into two dfs for annotation
+colnames(f1)[c(2,3)] <- c("location-long", "location-lat") #rename columns to match movebank format
+colnames(f2)[c(2,3)] <- c("location-long", "location-lat") #rename columns to match movebank format
+colnames(f3)[c(2,3)] <- c("location-long", "location-lat") #rename columns to match movebank format
+
+write.csv(f1, "GE_ssf_annotation_55inds_1.csv")
+write.csv(f2, "GE_ssf_annotation_55inds_2.csv")
+write.csv(f3, "GE_ssf_annotation_55inds_3.csv")
+
 
 
 
