@@ -347,11 +347,11 @@ n_each <- nrow(cmpl_ann_m)/3
 f1 <- cmpl_ann_m %>% 
   slice(1:n_each)
 
-f2 <- cmpl_ann %>% 
+f2 <- cmpl_ann_m %>% 
   slice((n_each+1):(n_each*2))
 
-f3 <- cmpl_ann %>% 
-  slice(((n_each*2)+1):nrow(cmpl_ann))
+f3 <- cmpl_ann_m %>% 
+  slice(((n_each*2)+1):nrow(cmpl_ann_m))
 
 #row numbers are over a million, so do separate into two dfs for annotation
 colnames(f1)[c(2,3)] <- c("location-long", "location-lat") #rename columns to match movebank format
