@@ -1,54 +1,109 @@
 
 ## Script written by Martina in March 2023
-# data are taken from Hester's and Elham's external hard drive (input data that are NOT on Martina's computer)
-# The output of the script are GPS data per individual classified into 4 categories (circular soaring, linear soaring, gliding and other).
-# The names of the output data files are animalID_classifiedBursts_df and were saved on Martina's computer and copied also to the external hard drive.
+# input data is a csv with all individuals taken from Hester's and Elham's external hard drive (input data that are NOT on Martina's computer)
+# data were downloaded mid-March 2023
+# The output file that will be used for segmentation is animalName_gpsNoDup_moveObj (saved on both hard drive and Martina's computer)
+# These data get classified into 4 categories (circular soaring, linear soaring, gliding and other).
+# The names of the second output data files are animalID_classifiedBursts_df (saved on both hard drive and Martina's computer)
 # Output plots are also saved on Martina's computer
 
-#____________________________________________________________
-### Transform in movestack and calculate track variables ####
-#____________________________________________________________
+#_____________________________________________________________________
+### Import data, remove duplicates and calculate track variables ####
+#_____________________________________________________________________
 
 library(move)
+library(data.table)
+library(plyr)
+library(doParallel)
+doParallel::registerDoParallel(3) 
 
-# Set the directory (will also be used to save the output file) 
-setwd("C:/Users/Tess Bronnvik/Desktop/Improvement_and_Golden_Eagles") 
-# Import golden eagle movestack
-load("eagle_ms.RData") # my object is called mvstk
-# In my script the movestack object containing all eagles is calles mvstk, in the next line change it to the name of your object
-mv_ls <- split(eagle_ms)
-# The rest of the code is run individual by individual
-mv_ls <- mv_ls[sapply(mv_ls, n.locs)>=30] #keep only move objects (individuals) with more than 30 locations (needed for segmentation)
-lapply(names(mv_ls), function(animalName){
-  mv <- mv_ls[[animalName]]
-  mv$timelag.sec <- c(NA, timeLag(mv, units="secs"))
-  mv$altitude.diff <- c(NA, (mv$height_above_ellipsoid[-1] - mv$height_above_ellipsoid[-nrow(mv)]))
+# Import golden eagle data from csv downloaded by Elham
+df <- fread("/media/mscacco/Ellham's HDD/GE_all_gps_Mar23/LifeTrack Golden Eagle Alps.csv")
+names(df) <- gsub("-|:", ".", names(df))
+df <- df[df$sensor.type=="gps",] 
+# Check for missing infos in time and coords
+# These usually correspond to eobs status B to D: 
+#A = position and time within accuracy masks
+#B = only time of week and weeknumber valid
+#C = only weeknumber valid
+#D = no valid data
+anyNA(df$timestamp)
+anyNA(df$individual.local.identifier)
+anyNA(df$location.long); anyNA(df$location.lat)
+table(df$eobs.status)
+df <- df[df$eobs.status %in% c("","A"),]
+df <- df[!is.na(df$location.long),]
+
+# remove unnecessary columns
+colsToKeep <- c("event.id", "timestamp", "location.long", "location.lat", "height.above.ellipsoid",
+                "gps.satellite.count","gps.dop","eobs.status",
+                "ground.speed","eobs.horizontal.accuracy.estimate",
+                "study.name", "tag.local.identifier", "individual.local.identifier","individual.taxon.canonical.name")
+df <- data.frame(df)[,colsToKeep]
+df$event.id <- as.character(df$event.id) #important for solving the error: 'names' attribute [13] must be the same length as the vector [12]
+
+## split into list of individuals and save each individual separately
+length(unique(df$individual.local.identifier))
+df_ls <- split(df, df$individual.local.identifier)
+df_ls <- df_ls[sapply(df_ls, nrow)>=30] #keep only individuals with > 30 locations (needed for segmentation)
+
+lapply(df_ls, function(ind){
+  print(unique(ind$individual.local.identifier))
+  saveRDS(ind, file = paste0("/media/mscacco/Ellham's HDD/GE_all_gps_Mar23/",unique(ind$individual.local.identifier),"_gpsClean.rds"))
+})
+
+# Calculate track geometry infos for each individual
+pathToHD <- "/media/mscacco/Ellham's HDD/GE_all_gps_Mar23/"
+fls <- list.files(pathToHD, pattern="gpsClean")
+done <- list.files(pathToHD, pattern="moveObj")
+fls <- fls[! gsub("_.*", "", fls) %in% gsub("_.*", "", done)]
+
+llply(fls, function(f){
+  
+  print(f)
+  ind <- readRDS(paste0(pathToHD,f))
+  animalName <- unique(ind$individual.local.identifier)
+  # Check for duplicates
+  dup_ls <- getDuplicatedTimestamps(x=ind$individual.local.identifier,
+                                    timestamps=ind$timestamp)
+  #ind[dup_ls[[1]],] check duplicates, one of them is full of NA and no active status
+  dupRows <- ind[unlist(dup_ls),] #how do they differ, remove those without Active status
+  eventsToDrop <- dupRows$event.id[! dupRows$eobs.status=="A"]
+  ind_nodup <- ind[! ind$event.id %in% eventsToDrop,]
+  dup_ls <- getDuplicatedTimestamps(x=ind_nodup$individual.local.identifier,
+                                    timestamps=ind_nodup$timestamp)
+  if(length(dup_ls)>0){
+    warning(paste0(animalName, " has still duplicated timestamps, only the first occurrence is kept."))
+    eventsToDrop <- ind_nodup$event.id[sapply(dup_ls, "[", -1)] #remove all duplicates except the first one
+    ind_nodup <- ind_nodup[! ind_nodup$event.id %in% eventsToDrop,]
+  }
+  
+  # calculate track variables
+  mv <- move(x=ind_nodup$location.long, y=ind_nodup$location.lat, 
+             time=ind_nodup$timestamp,
+             proj=crs("+proj=longlat +ellps=WGS84"),
+             animal=ind_nodup$individual.local.identifier,
+             data=ind_nodup)
+  mv$timelag.sec <- c(NA,timeLag(mv, units="secs"))
+  mv$altitude.diff <- c(NA,(mv$height.above.ellipsoid[-1] - mv$height.above.ellipsoid[-nrow(mv)]))
   mv$vert.speed <- mv$altitude.diff/mv$timelag.sec
   mv$turn.angle <- c(NA, turnAngleGc(mv), NA)
-  mv$step.length <- c(NA, distance(mv))
+  mv$step.length <- c(NA,move::distance(mv))
   #mv$step.length <- distm(x=coordinates(mv), fun=distVincentyEllipsoid)
   #mv$step.length <- c(NA, raster::pointDistance(mv[-sum(n.locs(mv)),], mv[-1,], longlat=isLonLat(mv)))
   #mv$step.length2 <- distm(x=coordinates(mv), fun=pointDistance)
   mv$gr.speed <- c(NA, speed(mv))
   #mv$gr.speed <- c(NA, mv$step.length/mv$timelag.sec) #Error in `[[<-.data.frame`(`*tmp*`, name, value = c(NA, NA, 0.0119871263928527, : replacement has 1320202 rows, data has 1149
-  animalID <- mv@idData$local_identifier#strsplit(animalName, "\\.")[[1]]
-  #animalID <- paste(animalID[c(1,length(animalID))], collapse="_")
-  #if(substr(animalName,1,1)=="X"){animalName <- gsub("X","",animalName)} #When you split a movestack, if the id starts with a number R adds a X, which we don't want
-  save(mv, file = paste0("tracks/", animalID,"_gpsNoDup_moveObj_", Sys.Date(), ".rdata"))
-})
+  
+  # save on the hard drive
+  save(mv, file = paste0(pathToHD,animalName,"_gpsNoDup_moveObj.rdata"))
+  
+}, .parallel=T)
 
-for (i in 1:length(eagle_ls)) {
-  mv <- mv_ls[[i]]
-  mv$timelag.sec <- c(NA, timeLag(mv, units="secs"))
-  mv$altitude.diff <- c(NA, (mv$height_above_ellipsoid[-1] - mv$height_above_ellipsoid[-nrow(mv)]))
-  mv$vert.speed <- mv$altitude.diff/mv$timelag.sec
-  mv$turn.angle <- c(NA, turnAngleGc(mv), NA)
-  mv$step.length <- c(NA, distance(mv))
-  mv$gr.speed <- c(NA, speed(mv))
-  animalID <- mv@idData$local_identifier
-  save(mv, file = paste0("tracks/", animalID,"_gpsNoDup_moveObj_", Sys.Date(), ".rdata"))
-  print(paste0("Calculated track metrics for animal ", i, ", ", animalID, "."), quote = F)
-}
+# copy the files on Martina's computer
+setwd("/home/mscacco/ownCloud/Martina/ProgettiVari/GoldenEagles_WindMapsFromThermals/goldenEagles_march2023/data/") 
+fls <- list.files(pathToHD, pattern="moveObj")
+file.copy(from=paste0(pathToHD,fls), to=fls)
 
 
 #___________________________________________________________________
@@ -59,23 +114,19 @@ library(move)
 library(plyr)
 library(doParallel)
 detectCores()
-doParallel::registerDoParallel(detectCores()-1) 
-#dir.create("prepped")
+doParallel::registerDoParallel(6) 
 
-#setwd("/home/mscacco/ownCloud/Martina/ProgettiVari/GoldenEagles_WindMapsFromThermals/ContributionToElhamsPaper")
-dir.create("newGPSsegmentation_March2023/segmentationPlots")
-dir.create("newGPSsegmentation_March2023/classifiedData")
+setwd("/home/mscacco/ownCloud/Martina/ProgettiVari/GoldenEagles_WindMapsFromThermals/goldenEagles_march2023/")
+pathToHD <- "/media/mscacco/Ellham's HDD/GE_all_gps_Mar23/"
+dir.create("GPSsegmentationPlots")
+dir.create("classifiedData")
+dir.create(paste0(pathToHD,"GPSsegmentationPlots"))
+dir.create(paste0(pathToHD,"classifiedData"))
 
 # Import the files saved in the previous step in your working directory
-fls <- list.files("...hard drive/tracks/", pattern="gpsNoDup_moveObj", full.names = T)
+fls <- list.files("data", pattern="gpsNoDup_moveObj", full.names = T)
 
-# fls <- list.files("D:/Hester_GE/mar16/tracks/", pattern="gpsNoDup_moveObj", full.names = T)
-# inds <- sapply(strsplit(fls, "/|_"), "[",6)
-# flsDone <- list.files("D:/Hester_GE/mar16/thermals/", full.names = T)
-# indsDone <- sapply(strsplit(flsDone, "/|_"), "[",6)
-# indsToDO <- inds[!inds %in% indsDone]
-# flsToDO <- sapply(indsToDO, function(ind){grep(ind, fls, value=T, fixed=T)})
-
+# Define segmentation parameters
 minResol <- 2 # 1 to max 2 sec timelag
 minBurstDuration <- 30 # we want bursts of at least 30 secs
 
@@ -88,11 +139,11 @@ minGroundSpeed <- 3.5 #minimum ground speed expected during flight (in golden ea
 minN_classifiedObs <- 30 #minimum number of classified observations (non-other behaviour) in a burst, for keeping a burst
 # golden eagles have bursts of 15 min = 900 secs, we could consider bursts where at least 30% of observations are classified
 
-#llply(fls, function(f){ #for parallel
-lapply(fls, function(f){
+#llply(fls[1:5], function(f){ #for parallel
+results <- lapply(fls, function(f)try({
   print(f)
   load(f) #object mv
-  animalId <- paste0(mv@idData$individual_id,"_",mv@idData$local_identifier)
+  animalId <- mv@idData$individual.local.identifier
   # with cumsum R assigns the same value to all consecutive locations for which the condition is false (timelag <= 1 sec)
   mv$burstID <- c(0, cumsum(mv$timelag.sec[2:n.locs(mv)] > minResol))  #from row 2 (since the first is NA)
   # with table we can count all locations with the same ID (each one is a separate burst) and keep those high resolution bursts that have at least a certain number of locations (= minBurstDuration)
@@ -210,7 +261,7 @@ lapply(fls, function(f){
       b <- merge(b, behavDuration_smooth2[c("flightNum_smooth2","flightNum_smooth3","flightClust_smooth3")], by="flightNum_smooth2", all.x=T)
       
       # Assign unique ID to the behavioural segment based on the final smoothest classification
-      b$track_flight_id <- paste0(unique(b$individual_id),"_",unique(b$burstID),"_segm_",b$flightNum_smooth3) 
+      b$track_flight_id <- paste0(unique(b$individual.local.identifier),"_",unique(b$burstID),"_segm_",b$flightNum_smooth3) 
       
       return(b) #return each classified and smoothed burst to a list
     }, .parallel=T) # to make it run in parallel use llply (instead of lapply) with .parallel=T
@@ -222,9 +273,26 @@ lapply(fls, function(f){
     
     # Rbind all bursts and save classified and smoothed dataframe per individual
     HRdf_smooth <- as.data.frame(rbindlist(burst_ls_class_smooth))
-    save(HRdf_smooth, file = paste0("newGPSsegmentation_March2023/classifiedData/animal_",animalId,"_classifiedBursts_df.rdata"))
+    saveRDS(HRdf_smooth, file = paste0("classifiedData/",animalId,"_classifiedBursts_df.rds"))
   }
+}))
+
+#some individuals don't get process because they don't have high resolution GPS bursts. Check how many
+results <- lapply(fls, function(f){
+  load(f) #object mv
+  # with cumsum R assigns the same value to all consecutive locations for which the condition is false (timelag <= 1 sec)
+  mv$burstID <- c(0, cumsum(mv$timelag.sec[2:n.locs(mv)] > minResol))  #from row 2 (since the first is NA)
+  # with table we can count all locations with the same ID (each one is a separate burst) and keep those high resolution bursts that have at least a certain number of locations (= minBurstDuration)
+  burstDuration <- as.data.frame(table(mv$burstID))
+  burstsToKeep <- burstDuration$Var1[which(burstDuration$Freq >= minBurstDuration)]
+  return(length(burstsToKeep))
 })
+table(unlist(results)==0)
+
+#copy file to HD
+setwd("/home/mscacco/ownCloud/Martina/ProgettiVari/GoldenEagles_WindMapsFromThermals/goldenEagles_march2023/") 
+fls <- list.files("classifiedData", pattern="classifiedBursts", full.name=T)
+file.copy(from=fls, to=paste0(pathToHD,fls))
 
 
 #______________________________________________________________
@@ -239,61 +307,82 @@ library(ggplot2)
 library(plotly)
 library(data.table)
 
-burst_ls_class_smooth <- split(HRdf_smooth, HRdf_smooth$burstID)
-set.seed(1512)
-randomBursts <- sample(1:length(burst_ls_class_smooth), 100)
+setwd("/home/mscacco/ownCloud/Martina/ProgettiVari/GoldenEagles_WindMapsFromThermals/goldenEagles_march2023/") 
+fls <- list.files("classifiedData", pattern="classifiedBursts", full.name=T)
 
-lapply(burst_ls_class_smooth[randomBursts], function(b){
-  #b=burst_ls_class_smooth[["7006"]]
+lapply(fls, function(f){
   
-  print(unique(b$burstID))
-  animalID <- unique(b$local_identifier)
+  print(f)
+  HRdf_smooth <- readRDS(f) #obj HRdf_smooth
+  animalID <- unique(HRdf_smooth$individual.local.identifier)
+  burst_ls_class_smooth <- split(HRdf_smooth, HRdf_smooth$burstID)
   
-  b <- b[order(b$timestamp),]
-  # cbind(as.character(b$flightClust),as.character(b$flightClust_smooth),as.character(b$flightClust_smooth2), as.character(b$flightClust_smooth3))
+  set.seed(1512)
+  if(length(burst_ls_class_smooth)>20){n=20}else{n=length(burst_ls_class_smooth)}
+  randomBursts <- sample(1:length(burst_ls_class_smooth), n)
   
-  # calculate aspect ratio for plot
-  rangeLong <- max(b$location_long)-min(b$location_long)
-  rangeLat <- max(b$location_lat)-min(b$location_lat)
-  
-  # Plot results
-  png(paste0("newGPSsegmentation_March2023/segmentationPlots/",animalID,"_burst",unique(b$burstID),".png"))
-  par(mfrow=c(1,2))
-  plot(b$timestamp, b$height_above_ellipsoid, type="l", col="darkgrey", lwd=2)
-  points(b$timestamp, b$height_above_ellipsoid, col=alpha(c("red","darkgreen","blue","grey"),0.7)[b$flightClust], pch=19)
-  legend("topright", c("circular soaring","linear soaring","gliding","other"), col=alpha(c("red","darkgreen","blue","grey"),0.7), bty="n", pch=19, cex=0.7)
-  
-  plot(b$location_long, b$location_lat, asp=rangeLong/rangeLat, type="l", col="darkgrey", lwd=2)
-  points(b$location_long, b$location_lat, col=alpha(c("red","darkgreen","blue","grey"),0.7)[b$flightClust], pch=19)
-  dev.off()
-  
-  png(paste0("newGPSsegmentation_March2023/segmentationPlots/",animalID,"_burst",unique(b$burstID),"_smooth.png"))
-  par(mfrow=c(1,2))
-  plot(b$timestamp, b$height_above_ellipsoid, type="l", col="darkgrey", lwd=2)
-  points(b$timestamp, b$height_above_ellipsoid, col=alpha(c("red","darkgreen","blue","grey"),0.7)[b$flightClust_smooth3], pch=19)
-  legend("topright", c("circular soaring","linear soaring","gliding","other"), col=alpha(c("red","darkgreen","blue","grey"),0.7), bty="n", pch=19, cex=0.7)
-  
-  plot(b$location_long, b$location_lat, asp=rangeLong/rangeLat, type="l", col="darkgrey", lwd=2)
-  points(b$location_long, b$location_lat, col=alpha(c("red","darkgreen","blue","grey"),0.7)[b$flightClust_smooth3], pch=19)
-  dev.off()
-  
-  # this 3D plots are only useful when interactive, exporting them doesn not make much sense
-  # plot3d(b[,c("location_long","location_lat","height_above_ellipsoid")], type="l", col="darkgrey")
-  # points3d(b[,c("location_long","location_lat","height_above_ellipsoid")], col=c("red","darkgreen","blue","grey")[b$flightClust_smooth3], size=5)
-  # aspect3d(x=rangeLong/rangeLat, y=1, z=1)
-  # snapshot3d(paste0("newGPSsegmentation_March2023/segmentationPlots/",animalID,"_burst",unique(b$burstID),"_smooth3D.png"), width = 600, height = 600)
+  lapply(burst_ls_class_smooth[randomBursts], function(b){
+    #print(unique(b$burstID))
+    b <- b[order(b$timestamp),]
+    # calculate aspect ratio for plot
+    rangeLong <- max(b$location.long)-min(b$location.long)
+    rangeLat <- max(b$location.lat)-min(b$location.lat)
+    
+    # Plot results
+    png(paste0("GPSsegmentationPlots/",animalID,"_burst",unique(b$burstID),".png"))
+    par(mfrow=c(1,2))
+    plot(b$timestamp, b$height.above.ellipsoid, type="l", col="darkgrey", lwd=2,
+         xlab="Timestamp", ylab="Height above ellipsoid (m)")
+    points(b$timestamp, b$height.above.ellipsoid, col=alpha(c("red","darkgreen","blue","grey"),0.7)[b$flightClust], pch=19)
+    legend("topright", c("circular soaring","linear soaring","gliding","other"), col=alpha(c("red","darkgreen","blue","grey"),0.7), bty="n", pch=19, cex=0.7)
+    
+    plot(b$location.long, b$location.lat, asp=rangeLong/rangeLat, type="l", col="darkgrey", lwd=2,
+         xlab="Longitude", ylab="Latitude")
+    points(b$location.long, b$location.lat, col=alpha(c("red","darkgreen","blue","grey"),0.7)[b$flightClust], pch=19)
+    mtext(paste0(unique(b$individual.local.identifier)," - burst ",unique(b$burstID), "\n raw classification"),                   # Add main title
+          side = 3, line = - 2.5, outer = TRUE)
+    dev.off()
+    
+    png(paste0("GPSsegmentationPlots/",animalID,"_burst",unique(b$burstID),"_smooth.png"))
+    par(mfrow=c(1,2))
+    plot(b$timestamp, b$height.above.ellipsoid, type="l", col="darkgrey", lwd=2,
+         xlab="Timestamp", ylab="Height above ellipsoid (m)")
+    points(b$timestamp, b$height.above.ellipsoid, col=alpha(c("red","darkgreen","blue","grey"),0.7)[b$flightClust_smooth3], pch=19)
+    legend("topright", c("circular soaring","linear soaring","gliding","other"), col=alpha(c("red","darkgreen","blue","grey"),0.7), bty="n", pch=19, cex=0.7)
+    
+    plot(b$location.long, b$location.lat, asp=rangeLong/rangeLat, type="l", col="darkgrey", lwd=2,
+         xlab="Longitude", ylab="Latitude")
+    points(b$location.long, b$location.lat, col=alpha(c("red","darkgreen","blue","grey"),0.7)[b$flightClust_smooth3], pch=19)
+    mtext(paste0(unique(b$individual.local.identifier)," - burst ",unique(b$burstID), "\n smoothed classification"),                   # Add main title
+          side = 3, line = - 2.5, outer = TRUE)
+    dev.off()
+    
+    # this 3D plots are only useful when interactive, exporting them does not make much sense
+    # plot3d(b[,c("location_long","location_lat","height_above_ellipsoid")], type="l", col="darkgrey")
+    # points3d(b[,c("location_long","location_lat","height_above_ellipsoid")], col=c("red","darkgreen","blue","grey")[b$flightClust_smooth3], size=5)
+    # aspect3d(x=rangeLong/rangeLat, y=1, z=1)
+    # snapshot3d(paste0("newGPSsegmentation_March2023/segmentationPlots/",animalID,"_burst",unique(b$burstID),"_smooth3D.png"), width = 600, height = 600)
+  })
 })
 
+#copy file to HD
+setwd("/home/mscacco/ownCloud/Martina/ProgettiVari/GoldenEagles_WindMapsFromThermals/goldenEagles_march2023/") 
+fls <- list.files("GPSsegmentationPlots", pattern="png", full.name=T)
+file.copy(from=fls, to=paste0(pathToHD,fls), overwrite = T)
+
+#__________________________________
+# 3D plotting interactive
+## Investigate specific bursts in 3D (these plots are not exported)
 someBursts <- c("6","32", "2983", '3026', "3071", '6975', "7100", "7164", "3023", "3029", "3163")
 # interactive 3D plots with plot_ly just for a few bursts
 lapply(burst_ls_class_smooth[someBursts], function(b){
-  animalID <- unique(b$local_identifier)
+  animalID <- unique(b$individual.local.identifier)
   b <- b[order(b$timestamp),]
   # calculate aspect ratios for plot along 3 axes
-  rangeLong <- max(b$location_long)-min(b$location_long)
-  rangeLat <- max(b$location_lat)-min(b$location_lat)
+  rangeLong <- max(b$location.long)-min(b$location.long)
+  rangeLat <- max(b$location.lat)-min(b$location.lat)
   rangeLat_m <- (rangeLat*111.139)*1000 #transform range in metres (approximated) to compare with elevation
-  rangeElev <- max(b$height_above_ellipsoid)-min(b$height_above_ellipsoid)
+  rangeElev <- max(b$height.above.ellipsoid)-min(b$height.above.ellipsoid)
   ratioLat <- 1
   ratioLong <- rangeLong/rangeLat
   ratioElev <- rangeElev/rangeLat_m
@@ -305,11 +394,11 @@ lapply(burst_ls_class_smooth[someBursts], function(b){
            "gliding"="blue",
            "other"="grey")
   # interactive 3d plot
-  p <- plot_ly(b, x=~location_long, y=~location_lat, z=~height_above_ellipsoid, colors=pal,
+  p <- plot_ly(b, x=~location.long, y=~location.lat, z=~height.above.ellipsoid, colors=pal,
                type="scatter3d", mode="lines", name=~burstID,
                line = list(color = 'darkgrey'),
                showlegend = F) %>%
-    add_trace(data = b, x=~location_long, y=~location_lat, z=~height_above_ellipsoid, 
+    add_trace(data = b, x=~location.long, y=~location.lat, z=~height.above.ellipsoid, 
               colors=pal, color=~flightClust_smooth3,
               type="scatter3d", mode="markers",
               text=~paste0("vert.speed: ", round(vert.speed,2),"\n",
@@ -317,7 +406,7 @@ lapply(burst_ls_class_smooth[someBursts], function(b){
                            "ground.speed: ",round(gr.speed,2)),
               marker = list(size = 5),
               showlegend = T, inherit = F) %>%
-    layout(title = paste0("Animal ",unique(b$local_identifier)," - burst ",unique(b$burstID)),
+    layout(title = paste0("Animal ",unique(b$individual.local.identifier)," - burst ",unique(b$burstID)),
            scene=list(xaxis = list(title = "Longitude"), 
                       yaxis = list(title = "Latitude"), 
                       zaxis = list(title = "Height above ellipsoid (m)"),
