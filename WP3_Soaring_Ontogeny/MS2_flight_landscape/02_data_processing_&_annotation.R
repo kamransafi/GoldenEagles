@@ -333,12 +333,12 @@ saveRDS(cmpl_ann, file = "alt_50_60_min_55_ind_static_100.rds")
 
 # STEP 7: annotation: weather ----------------------------------------------------------------
 
-topo_ann_df <- readRDS("alt_50_60_min_55_ind_static_100.rds")
+cmpl_ann <- readRDS("alt_50_60_min_55_ind_static_100.rds")
 
 #split into 3 files to be suitable for movebank requests
 
 cmpl_ann_m <- cmpl_ann %>% 
-  dplyr::select(c("timestamp", "location.long", "location.lat")) %>%  #only select the absolutely necessary columns. so that there are no NAs in the data and hopefully Movebank won't complain
+  dplyr::select(c("timestamp", "location.long", "location.lat", "row_id")) %>%  #only select the absolutely necessary columns. so that there are no NAs in the data and hopefully Movebank won't complain
   mutate(timestamp = paste(as.character(timestamp),"000",sep = ".")) %>% 
     as.data.frame()
 
