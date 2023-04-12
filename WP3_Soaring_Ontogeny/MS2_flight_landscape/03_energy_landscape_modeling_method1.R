@@ -3,6 +3,11 @@
 #only includes static variables. 
 #try adding daily temp to see. seems like dem and temp are interacting!.. from 03_method2
 #Feb 22. 2022. Elham Nourani. Konstanz, DE
+#revisiting this code on April 11. 2023:
+# - use hourly steps instead of 20 minutes
+# - include step length in the analysis
+# - consider using the 25 resolution for the terrain
+
 
 library(tidyverse)
 library(magrittr)
@@ -33,30 +38,40 @@ Mode <- function(x, na.rm = FALSE) {
 }
 
 
-#open annotated data
-all_data <- readRDS("alt_50_20_min_70_ind_static_time_ann_dailytemp.rds") %>% 
-  filter(TRI_100 < quantile(TRI_100,.99)) %>% #remove TRI outliers 
-  mutate(ind1 = factor(individual.local.identifier), # INLA formula using interaction terms for time and predictor variables. repeat for random effects
-         ind2 = factor(individual.local.identifier),
-         ind3 = factor(individual.local.identifier),
-         days_since_emig_n = ceiling(as.numeric(days_since_emig)),#round up
-         weeks_since_emig_n = ceiling(as.numeric(weeks_since_emig))) %>% 
-  mutate_at(c("dem_100", "TRI_100", "t2m", "weeks_since_emig_n"), list(z = ~(scale(.))))  #calculate the z scores
-  
-saveRDS(all_data, file = "alt_50_20_min_48_ind_static_100_daytemp_inlaready_wks.rds") #this has the limit on TRI range
+#open annotated data. prepared in 03_04b_clogit_randomization.R
+data <- readRDS("all_inds_annotated_apr23.rds") %>% 
+  mutate(ind1 = individual.local.identifier,
+         ind2 = individual.local.identifier,
+         ind3 = individual.local.identifier,
+         month = month(timestamp))
 
-# STEP 2: ssf modeling ----------------------------------------------------------------
+# STEP 2: CLOGIT- ssf modeling exploration  ----------------------------------------------------------------
 
 ## mid_step: investigate using clogit
 # control for monthly temperature....
 
-form1a <- used ~ dem_100_z * weeks_since_emig_n_z *t2m_z + 
-  TRI_100_z * weeks_since_emig_n_z + 
+
+form1 <- used ~ dem_100_z * step_length_z * weeks_since_emig_z + 
+  TRI_100_z * step_length_z * weeks_since_emig_z + 
+  slope_TPI_100_z * step_length_z * weeks_since_emig_z + 
   strata(stratum)
 
-ssf <- clogit(form1a, data = all_data)
-summary(ssf)
-plot_summs(ssf)
+ssf1 <- clogit(form1, data = data)
+summary(ssf1)
+plot_summs(ssf1)
+modelsummary(ssf1) #AIC = 196770.1
+
+form2 <- used ~ dem_100_z * step_length_z * weeks_since_emig_z + 
+  TRI_100_z * step_length_z * weeks_since_emig_z + 
+  slope_TPI_100_z * step_length_z * weeks_since_emig_z + 
+  t2m +
+  strata(stratum)
+
+ssf2 <- clogit(form2, data = data)
+summary(ssf2)
+plot_summs(ssf2)
+modelsummary(ssf2) #AIC = 189219.6
+
 
 form1a <- used ~ dem_200_z * TRI_200_z + 
   strata(stratum)
@@ -68,6 +83,110 @@ form1a <- used ~ weeks_since_emig_n +
   strata(stratum)
 
 #I go more into detail of using this model in 03_04_clogit_workflow.R
+
+# STEP 3: INLA parameterization ----------------------------------------------------------------
+#the aim is to take seasonality into account
+
+#do a test with a small sample of the data
+sample <- data %>% 
+  filter(stratum %in% sample(unique(data$stratum), 300, replace = F))
+
+
+mean.beta <- 0
+prec.beta <- 1e-4
+
+#define variables and formula. use one variable for now to test the model 
+
+#model without seasonality
+F1 <- used ~ -1 +
+  dem_100_z * weeks_since_emig_z * step_length_z +
+  f(stratum, model = "iid",
+    hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
+  f(ind1, dem_100_z, model = "iid",
+    hyper = list(theta=list(initial = log(1), fixed = F, prior = "pc.prec", param = c(3,0.05))))
+
+M1 <- inla(F1, family = "Poisson",
+           control.fixed = list(
+             mean = mean.beta,
+             prec = list(default = prec.beta)),
+           data = sample,
+           num.threads = 5, 
+           control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
+           control.compute = list(config = TRUE, cpo = F), #deactivate cpo to save computing power
+           control.inla(strategy = "adaptive", int.strategy = "eb"),
+           inla.mode = "experimental", verbose = F)
+
+
+##model with seasonality
+F2 <- used ~ -1 +
+  dem_100_z * weeks_since_emig_z * step_length_z +
+  f(stratum, model = "iid", 
+    hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
+  f(ind1, dem_100_z, model = "iid",
+    hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
+    group = month, control.group = list(model = "ar1", scale.model = TRUE))
+
+f(year.num, model = "iid",
+  group = month.num, control.group = list(model = "ar1", 
+                                          scale.model = TRUE)) #but this will go over the intercept, which we dont have. unless i use it when specifying the hyperparameter
+
+
+
+M2 <- inla(F2, family = "Poisson",
+           control.fixed = list(
+             mean = mean.beta,
+             prec = list(default = prec.beta)),
+           data = sample,
+           num.threads = 5, 
+           control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
+           control.compute = list(config = TRUE, cpo = F), #deactivate cpo to save computing power
+           control.inla(strategy = "adaptive", int.strategy = "eb"),
+           inla.mode = "experimental", verbose = F)
+
+
+
+Efxplot(list(M1,M2))
+
+
+#plot the effect of the grouped effect
+X11()
+par(mfrow = c(4, 3))
+par(mar = c(3, 1.25, 1.5, 1.5))
+#Table with summary of random effects; ID is for the YEAR
+tab <-  M2$summary.random$ind1
+inds <- unique(sample$ind1)
+
+for(month in 1:12) {
+  aux <- tab[(month-1) * n_distinct(sample$ind1) + 1:n_distinct(sample$ind1), ] #extract data for all individuals for month 1
+  
+  plot(as.factor(inds), aux[, "mean"], type = "l", xlab = "", ylab = "",
+       main = paste0("Month ", month), ylim = c(-2, 2), las = 2, cex.axis = 0.75)
+  lines(as.factor(inds), aux[, "0.025quant"], lty = 2)
+  lines(as.factor(inds), aux[, "0.975quant"], lty = 2)
+}
+
+x.years <- 1949:1960
+
+for(month in 1:12) {
+  aux <- tab[(month-1) * 12 + 1:12, ]
+  
+  plot(x.years, aux[, "mean"], type = "l", xlab = "", ylab = "",
+       main = paste0("Month ", month), ylim = c(4, 6.5), las = 2, cex.axis = 0.75)
+  lines(x.years, aux[, "0.025quant"], lty = 2)
+  lines(x.years, aux[, "0.975quant"], lty = 2)
+}
+
+################################################################
+
+#to take the seasonality into account, look at this. section 3.5.5.
+#I can do dem, tri and slope tpi as functions of month. can i do it at the same time as defining the random slope
+airp.data$month.num <- as.numeric(airp.data$month)
+airp.data$year.num <- as.numeric(airp.data$year)
+airp.iid.ar1 <- inla(log(airp) ~ 0 +  f(year.num, model = "iid",
+                                        group = month.num, control.group = list(model = "ar1", 
+                                                                                scale.model = TRUE)),
+                     data = airp.data)
+summary(airp.iid.ar1)
 
 # STEP 3: create new data for prediction ----------------------------------------------------------------
 
