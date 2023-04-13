@@ -20,7 +20,7 @@ library(survival)
 library(ggregplot)
 library(terra)
 library(gstat) #for interpolations
-library(rastervis) #remotes::install_github("oscarperpinan/rastervis")
+#library(rastervis) #remotes::install_github("oscarperpinan/rastervis")
 library(patchwork) #patching up interaction plots
 library(oce) #color palette for interaction plots
 
@@ -39,11 +39,14 @@ Mode <- function(x, na.rm = FALSE) {
 
 
 #open annotated data. prepared in 03_04b_clogit_randomization.R
-data <- readRDS("all_inds_annotated_apr23.rds") %>% 
+data <-  readRDS("alt_50_60_min_55_ind_static_100.rds") %>% 
+  mutate_at(c("step_length", "dem_100", "TRI_100", "slope_TPI_100", "weeks_since_emig"), list(z = ~(scale(.)))) %>%   #calculate the z scores
   mutate(ind1 = individual.local.identifier,
          ind2 = individual.local.identifier,
          ind3 = individual.local.identifier,
          month = month(timestamp))
+
+saveRDS(data, file = "all_inds_annotated_static_apr23.rds") #for a version with dynamic variables, see all_inds_annotated_apr23.rds
 
 # STEP 2: CLOGIT- ssf modeling exploration  ----------------------------------------------------------------
 
@@ -52,7 +55,7 @@ data <- readRDS("all_inds_annotated_apr23.rds") %>%
 
 
 form1 <- used ~ dem_100_z * step_length_z * weeks_since_emig_z + 
-  TRI_100_z * step_length_z * weeks_since_emig_z + 
+  TRI_100_z * step_length_z * weeks_since_emig_z 
   slope_TPI_100_z * step_length_z * weeks_since_emig_z + 
   strata(stratum)
 
@@ -98,12 +101,30 @@ prec.beta <- 1e-4
 #define variables and formula. use one variable for now to test the model 
 
 #model without seasonality
-F1 <- used ~ -1 +
-  dem_100_z * weeks_since_emig_z * step_length_z +
+F1 <- used ~ -1 + dem_100_z * step_length_z * weeks_since_emig_z +
   f(stratum, model = "iid",
-    hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
+    hyper = list(theta = list(initial = log(1e-6), fixed = T))) +
   f(ind1, dem_100_z, model = "iid",
-    hyper = list(theta=list(initial = log(1), fixed = F, prior = "pc.prec", param = c(3,0.05))))
+    hyper = list(theta = list(initial = log(1), fixed = F, prior = "pc.prec", param = c(3,0.05))))
+
+
+F1 <- used ~ -1 + dem_100_z * step_length_z  +
+  f(stratum, model = "iid",
+    hyper = list(theta = list(initial = log(1e-6), fixed = T))) +
+  f(ind1, dem_100_z, model = "iid",
+    hyper = list(theta = list(initial = log(1), fixed = F, prior = "pc.prec", param = c(3,0.05))))
+
+
+
+M2 <- inla(F1, family = "Poisson", 
+          control.fixed = list(
+            mean = mean.beta,
+            prec = list(default = prec.beta)),
+          data = sample, 
+          num.threads = 7,
+          control.predictor = list(compute = TRUE, link = 1), 
+          control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
+
 
 M1 <- inla(F1, family = "Poisson",
            control.fixed = list(
@@ -112,10 +133,11 @@ M1 <- inla(F1, family = "Poisson",
            data = sample,
            num.threads = 5, 
            control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
-           control.compute = list(config = TRUE, cpo = F), #deactivate cpo to save computing power
-           control.inla(strategy = "adaptive", int.strategy = "eb"),
-           inla.mode = "experimental", verbose = F)
+           control.compute = list(config = TRUE, cpo = F)) #deactivate cpo to save computing power
+           #control.inla(strategy = "adaptive", int.strategy = "eb"),
+           #inla.mode = "experimental", verbose = F)
 
+Efxplot(M1)
 
 ##model with seasonality
 F2 <- used ~ -1 +
@@ -137,15 +159,29 @@ M2 <- inla(F2, family = "Poisson",
              mean = mean.beta,
              prec = list(default = prec.beta)),
            data = sample,
-           num.threads = 5, 
-           control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
-           control.compute = list(config = TRUE, cpo = F), #deactivate cpo to save computing power
-           control.inla(strategy = "adaptive", int.strategy = "eb"),
-           inla.mode = "experimental", verbose = F)
+           num.threads = 5)
 
 
 
 Efxplot(list(M1,M2))
+
+##full model with seasonality (to run on raven)
+F_full <- used ~ -1 +
+  dem_100_z * step_length_z * weeks_since_emig_z +
+  TRI_100_z * step_length_z * weeks_since_emig_z +
+  slope_TPI_100_z * step_length_z * weeks_since_emig_z +
+  f(stratum, model = "iid", 
+    hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
+  f(ind1, dem_100_z, model = "iid",
+    hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
+    group = month, control.group = list(model = "ar1", scale.model = TRUE)) +
+  f(ind2, TRI_100_z, model = "iid",
+    hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
+    group = month, control.group = list(model = "ar1", scale.model = TRUE)) +
+  f(ind3, slope_TPI_100_z, model = "iid",
+    hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
+    group = month, control.group = list(model = "ar1", scale.model = TRUE))
+
 
 
 #plot the effect of the grouped effect
@@ -175,6 +211,42 @@ for(month in 1:12) {
   lines(x.years, aux[, "0.025quant"], lty = 2)
   lines(x.years, aux[, "0.975quant"], lty = 2)
 }
+
+
+
+#plot the output
+# posterior means of coefficients
+graph <- as.data.frame(summary(M1)$fixed)
+colnames(graph)[which(colnames(graph)%in%c("0.025quant","0.975quant"))]<-c("Lower","Upper")
+colnames(graph)[which(colnames(graph)%in%c("0.05quant","0.95quant"))]<-c("Lower","Upper")
+colnames(graph)[which(colnames(graph)%in%c("mean"))]<-c("Estimate")
+
+graph <- graph %>%
+  mutate(Factor = rownames(graph))
+
+graph <- graph[graph$Factor != "weeks_since_emig_z",]
+#droplevels(graph$Factor)
+VarOrder <- rev(unique(graph$Factor))
+VarNames <- VarOrder
+
+graph$Factor <- factor(graph$Factor, levels = VarOrder)
+levels(graph$Factor) <- VarNames
+
+graph$Factor_n <- as.numeric(graph$Factor)
+
+#plot in ggplot2
+X11(width = 4.7, height = 2.7)
+
+coefs <- ggplot(graph, aes(x = Estimate, y = Factor)) +
+  geom_vline(xintercept = 0, linetype="dashed", 
+             color = "gray", size = 0.5) +
+  geom_point(color = "cornflowerblue", size = 2)  +
+  #xlim(-0.1,0.6) +
+  #scale_y_discrete(name = "",
+  #                 labels = c("Weeks since dispersal * TRI","Weeks since dispersal * DEM", "TRI", "DEM")) +
+  geom_linerange(aes(xmin = Lower, xmax = Upper),color = "cornflowerblue", size = 1) +
+  theme_classic()
+
 
 ################################################################
 
