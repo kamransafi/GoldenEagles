@@ -121,16 +121,14 @@ ggsave(plot = p_2, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny
 
 # PLOT 3: individual variation plots ----------------------------------------------------------------------------------------------------
 
-data <- readRDS("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/all_inds_annotated_static_apr23.rds")
-rnd <- readRDS("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100/rnd_coeff_M_main100_hrly.rds")
-graph <- readRDS("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100/graph_M_main100_hrly.rds")
+data <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/all_inds_annotated_static_apr23.rds")
+rnd <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100/rnd_coeff_M_main100_hrly.rds")
+graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100/graph_M_main100_hrly.rds")
 
 
 
 #plot the effect of the grouped effect
-X11()
-par(mfrow = c(4, 3))
-par(mar = c(3, 1.25, 1.5, 1.5))
+
 #Table with summary of random effects; ID is for the unique individuals
 tab_dem <-  rnd$ind1
 tab_tri <-  rnd$ind2
@@ -138,47 +136,26 @@ tab_slope_tpi <-  rnd$ind3
 
 ind_IDs <- unique(data$ind1)
 
-# for(month in 1:12) {
-#   aux <- tab_dem[(month-1) * n_distinct(data$ind1) + 1:n_distinct(data$ind1), ] #extract data for all individuals for month 1
-#   
-#   plot(as.factor(inds), aux[, "mean"], type = "l", xlab = "", ylab = "",
-#        main = paste0("Month ", month), ylim = c(-1.5, 1.5), las = 2, cex.axis = 0.75)
-#   lines(as.factor(inds), aux[, "0.025quant"], lty = 2)
-#   lines(as.factor(inds), aux[, "0.975quant"], lty = 2)
-# }
-# 
-# 
-# for(month in 1:12) {
-#   aux <- tab_tri[(month-1) * n_distinct(data$ind1) + 1:n_distinct(data$ind1), ] #extract data for all individuals for month 1
-#   
-#   plot(as.factor(inds), aux[, "mean"], type = "l", xlab = "", ylab = "",
-#        main = paste0("Month ", month), ylim = c(-.5, .5), las = 2, cex.axis = 0.75)
-#   lines(as.factor(inds), aux[, "0.025quant"], lty = 2)
-#   lines(as.factor(inds), aux[, "0.975quant"], lty = 2)
-# }
-# 
-# for(month in 1:12) {
-#   aux <- tab_slope_tpi[(month-1) * n_distinct(data$ind1) + 1:n_distinct(data$ind1), ] #extract data for all individuals for month 1
-#   
-#   plot(as.factor(inds), aux[, "mean"], type = "l", xlab = "", ylab = "",
-#        main = paste0("Month ", month), ylim = c(-.5, .5), las = 2, cex.axis = 0.75)
-#   lines(as.factor(inds), aux[, "0.025quant"], lty = 2)
-#   lines(as.factor(inds), aux[, "0.975quant"], lty = 2)
-# }
-
 dem_coefs <- tab_dem %>% 
   mutate(ind_ID = rep(ID[1:length(ind_IDs)], 12), #the tab datasets only have the ind id for the first season and then just numbers
          #month = factor(rep(c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), each = length(ind_IDs)),
          month = factor(rep(1:12, each = length(ind_IDs)),
                         labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")))
 
+X11(width = 10, height = 10)
 (dem_inds <- ggplot(dem_coefs, aes(x = mean, y = ind_ID)) +
     geom_vline(xintercept = 0, linetype="dashed", size = 0.5) +
     geom_linerange(aes(xmin = dem_coefs$'0.025quant', xmax = dem_coefs$'0.975quant'), size = 0.6, color = "#a9c4f5") +
     geom_point(size = 1.5, color =  "#6495ed") +
     facet_wrap(vars(month), ncol = 6) +
     labs(x = "Estimate", y = "") +
-    theme_classic())
+    ggtitle("Elevation") +
+    theme_classic() +
+    theme(axis.text = element_text(size = 6.5)))
+
+ggsave(plot = dem_inds, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/ind_season_coefs_dem.png", 
+       width = 10, height = 10, dpi = 300)
+
 
 tri_coefs <- tab_tri %>% 
   mutate(ind_ID = rep(ID[1:length(ind_IDs)], 12), #the tab datasets only have the ind id for the first season and then just numbers
@@ -192,7 +169,12 @@ tri_coefs <- tab_tri %>%
     geom_point(size = 1.5, color =  "#6495ed") +
     facet_wrap(vars(month), ncol = 6) +
     labs(x = "Estimate", y = "") +
-    theme_classic())
+    ggtitle("Terrain Ruggedness Index") +
+    theme_classic() +
+    theme(axis.text = element_text(size = 6.5)))
+
+ggsave(plot = tri_inds, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/ind_season_coefs_tri.png", 
+       width = 10, height = 10, dpi = 300)
 
 
 slope_tpi_coefs <- tab_slope_tpi %>% 
@@ -207,8 +189,12 @@ slope_tpi_coefs <- tab_slope_tpi %>%
     geom_point(size = 1.5, color =  "#6495ed") +
     facet_wrap(vars(month), ncol = 6) +
     labs(x = "Estimate", y = "") +
-    theme_classic())
+    ggtitle("Slope Variation Index") +
+    theme_classic() +
+    theme(axis.text = element_text(size = 6.5)))
 
+ggsave(plot = tpi_inds, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/ind_season_coefs_slope_tpi.png", 
+       width = 10, height = 10, dpi = 300)
 
 
 
