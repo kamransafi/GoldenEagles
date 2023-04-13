@@ -11,13 +11,12 @@ library(patchwork) #patching up interaction plots
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
-
 # PLOT 1: coefficient plots ----------------------------------------------------------------------------------------------------
 
-graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Mar23_temp_100/graph_M_main100.rds")
+graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100/graph_M_main100_hrly.rds")
 
 #remove weeks since dispersal
-graph <- graph[graph$Factor != "weeks_since_emig_n_z",]
+graph <- graph[graph$Factor != "weeks_since_emig_z",]
 #droplevels(graph$Factor)
 VarOrder <- rev(unique(graph$Factor))
 VarNames <- VarOrder
@@ -27,8 +26,8 @@ levels(graph$Factor) <- VarNames
 
 graph$Factor_n <- as.numeric(graph$Factor)
 
-#plot in ggplot2
-X11(width = 4.7, height = 2.7)
+#plot in ggplot2... later on reorder the variables and make the names more cohesive
+X11(width = 8, height = 6)
 
 coefs <- ggplot(graph, aes(x = Estimate, y = Factor)) +
   geom_vline(xintercept = 0, linetype="dashed", 
@@ -41,7 +40,7 @@ coefs <- ggplot(graph, aes(x = Estimate, y = Factor)) +
   theme_classic()
   
 
-ggsave(plot = coefs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_coefs_static200_limitTRI.png", 
+ggsave(plot = coefs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_coefs_static100_sl.png", 
        width = 4.7, height = 2.7, dpi = 300)
 
 
@@ -122,9 +121,99 @@ ggsave(plot = p_2, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny
 
 # PLOT 3: individual variation plots ----------------------------------------------------------------------------------------------------
 
-rnd <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb_23_200m_limitedTRI/rnd_coeff_M_main200.rds")
+data <- readRDS("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/all_inds_annotated_static_apr23.rds")
+rnd <- readRDS("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100/rnd_coeff_M_main100_hrly.rds")
+graph <- readRDS("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100/graph_M_main100_hrly.rds")
 
-graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Feb_23_200m_limitedTRI/graph_M_main200.rds")
+
+
+#plot the effect of the grouped effect
+X11()
+par(mfrow = c(4, 3))
+par(mar = c(3, 1.25, 1.5, 1.5))
+#Table with summary of random effects; ID is for the unique individuals
+tab_dem <-  rnd$ind1
+tab_tri <-  rnd$ind2
+tab_slope_tpi <-  rnd$ind3
+
+ind_IDs <- unique(data$ind1)
+
+# for(month in 1:12) {
+#   aux <- tab_dem[(month-1) * n_distinct(data$ind1) + 1:n_distinct(data$ind1), ] #extract data for all individuals for month 1
+#   
+#   plot(as.factor(inds), aux[, "mean"], type = "l", xlab = "", ylab = "",
+#        main = paste0("Month ", month), ylim = c(-1.5, 1.5), las = 2, cex.axis = 0.75)
+#   lines(as.factor(inds), aux[, "0.025quant"], lty = 2)
+#   lines(as.factor(inds), aux[, "0.975quant"], lty = 2)
+# }
+# 
+# 
+# for(month in 1:12) {
+#   aux <- tab_tri[(month-1) * n_distinct(data$ind1) + 1:n_distinct(data$ind1), ] #extract data for all individuals for month 1
+#   
+#   plot(as.factor(inds), aux[, "mean"], type = "l", xlab = "", ylab = "",
+#        main = paste0("Month ", month), ylim = c(-.5, .5), las = 2, cex.axis = 0.75)
+#   lines(as.factor(inds), aux[, "0.025quant"], lty = 2)
+#   lines(as.factor(inds), aux[, "0.975quant"], lty = 2)
+# }
+# 
+# for(month in 1:12) {
+#   aux <- tab_slope_tpi[(month-1) * n_distinct(data$ind1) + 1:n_distinct(data$ind1), ] #extract data for all individuals for month 1
+#   
+#   plot(as.factor(inds), aux[, "mean"], type = "l", xlab = "", ylab = "",
+#        main = paste0("Month ", month), ylim = c(-.5, .5), las = 2, cex.axis = 0.75)
+#   lines(as.factor(inds), aux[, "0.025quant"], lty = 2)
+#   lines(as.factor(inds), aux[, "0.975quant"], lty = 2)
+# }
+
+dem_coefs <- tab_dem %>% 
+  mutate(ind_ID = rep(ID[1:length(ind_IDs)], 12), #the tab datasets only have the ind id for the first season and then just numbers
+         #month = factor(rep(c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), each = length(ind_IDs)),
+         month = factor(rep(1:12, each = length(ind_IDs)),
+                        labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")))
+
+(dem_inds <- ggplot(dem_coefs, aes(x = mean, y = ind_ID)) +
+    geom_vline(xintercept = 0, linetype="dashed", size = 0.5) +
+    geom_linerange(aes(xmin = dem_coefs$'0.025quant', xmax = dem_coefs$'0.975quant'), size = 0.6, color = "#a9c4f5") +
+    geom_point(size = 1.5, color =  "#6495ed") +
+    facet_wrap(vars(month), ncol = 6) +
+    labs(x = "Estimate", y = "") +
+    theme_classic())
+
+tri_coefs <- tab_tri %>% 
+  mutate(ind_ID = rep(ID[1:length(ind_IDs)], 12), #the tab datasets only have the ind id for the first season and then just numbers
+         #month = factor(rep(c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), each = length(ind_IDs)),
+         month = factor(rep(1:12, each = length(ind_IDs)),
+                        labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")))
+
+(tri_inds <- ggplot(tri_coefs, aes(x = mean, y = ind_ID)) +
+    geom_vline(xintercept = 0, linetype="dashed", size = 0.5) +
+    geom_linerange(aes(xmin = tri_coefs$'0.025quant', xmax = tri_coefs$'0.975quant'), size = 0.6, color = "#a9c4f5") +
+    geom_point(size = 1.5, color =  "#6495ed") +
+    facet_wrap(vars(month), ncol = 6) +
+    labs(x = "Estimate", y = "") +
+    theme_classic())
+
+
+slope_tpi_coefs <- tab_slope_tpi %>% 
+  mutate(ind_ID = rep(ID[1:length(ind_IDs)], 12), #the tab datasets only have the ind id for the first season and then just numbers
+  #month = factor(rep(c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), each = length(ind_IDs)),
+  month = factor(rep(1:12, each = length(ind_IDs)),
+                 labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")))
+
+(tpi_inds <- ggplot(slope_tpi_coefs, aes(x = mean, y = ind_ID)) +
+    geom_vline(xintercept = 0, linetype="dashed", size = 0.5) +
+    geom_linerange(aes(xmin = slope_tpi_coefs$'0.025quant', xmax = slope_tpi_coefs$'0.975quant'), size = 0.6, color = "#a9c4f5") +
+    geom_point(size = 1.5, color =  "#6495ed") +
+    facet_wrap(vars(month), ncol = 6) +
+    labs(x = "Estimate", y = "") +
+    theme_classic())
+
+
+
+
+################ old plots
+
 
 #!!!!!!!!make sure to add the coefficient to these.
 names <- rnd[[2]]$ID
@@ -160,5 +249,22 @@ X11(width = 7, height = 9)
 
 ggsave(plot = coefs_inds, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/ind_coefs_FEB23_200m.png", 
        width = 7.5, height = 10, dpi = 300)
+
+#plot the grouped effect
+X11()
+par(mfrow = c(4, 3))
+par(mar = c(3, 1.25, 1.5, 1.5))
+#Table with summary of random effects; ID is for the YEAR
+tab <-  M2$summary.random$ind1
+inds <- unique(sample$ind1)
+
+for(month in 1:12) {
+  aux <- tab[(month-1) * n_distinct(sample$ind1) + 1:n_distinct(sample$ind1), ] #extract data for all individuals for month 1
+  
+  plot(as.factor(inds), aux[, "mean"], type = "l", xlab = "", ylab = "",
+       main = paste0("Month ", month), ylim = c(-2, 2), las = 2, cex.axis = 0.75)
+  lines(as.factor(inds), aux[, "0.025quant"], lty = 2)
+  lines(as.factor(inds), aux[, "0.975quant"], lty = 2)
+}
 
 
