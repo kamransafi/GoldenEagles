@@ -1,0 +1,164 @@
+#Scripts for modeling the energy landscape for golden eagles past dispersal
+#data contains missing values which will allow me to make predictions to plot the interaction
+#update on April 12th to include seasonality and hourly points
+
+#From terminal on local system: (make sure to be on MPI internet, use VPN)
+#The file with all data (no missing values)
+
+scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/inla_preds_input_* enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_interactions/
+  
+#coy over paradiso license
+scp /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/pardiso.lic enourani@raven.mpcdf.mpg.de:/raven/u/enourani/
+  
+#ssh to cluster
+  
+# if not on MPI network: 
+ssh gate.mpcdf.mpg.de
+ssh raven.mpcdf.mpg.de
+
+
+#if on MPI network:
+ssh enourani@raven.mpcdf.mpg.de
+
+
+#load R
+module purge
+module load gcc/10 R/4.2 gdal gsl/2.4
+
+#open R in new screen
+screen -S inlaGE
+R
+
+#to detach screen anytime, ctr+A,D
+#to go back to the scree: screen -r myScreenName
+#list of screens: screen -list
+#kill screen: screen -S myScreenName -X quit 
+
+######in R
+
+setwd("GE_interactions")
+
+library(dplyr)
+library(INLA)
+inla.setOption(pardiso.license = "pardiso.lic")
+
+#open files into a list
+
+file_ls <- list.files(pattern = "inla_preds_input", full.names = T)
+
+#-----------------------------------------------------------------------------------------------
+# STEP 1: MODEL WITH missing values
+
+#define variables and formula
+F_full <- used ~ -1 +
+  dem_100_z * step_length_z * weeks_since_emig_z +
+  TRI_100_z * step_length_z * weeks_since_emig_z +
+  slope_TPI_100_z * step_length_z * weeks_since_emig_z +
+  f(stratum, model = "iid", 
+    hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
+  f(ind1, dem_100_z, model = "iid",
+    hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
+    group = month, control.group = list(model = "ar1", scale.model = TRUE)) +
+  f(ind2, TRI_100_z, model = "iid",
+    hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
+    group = month, control.group = list(model = "ar1", scale.model = TRUE)) +
+  f(ind3, slope_TPI_100_z, model = "iid",
+    hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
+    group = month, control.group = list(model = "ar1", scale.model = TRUE))
+
+
+mean.beta <- 0
+prec.beta <- 1e-4 
+
+#run the model for each file separately
+
+for(i in file_ls){
+
+new_data <- readRDS(i)
+
+#run model
+(b <- Sys.time())
+M_pred <- inla(F_full, family = "Poisson",
+                 control.fixed = list(
+                  mean = mean.beta,
+                  prec = list(default = prec.beta)),
+                 data = new_data,
+                 num.threads = 5, # be careful of memory. it was on 20 and 40 before. the job finished, but #there was a memory error in the error log.
+                 control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
+                 control.compute = list(openmp.strategy =  "pardiso", config = TRUE, cpo = T), #deactivate cpo #to save computing power
+                 control.inla(strategy = "adaptive", int.strategy = "eb"),
+                 inla.mode = "experimental", verbose = F)
+Sys.time()-b #35 minutes
+
+#this didnt work: inla crashed.
+#(b <- Sys.time())
+#M_pred2 <- inla(F_full, family = "Poisson", 
+#               control.fixed = list(
+#                 mean = mean.beta,
+#                 prec = list(default = prec.beta)),
+#               data = new_data, 
+#               num.threads = 10,
+#               control.predictor = list(compute = TRUE, link = 1), 
+#               control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
+#Sys.time()-b  
+
+
+
+
+
+
+
+#extract model vlidation results
+eval <- data.frame(CPO = mean(M_pred$cpo$cpo, na.rm = T),
+                   Mlik = as.numeric(M_pred$mlik[,1][2])) 
+
+saveRDS(eval, file = paste0("eval_M_pred100_hrly_", substr(i, 20,25), ".rds"))
+
+# extract info for coefficient plots
+
+# posterior means of coefficients
+graph <- as.data.frame(summary(M_pred)$fixed)
+colnames(graph)[which(colnames(graph)%in%c("0.025quant","0.975quant"))]<-c("Lower","Upper")
+colnames(graph)[which(colnames(graph)%in%c("0.05quant","0.95quant"))]<-c("Lower","Upper")
+colnames(graph)[which(colnames(graph)%in%c("mean"))]<-c("Estimate")
+
+graph$Factor <- rownames(graph)
+
+saveRDS(graph, file = paste0("graph_M_pred100_hrly_", substr(i, 20,25), ".rds"))
+
+#-----------------------------------------------------------------------------------------------
+# STEP 2: EXTRACT & SAVE PREDICTIONS
+
+#extract info to make prediction plots
+
+used_na <- which(is.na(new_data$used))
+
+#extract information for rows that had NAs as response variables
+
+if(substr(i, 20,25) == "dem_wk"){
+
+preds <- data.frame(dem_100_z = new_data[is.na(new_data$used) ,"dem_100_z"],
+                    weeks_since_emig_z = new_data[is.na(new_data$used) ,"weeks_since_emig_z"],
+                    preds = M_pred$summary.fitted.values[used_na,"mean"]) %>%
+  mutate(prob_pres = exp(preds)/(1+exp(preds))) #this should be between 0-1
+
+
+}
+
+
+saveRDS(preds, file = "preds_M_pred100_hrly_", substr(i, 20,25), ".rds")
+
+
+#extract info for ind- and month-specific variation
+
+summ_rndm <- M_main$summary.random
+
+saveRDS(summ_rndm, file = "rnd_coeff_M_pred100_hrly_",substr(i, 20,25), ".rds")
+
+}
+
+#-----------------------------------------------------------------------------------------------
+# STEP 3: TRANSFER FILES TO LOCAL MACHINE
+
+## copy files back to local machine.. from local terminal
+scp -r enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_INLA/ /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100
