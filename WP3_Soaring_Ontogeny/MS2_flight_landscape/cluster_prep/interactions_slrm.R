@@ -36,7 +36,6 @@ prec.beta <- 1e-4
 
 results_list <- list()
 
-
 for(i in file_ls){
 
 new_data <- readRDS(i)
@@ -53,7 +52,7 @@ M_pred <- inla(F_full, family = "Poisson",
                control.compute = list(openmp.strategy =  "pardiso", config = TRUE, cpo = T), #deactivate cpo #to save computing power
                control.inla(strategy = "adaptive", int.strategy = "eb"),
                inla.mode = "experimental", verbose = F)
-Sys.time()-b #35 minutes
+Sys.time()-b #22 minutes
 
 # posterior means of coefficients
 graph <- as.data.frame(summary(M_pred)$fixed)
@@ -64,14 +63,13 @@ colnames(graph)[which(colnames(graph)%in%c("mean"))]<-c("Estimate")
 graph <- graph %>%
   mutate(Factor = rownames(graph))
 
-
 #extract info to make prediction plots--------------------------------------------------------------------------
 used_na <- which(is.na(new_data$used))
 
 #extract information for rows that had NAs as response variables. append to the original new_data (with NAs as used)
 preds <- new_data %>% 
   filter(is.na(used)) %>% 
-  dplyr::select(c("location.long", "location.lat", "dem_200_z", "TRI_200_z", "weeks_since_emig_z")) %>% 
+  dplyr::select(c("location.long", "location.lat", "dem_100_z", "TRI_100_z", "weeks_since_emig_z")) %>% 
   mutate(preds = M_pred$summary.fitted.values[used_na,"mean"],
          preds_sd = M_pred$summary.fitted.values[used_na,"sd"]) %>% 
   mutate(prob_pres = exp(preds)/(1+exp(preds)))
@@ -84,61 +82,6 @@ rm(M_pred, preds, graph, new_data)
 
 gc(gc())
 
-
-}
-
-
-################################## old stuff
-
-
-for(x in 1:nrow(weeks)){
-  
-  new_data <- alps_data
-  new_data[is.na(new_data$weeks_since_emig_n),"weeks_since_emig_n"] <- weeks[x,"weeks_since_emig_n"]
-  new_data[is.na(new_data$weeks_since_emig_n_z),"weeks_since_emig_n_z"] <- weeks[x,"weeks_since_emig_n_z"]
-  
-  #run the model
-  #b <- Sys.time()
-  M_pred <- inla(formulaM, family = "Poisson",
-                 control.fixed = list(
-                   mean = mean.beta,
-                   prec = list(default = prec.beta)),
-                 data = new_data,
-                 num.threads = 1, # be careful of memory. it was on 20 and 40 before. the job finished, but there was a memory error in the error log.
-                 control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
-                 control.compute = list(openmp.strategy =  "pardiso", config = TRUE, cpo = F), #deactivate cpo to save computing power
-                 control.inla(strategy = "adaptive", int.strategy = "eb"),
-                 inla.mode="experimental", verbose = F)
-  #Sys.time()- b #25 min for one model
-  
-  # posterior means of coefficients
-  graph <- as.data.frame(summary(M_pred)$fixed)
-  colnames(graph)[which(colnames(graph)%in%c("0.025quant","0.975quant"))]<-c("Lower","Upper")
-  colnames(graph)[which(colnames(graph)%in%c("0.05quant","0.95quant"))]<-c("Lower","Upper")
-  colnames(graph)[which(colnames(graph)%in%c("mean"))]<-c("Estimate")
-  
-  graph <- graph %>%
-    mutate(Factor = rownames(graph),
-           week = weeks[x,"weeks_since_emig_n"])
-  
-  
-  #extract info to make prediction plots--------------------------------------------------------------------------
-  used_na <- which(is.na(new_data$used))
-  
-  #extract information for rows that had NAs as response variables. append to the original new_data (with NAs as used)
-  preds <- new_data %>% 
-    filter(is.na(used)) %>% 
-    dplyr::select(c("location.long", "location.lat", "dem_200", "TRI_200", "dem_200_z", "TRI_200_z", "weeks_since_emig_n_z", "weeks_since_emig_n")) %>% 
-    mutate(preds = M_pred$summary.fitted.values[used_na,"mean"],
-           preds_sd = M_pred$summary.fitted.values[used_na,"sd"]) %>% 
-    mutate(prob_pres = exp(preds)/(1+exp(preds)))
-  
-  week_results <- list(graph, preds)
-  
-  results_list <- append(results_list, week_results)
-  
-  rm(M_pred, preds, graph, new_data)
-  gc(gc())
 }
 
 saveRDS(results_list, file = "results_list.rds")

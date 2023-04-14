@@ -40,8 +40,8 @@ coefs <- ggplot(graph, aes(x = Estimate, y = Factor)) +
   theme_classic()
   
 
-ggsave(plot = coefs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_coefs_static100_sl.png", 
-       width = 4.7, height = 2.7, dpi = 300)
+ggsave(plot = coefs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_coefs_seasonality_static100_sl.png", 
+       width = 8, height = 6, dpi = 300)
 
 
 # PLOT 2: interaction plots ----------------------------------------------------------------------------------------------------
@@ -196,3 +196,34 @@ slope_tpi_coefs <- tab_slope_tpi %>%
 ggsave(plot = tpi_inds, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/ind_season_coefs_slope_tpi.png", 
        width = 10, height = 10, dpi = 300)
 
+################################# compare coeffs to a model without seasonality ####################
+
+graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100/graph_M_OG_100_hrly.rds")
+
+#remove weeks since dispersal
+graph <- graph[graph$Factor != "weeks_since_emig_z",]
+#droplevels(graph$Factor)
+VarOrder <- rev(unique(graph$Factor))
+VarNames <- VarOrder
+
+graph$Factor <- factor(graph$Factor, levels = VarOrder)
+levels(graph$Factor) <- VarNames
+
+graph$Factor_n <- as.numeric(graph$Factor)
+
+#plot in ggplot2... later on reorder the variables and make the names more cohesive
+X11(width = 8, height = 6)
+
+coefs <- ggplot(graph, aes(x = Estimate, y = Factor)) +
+  geom_vline(xintercept = 0, linetype="dashed", 
+             color = "gray", size = 0.5) +
+  geom_point(color = "cornflowerblue", size = 2)  +
+  #xlim(-0.1,0.6) +
+  #scale_y_discrete(name = "",
+  #                 labels = c("Weeks since dispersal * TRI","Weeks since dispersal * DEM", "TRI", "DEM")) +
+  geom_linerange(aes(xmin = Lower, xmax = Upper),color = "cornflowerblue", size = 1) +
+  theme_classic()
+
+
+ggsave(plot = coefs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_coefs_OG_static100_sl.png", 
+       width = 8, height = 6, dpi = 300)
