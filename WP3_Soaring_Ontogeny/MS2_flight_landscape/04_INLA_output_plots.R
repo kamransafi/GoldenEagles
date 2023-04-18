@@ -47,7 +47,9 @@ ggsave(plot = coefs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontoge
 # PLOT 2: interaction plots ----------------------------------------------------------------------------------------------------
 
 all_data <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_100_daytemp_inlaready_wks.rds")
-preds <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Mar23_temp_100/preds_M_main100.rds")
+#preds <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Mar23_temp_100/preds_M_main100.rds")
+
+preds_ls <- readRDS("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100/interaction_preds/results_list.rds")
 
 y_axis_var <- c("dem_100_z", "TRI_100_z")
 x_axis_var <- "weeks_since_emig_n_z"

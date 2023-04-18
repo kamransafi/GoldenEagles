@@ -83,12 +83,12 @@ M_pred <- inla(F_full, family = "Poisson",
                   mean = mean.beta,
                   prec = list(default = prec.beta)),
                  data = new_data,
-                 num.threads = 5, # be careful of memory. it was on 20 and 40 before. the job finished, but #there was a memory error in the error log.
-                 control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
-                 control.compute = list(openmp.strategy =  "pardiso", config = TRUE, cpo = T), #deactivate cpo #to save computing power
+                 num.threads = 20, # be careful of memory. it was on 20 and 40 before. the job finished, but #there was a memory error in the error log.
+                 control.predictor = list(compute = TRUE, link = 1), #this means that NA values will be predicted.
+                 control.compute = list(openmp.strategy =  "huge", config = TRUE, cpo = T), #deactivate cpo #to save computing power
                  control.inla(strategy = "adaptive", int.strategy = "eb"),
-                 inla.mode = "experimental", verbose = F)
-Sys.time()-b #35 minutes
+                 inla.mode = "experimental")
+Sys.time()-b #20 minutes
 
 #this didnt work: inla crashed.
 #(b <- Sys.time())
@@ -101,7 +101,6 @@ Sys.time()-b #35 minutes
 #               control.predictor = list(compute = TRUE, link = 1), 
 #               control.compute = list(openmp.strategy = "huge", config = TRUE, cpo = T))
 #Sys.time()-b  
-
 
 
 
@@ -161,4 +160,4 @@ saveRDS(summ_rndm, file = "rnd_coeff_M_pred100_hrly_",substr(i, 20,25), ".rds")
 # STEP 3: TRANSFER FILES TO LOCAL MACHINE
 
 ## copy files back to local machine.. from local terminal
-scp -r enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_INLA/ /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100
+scp -r enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_interactions/results_list.rds /home/enourani/ownCloud\ -\ enourani@ab.mpg.de@owncloud.gwdg.de/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100/interaction_preds/

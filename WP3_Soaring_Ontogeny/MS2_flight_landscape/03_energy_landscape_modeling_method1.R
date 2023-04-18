@@ -157,11 +157,41 @@ F_OG <- used ~ -1 +
     hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
 
 # STEP 3: create new data for prediction: step length * dem ----------------------------------------------------------------
+
+data <- readRDS("all_inds_annotated_static_apr23.rds")
+
 #the model will be run on the cluster.
 #create one separate dataset for each interaction plot, and keep other variables at their mean
 
 #add one new row to unique strata instead of entire empty copies of strata. assign values on a regular grid, to make a raster later on
 #n needs to be large enough to cover the whole range of vars
+
+set.seed(7)
+n <- 1000
+
+new_data <- data %>%
+  group_by(stratum) %>% 
+  slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
+  ungroup() %>% 
+  slice_sample(n = n, replace = F) %>% #randomly select n of these strata. Make sure n is less than n_distinct(data$stratum)
+  mutate(used = NA,
+         dem_100 = sample(seq(min(data$dem_100, na.rm = T), quantile(data$dem_100, 0.9, na.rm = T), length.out = 10), n, replace = T), #use the 90% quantile instead of max. get rid of outliers
+         step_length = sample(seq(min(data$step_length, na.rm = T), quantile(data$step_length, 0.9, na.rm = T), length.out = 10), n, replace = T),
+         TRI_100 = attr(data[,colnames(data) == "TRI_100_z"],'scaled:center'),
+         slope_TPI_100 = attr(data[,colnames(data) == "slope_TPI_100_z"],'scaled:center'),
+         weeks_since_emig = attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:center'), 
+         month = 6)  %>%  #pick June for all preds.
+  mutate(dem_100_z = (dem_100 - attr(data[,colnames(data) == "dem_100_z"],'scaled:center'))/attr(data[,colnames(data) == "dem_100_z"],'scaled:scale'),
+         step_length_z = (step_length - attr(data[,colnames(data) == "step_length_z"],'scaled:center'))/attr(data[,colnames(data) == "step_length_z"],'scaled:scale'), #get the mean(center) and sd(scale) from the previous z transformation. for consistency
+         TRI_100_z = 0,
+         slope_TPI_100_z = 0,
+         weeks_since_emig_z = 0) %>% 
+  full_join(data) %>% 
+  as.data.frame()
+  
+saveRDS(new_data,"inla_preds_input_sl_dem.rds")
+
+# STEP 4: create new data for prediction: dem * week since dispersal ----------------------------------------------------------------
 
 set.seed(77)
 n <- 1000
@@ -172,17 +202,23 @@ new_data <- data %>%
   ungroup() %>% 
   slice_sample(n = n, replace = F) %>% #randomly select n of these strata. Make sure n is less than n_distinct(data$stratum)
   mutate(used = NA,
-         dem_100_z = sample(seq(min(data$dem_100_z, na.rm = T), quantile(data$dem_100_z, 0.9, na.rm = T), length.out = 10), n, replace = T), #use the 90% quantile instead of max. get rid of outliers
-         step_length_z = sample(seq(min(data$step_length_z, na.rm = T), quantile(data$step_length_z, 0.9, na.rm = T), length.out = 10), n, replace = T),
-         TRI_100_z = mean(data$TRI_100_z, na.rm = T),
-         slope_TPI_100_z = mean(data$slope_TPI_100_z, na.rm = T),
-         weeks_since_emig_z = mean(data$weeks_since_emig_z, na.rm = T), 
+         dem_100 = sample(seq(min(data$dem_100, na.rm = T), quantile(data$dem_100, 0.9, na.rm = T), length.out = 10), n, replace = T), #use the 90% quantile instead of max. get rid of outliers
+         step_length = attr(data[,colnames(data) == "step_length_z"],'scaled:center'),
+         TRI_100 = attr(data[,colnames(data) == "TRI_100_z"],'scaled:center'),
+         slope_TPI_100 = attr(data[,colnames(data) == "slope_TPI_100_z"],'scaled:center'),
+         weeks_since_emig = sample(seq(min(data$weeks_since_emig, na.rm = T), quantile(data$weeks_since_emig, 0.9, na.rm = T), length.out = 10), n, replace = T), 
          month = 6)  %>%  #pick June for all preds.
-  full_join(data)
+  mutate(dem_100_z = (dem_100 - attr(data[,colnames(data) == "dem_100_z"],'scaled:center'))/attr(data[,colnames(data) == "dem_100_z"],'scaled:scale'),
+         step_length_z = 0, 
+         TRI_100_z = 0,
+         slope_TPI_100_z = 0,
+         weeks_since_emig_z = (weeks_since_emig - attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:center'))/attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:scale')) %>% 
+  full_join(data) %>% 
+  as.data.frame()
 
-saveRDS(new_data,"inla_preds_input_sl_dem.rds")
+saveRDS(new_data,"inla_preds_input_dem_wk.rds")
 
-# STEP 4: create new data for prediction: dem * week since dispersal ----------------------------------------------------------------
+# STEP 5: create new data for prediction: tri * week since dispersal ----------------------------------------------------------------
 
 set.seed(777)
 n <- 1000
@@ -193,17 +229,23 @@ new_data <- data %>%
   ungroup() %>% 
   slice_sample(n = n, replace = F) %>% #randomly select n of these strata. Make sure n is less than n_distinct(data$stratum)
   mutate(used = NA,
-         dem_100_z = sample(seq(min(data$dem_100_z, na.rm = T), quantile(data$dem_100_z, 0.9, na.rm = T), length.out = 10), n, replace = T), #use the 90% quantile instead of max. get rid of outliers
-         step_length_z = mean(data$step_length_z, na.rm = T),
-         TRI_100_z = mean(data$TRI_100_z, na.rm = T),
-         slope_TPI_100_z = mean(data$slope_TPI_100_z, na.rm = T),
-         weeks_since_emig_z = sample(seq(min(data$weeks_since_emig_z, na.rm = T), quantile(data$weeks_since_emig_z, 0.9, na.rm = T), length.out = 10), n, replace = T), 
+         dem_100 = attr(data[,colnames(data) == "dem_100_z"],'scaled:center'), 
+         step_length = attr(data[,colnames(data) == "step_length_z"],'scaled:center'),
+         TRI_100 = sample(seq(min(data$TRI_100, na.rm = T), quantile(data$TRI_100, 0.9, na.rm = T), length.out = 10), n, replace = T),
+         slope_TPI_100 = attr(data[,colnames(data) == "slope_TPI_100_z"],'scaled:center'),
+         weeks_since_emig = sample(seq(min(data$weeks_since_emig, na.rm = T), quantile(data$weeks_since_emig, 0.9, na.rm = T), length.out = 10), n, replace = T), 
          month = 6)  %>%  #pick June for all preds.
-  full_join(data)
+  mutate(dem_100_z = 0,
+         step_length_z = 0, 
+         TRI_100_z = (TRI_100 - attr(data[,colnames(data) == "TRI_100_z"],'scaled:center'))/attr(data[,colnames(data) == "TRI_100_z"],'scaled:scale'),
+         slope_TPI_100_z = 0,
+         weeks_since_emig_z = (weeks_since_emig - attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:center'))/attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:scale')) %>% 
+  full_join(data) %>% 
+  as.data.frame()
 
-saveRDS(new_data,"inla_preds_input_dem_wk.rds")
+saveRDS(new_data,"inla_preds_input_tri_wk.rds")
 
-# STEP 5: create new data for prediction: tri * week since dispersal ----------------------------------------------------------------
+# STEP 6: create new data for prediction: sl * week since dispersal ----------------------------------------------------------------
 
 set.seed(7777)
 n <- 1000
@@ -214,33 +256,20 @@ new_data <- data %>%
   ungroup() %>% 
   slice_sample(n = n, replace = F) %>% #randomly select n of these strata. Make sure n is less than n_distinct(data$stratum)
   mutate(used = NA,
-         dem_100_z = mean(data$dem_100_z, na.rm = T), 
-         step_length_z = mean(data$step_length_z, na.rm = T),
-         TRI_100_z = sample(seq(min(data$TRI_100_z, na.rm = T), quantile(data$TRI_100_z, 0.9, na.rm = T), length.out = 10), n, replace = T),
-         slope_TPI_100_z = mean(data$slope_TPI_100_z, na.rm = T),
-         weeks_since_emig_z = sample(seq(min(data$weeks_since_emig_z, na.rm = T), quantile(data$weeks_since_emig_z, 0.9, na.rm = T), length.out = 10), n, replace = T), 
+         dem_100 = attr(data[,colnames(data) == "dem_100_z"],'scaled:center'), 
+         step_length = sample(seq(min(data$step_length, na.rm = T), quantile(data$step_length, 0.9, na.rm = T), length.out = 10), n, replace = T),
+         TRI_100 = attr(data[,colnames(data) == "TRI_100_z"],'scaled:center'),
+         slope_TPI_100 = attr(data[,colnames(data) == "slope_TPI_100_z"],'scaled:center'),
+         weeks_since_emig = sample(seq(min(data$weeks_since_emig, na.rm = T), quantile(data$weeks_since_emig, 0.9, na.rm = T), length.out = 10), n, replace = T), 
          month = 6)  %>%  #pick June for all preds.
-  full_join(data)
-
-saveRDS(new_data,"inla_preds_input_tri_wk.rds")
-
-# STEP 6: create new data for prediction: sl * week since dispersal ----------------------------------------------------------------
-
-set.seed(77777)
-n <- 1000
-
-new_data <- data %>%
-  group_by(stratum) %>% 
-  slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
-  ungroup() %>% 
-  slice_sample(n = n, replace = F) %>% #randomly select n of these strata. Make sure n is less than n_distinct(data$stratum)
-  mutate(used = NA,
-         dem_100_z = mean(data$dem_100_z, na.rm = T), 
-         step_length_z = sample(seq(min(data$step_length_z, na.rm = T), quantile(data$step_length_z, 0.9, na.rm = T), length.out = 10), n, replace = T),
-         TRI_100_z = mean(data$TRI_100_z, na.rm = T),
-         slope_TPI_100_z = mean(data$slope_TPI_100_z, na.rm = T),
-         weeks_since_emig_z = sample(seq(min(data$weeks_since_emig_z, na.rm = T), quantile(data$weeks_since_emig_z, 0.9, na.rm = T), length.out = 10), n, replace = T), 
-         month = 6)  %>%  #pick June for all preds.
-  full_join(data)
+  mutate(dem_100_z = 0,
+         step_length_z = (step_length - attr(data[,colnames(data) == "step_length_z"],'scaled:center'))/attr(data[,colnames(data) == "step_length_z"],'scaled:scale'), 
+         TRI_100_z = 0,
+         slope_TPI_100_z = 0,
+         weeks_since_emig_z = (weeks_since_emig - attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:center'))/attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:scale')) %>% 
+  full_join(data) %>% 
+  as.data.frame()
 
 saveRDS(new_data,"inla_preds_input_sl_wk.rds")
+
+
