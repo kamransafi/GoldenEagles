@@ -6,7 +6,7 @@
 #From terminal on local system: (make sure to be on MPI internet, use VPN)
 #The file with all data (no missing values)
 
-scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/all_inds_annotated_static_apr23.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_INLA/
+scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/all_inds_annotated_static_3yrs_apr23.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_INLA/
   
 #coy over paradiso license
 scp /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/pardiso.lic enourani@raven.mpcdf.mpg.de:/raven/u/enourani/
@@ -44,7 +44,7 @@ library(INLA)
 inla.setOption(pardiso.license = "pardiso.lic")
 
 #open file
-data <- readRDS("all_inds_annotated_static_apr23.rds")
+data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds")
 
 #-----------------------------------------------------------------------------------------------
 # STEP 1: MODEL WITH NO MISSING VALUES.
@@ -52,30 +52,32 @@ data <- readRDS("all_inds_annotated_static_apr23.rds")
 #define variables and formula
 F_full <- used ~ -1 +
   dem_100_z * step_length_z * weeks_since_emig_z +
-  TRI_100_z * step_length_z * weeks_since_emig_z +
-  slope_TPI_100_z * step_length_z * weeks_since_emig_z +
+  TRI_LF100_z * step_length_z * weeks_since_emig_z +
+  ridge_100_z * step_length_z * weeks_since_emig_z +
   f(stratum, model = "iid", 
     hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
   f(ind1, dem_100_z, model = "iid",
-    hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))), #seasonality only for dem
-    group = month, control.group = list(model = "ar1", scale.model = TRUE, cyclic = T)) +
-  f(ind2, TRI_100_z, model = "iid",
-    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) +
-  f(ind3, slope_TPI_100_z, model = "iid",
-    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
+    hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
+    group = month, control.group = list(model = "ar1", scale.model = TRUE)) +
+  f(ind2, TRI_LF100_z, model = "iid",
+    hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
+    group = month, control.group = list(model = "ar1", scale.model = TRUE)) +
+  f(ind3, ridge_100_z, model = "iid",
+    hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
+    group = month, control.group = list(model = "ar1", scale.model = TRUE))
 
 
 mean.beta <- 0
 prec.beta <- 1e-4 
 
 #run model
-M_main2 <-  inla(F_full, family = "Poisson",
+M_main <-  inla(F_full, family = "Poisson",
                  control.fixed = list(
                    mean = mean.beta,
                    prec = list(default = prec.beta)),
                  data = data,
                  num.threads = 20, 
-                 control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
+                 control.predictor = list(compute = TRUE, link = 1), #this means that NA values will be predicted.
                  control.compute = list(openmp.strategy =  "pardiso", config = TRUE, cpo = T), #deactivate cpo to save computing power
                  control.inla = list(strategy = "adaptive", int.strategy = "eb"),
                  inla.mode="experimental", verbose = F)
