@@ -114,7 +114,7 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
     burst_ls <- Filter(function(x) length(x) >= 3, burst_ls) #remove bursts with less than 3 observations
     
     burst_ls <- lapply(burst_ls, function(burst){
-      burst$step_length <- c(move::distance(burst),NA) 
+      burst$step_length <- c(NA, move::distance(burst)) #the NA used to be at the end, but it makes more sense for it to be at the beginning. it matches how the random sls are allocated
       burst$turning_angle <- c(NA,turnAngleGc(burst),NA)
       burst
     })
@@ -134,10 +134,10 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
   }) %>% 
     Filter(function(x) length(x) > 1, .) #remove segments with no observation
   
-  Sys.time() - b 
+  Sys.time() - b #1.87 mins
   stopCluster(mycl) #n = 55
   
-  saveRDS(sp_obj_ls, file = paste0("sl_", hr, "_min_55_ind.rds")) #tolerance of 10 min
+  saveRDS(sp_obj_ls, file = paste0("sl_", hr, "_min_55_ind2.rds")) #tolerance of 10 min
   
   #--STEP 4: estimate step length and turning angle distributions
   #put everything in one df
@@ -172,7 +172,7 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
   
   #--STEP 5: produce alternative steps
   
-  sp_obj_ls <- readRDS("sl_60_min_55_ind.rds")
+  sp_obj_ls <- readRDS("sl_60_min_55_ind2.rds")
   
   #prepare cluster for parallel computation
   mycl <- makeCluster(10) #the number of CPUs to use (adjust this based on your machine)
@@ -259,11 +259,11 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
 used_av_track <- used_av_track %>% 
   mutate(stratum = paste(individual.local.identifier, burst_id, step_id, sep = "_"))
   
-saveRDS(used_av_track, file = paste0("alt_", n_alt, "_", hr, "_min_55_ind.rds")) 
+saveRDS(used_av_track, file = paste0("alt_", n_alt, "_", hr, "_min_55_ind2.rds")) #the diff between this round and the previous is the assignment of NA when calculating step lengths. used to be end of burst, now is start of burst 
 
 # STEP 4: summary stats ----------------------------------------------------------------
 
-load("alt_50_60_min_55_ind.rds") #used_av_track
+load("alt_50_60_min_55_ind2.rds") #used_av_track
 
 used_av_track %>% 
   mutate(yr_mn = paste(year(timestamp), month(timestamp), sep = "_"),
@@ -289,7 +289,7 @@ barplot(names.arg = mn_summary$mn, height = mn_summary$data, col = as.factor(mn_
 
 # STEP 5: annotation: life stages ----------------------------------------------------------------
 
-used_av_track <- readRDS("alt_50_60_min_55_ind.rds") #used_av_track
+used_av_track <- readRDS("alt_50_60_min_55_ind2.rds") #used_av_track
 
 emig_dates <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/fleding_emigration_timing_Mar2023.rds")
 
@@ -302,17 +302,26 @@ used_av_track <- used_av_track %>%
 # STEP 6: annotation: static ----------------------------------------------------------------
 
 #manually annotate with static variables: elevation, terrain ruggedness index (difference between the maximum and the minimum value of a cell and its 8 surrounding cells),
-#unevenness in slope, aspect and elevation (TPI). (difference between the value of a cell and the mean value of its 8 surrounding cells)
+#and distance to ridge. TRI and distance to ridge were prepared by Louise.
 #try with 100 m resolution
 
+
+dem <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/region-alpes-dem.tif")
+
 #100m layers were built in the earlier version of this script
-dem_100 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/dem_100.tif")
-TRI_100 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/TRI_100.tif")
-slope_TPI_100 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/slope_TPI_100.tif")
-  
+TRI_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/TRI_100_LF.tif")
+ridge_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/TRI_100_LF.tif")
+
+Alps <- st_read("/home/enourani/ownCloud/Work/GIS_files/Alpine_perimeter/Alpine_Convention_Perimeter_2018_v2.shp") %>% 
+  st_transform(crs(TRI_100)) %>% 
+  as("SpatVector")
+
+dem_100 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/dem_100.tif") %>% 
+  mask(Alps)
+
 #create a stack using raster paths
-topo <- c(dem_100, TRI_100, slope_TPI_100)
-names(topo) <- c("dem_100", "TRI_100", "slope_TPI_100")
+topo <- c(dem_100, TRI_100, ridge_100)
+names(topo) <- c("dem_100", "TRI_100", "ridge_100")
 
 #reproject tracking data to match topo, extract values from topo, convert back to wgs and save as a dataframe
 topo_ann_df <- used_av_track %>% 
@@ -325,24 +334,34 @@ topo_ann_df <- used_av_track %>%
   rename(location.long = x,
          location.lat = y)
   
-cmpl_ann <- topo_ann_df %>% 
-  mutate(row_id = row_number()) #add this here so I can stitch the files back together after movebank annotation
+#cmpl_ann <- topo_ann_df %>% 
+#  mutate(row_id = row_number()) #add this here so I can stitch the files back together after movebank annotation
   
   
 saveRDS(cmpl_ann, file = "alt_50_60_min_55_ind_static_100.rds")
 
 
-# STEP 6b: add distance to ridge (made by Louise) ----------------------------------------------------------------
-ridge <- rast("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/map_distance_ridge.tif")
+# STEP 6b: add distance to ridge and TRI (made by Louise) ----------------------------------------------------------------
+ridge_25 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/map_distance_ridge.tif")
+TRI_25 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/TRI/TRI.sdat")
+dem_25 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/region-alpes-dem.tif")
+
+# aggregate to 100m resolution
+ridge_100 <- aggregate(x = ridge_25, fact = 4, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ridge_100.tif")
+TRI_100 <- aggregate(x = TRI_25, fact = 4, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/TRI_100_LF.tif")
+dem_100 <- aggregate(x = dem_25, fact = 4, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/dem_100_LF.tif")
+
+topo_LF <- c(ridge_100, TRI_100)
+names(topo_LF) <- c("ridge_100", "TRI_LF100")
 
 cmpl_ann <- readRDS("alt_50_60_min_55_ind_static_100.rds")
 
-
 ridge_ann <- cmpl_ann %>% 
-  st_as_sf(coords = c("location.long", "location.lat"), crs = wgs) %>% 
-  st_transform(crs = crs(ridge)) %>% 
-  extract(x = ridge, y = ., method = "simple", bind = T) %>%
-  project(wgs) %>% 
+  rename(ridge_25 = distance_ridge) %>% 
+  st_as_sf(coords = c("location.long", "location.lat"), crs = "+proj=longlat +datum=WGS84 +no_defs") %>% 
+  st_transform(crs = crs(topo_LF)) %>% 
+  extract(x = topo_LF, y = ., method = "simple", bind = T) %>%
+  terra::project("+proj=longlat +datum=WGS84 +no_defs") %>% 
   data.frame(., geom(.)) %>% 
   dplyr::select(-c("geom", "part", "hole")) %>% 
   rename(location.long = x,
