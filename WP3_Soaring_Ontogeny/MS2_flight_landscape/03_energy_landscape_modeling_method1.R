@@ -22,7 +22,8 @@ library(terra)
 library(gstat) #for interpolations
 #library(rastervis) #remotes::install_github("oscarperpinan/rastervis")
 library(patchwork) #patching up interaction plots
-library(oce) #color palette for interaction plots
+#library(oce) #color palette for interaction plots
+library(modelsummary)
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 #setwd("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/")
@@ -39,8 +40,8 @@ Mode <- function(x, na.rm = FALSE) {
 
 
 #open annotated data. prepared in 03_04b_clogit_randomization.R
-data <-  readRDS("alt_50_60_min_55_ind_static_100.rds") %>% 
-  mutate_at(c("step_length", "dem_100", "TRI_100", "slope_TPI_100", "weeks_since_emig"), list(z = ~(scale(.)))) %>%   #calculate the z scores
+data <-  readRDS("alt_50_60_min_55_ind_static_r_100.rds") %>% 
+  mutate_at(c("step_length", "dem_100", "TRI_100", "slope_TPI_100", "distance_ridge", "weeks_since_emig"), list(z = ~(scale(.)))) %>%   #calculate the z scores
   mutate(ind1 = individual.local.identifier,
          ind2 = individual.local.identifier,
          ind3 = individual.local.identifier,
@@ -48,30 +49,63 @@ data <-  readRDS("alt_50_60_min_55_ind_static_100.rds") %>%
 
 saveRDS(data, file = "all_inds_annotated_static_apr23.rds") #for a version with dynamic variables, see all_inds_annotated_apr23.rds
 
+### look at the correlations
+
+data %>% 
+  dplyr::select(c("step_length", "dem_100", "TRI_100", "slope_TPI_100", "distance_ridge", "weeks_since_emig")) %>% 
+  correlate() %>% 
+  corrr::stretch() %>% 
+  filter(abs(r) > 0.6) #none!! lol
+
 # STEP 2: CLOGIT- ssf modeling exploration  ----------------------------------------------------------------
 
 ## mid_step: investigate using clogit
-
-form1 <- used ~ dem_100_z * step_length_z * weeks_since_emig_z + 
-  TRI_100_z * step_length_z * weeks_since_emig_z 
+f <-  used ~ dem_100_z * step_length_z * weeks_since_emig_z + 
+  TRI_100_z * step_length_z * weeks_since_emig_z +
   slope_TPI_100_z * step_length_z * weeks_since_emig_z + 
+  distance_ridge_z * step_length_z * weeks_since_emig_z + 
   strata(stratum)
 
-ssf1 <- clogit(form1, data = data)
+ssf1 <- clogit(f, data = data)
 summary(ssf1)
 plot_summs(ssf1)
-modelsummary(ssf1) #AIC = 196770.1
+modelsummary(ssf1) #AIC = 194,202.4
 
-form2 <- used ~ dem_100_z * step_length_z * weeks_since_emig_z + 
-  TRI_100_z * step_length_z * weeks_since_emig_z + 
-  slope_TPI_100_z * step_length_z * weeks_since_emig_z + 
-  t2m +
+
+f2 <-  used ~ dem_100_z * weeks_since_emig_z + 
+  TRI_100_z * weeks_since_emig_z +
+  slope_TPI_100_z * weeks_since_emig_z + 
+  distance_ridge_z * weeks_since_emig_z + 
   strata(stratum)
 
-ssf2 <- clogit(form2, data = data)
+ssf2 <- clogit(f2, data = data)
 summary(ssf2)
 plot_summs(ssf2)
-modelsummary(ssf2) #AIC = 189219.6
+modelsummary(ssf2) #AIC = 352,386.3
+
+
+#dont include dem. then we wont need to control for seasonality
+f3 <-  used ~ TRI_100_z * step_length_z * weeks_since_emig_z +
+  slope_TPI_100_z * step_length_z * weeks_since_emig_z + 
+  distance_ridge_z * step_length_z * weeks_since_emig_z + 
+  strata(stratum)
+
+ssf3 <- clogit(f3, data = data)
+summary(ssf3)
+plot_summs(ssf3)
+modelsummary(ssf3) #AIC = 196,248.5
+
+#only ridge
+f4 <-  used ~ distance_ridge_z * step_length_z * weeks_since_emig_z + 
+  strata(stratum)
+
+ssf4 <- clogit(f4, data = data)
+summary(ssf4)
+plot_summs(ssf4)
+modelsummary(ssf4) #AIC = 196,248.5
+
+
+
 
 #I go more into detail of using this model in 03_04_clogit_workflow.R
 
@@ -155,6 +189,22 @@ F_OG <- used ~ -1 +
     hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) +
   f(ind3, slope_TPI_100_z, model = "iid",
     hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
+
+## model with seasonality only for dem
+F_full <- used ~ -1 +
+  dem_100_z * step_length_z * weeks_since_emig_z +
+  TRI_100_z * step_length_z * weeks_since_emig_z +
+  slope_TPI_100_z * step_length_z * weeks_since_emig_z +
+  f(stratum, model = "iid", 
+    hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
+  f(ind1, dem_100_z, model = "iid",
+    hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))), #seasonality only for dem
+    group = month, control.group = list(model = "ar1", scale.model = TRUE, cyclic = T)) +
+  f(ind2, TRI_100_z, model = "iid",
+    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) +
+  f(ind3, slope_TPI_100_z, model = "iid",
+    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
+
 
 # STEP 3: create new data for prediction: step length * dem ----------------------------------------------------------------
 

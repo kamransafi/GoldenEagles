@@ -6,7 +6,7 @@
 library(tidyverse)
 library(lubridate)
 library(move)
-library(ctmm)
+#library(ctmm)
 library(sf)
 library(mapview)
 library(parallel)
@@ -330,6 +330,28 @@ cmpl_ann <- topo_ann_df %>%
   
   
 saveRDS(cmpl_ann, file = "alt_50_60_min_55_ind_static_100.rds")
+
+
+# STEP 6b: add distance to ridge (made by Louise) ----------------------------------------------------------------
+ridge <- rast("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/map_distance_ridge.tif")
+
+cmpl_ann <- readRDS("alt_50_60_min_55_ind_static_100.rds")
+
+
+ridge_ann <- cmpl_ann %>% 
+  st_as_sf(coords = c("location.long", "location.lat"), crs = wgs) %>% 
+  st_transform(crs = crs(ridge)) %>% 
+  extract(x = ridge, y = ., method = "simple", bind = T) %>%
+  project(wgs) %>% 
+  data.frame(., geom(.)) %>% 
+  dplyr::select(-c("geom", "part", "hole")) %>% 
+  rename(location.long = x,
+         location.lat = y)
+
+
+
+saveRDS(ridge_ann, file = "alt_50_60_min_55_ind_static_r_100.rds")
+
 
 # STEP 7: annotation: weather ----------------------------------------------------------------
 

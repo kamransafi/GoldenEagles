@@ -1,6 +1,7 @@
 #Scripts for modeling the energy landscape for golden eagles past dispersal
 #data contains missing values which will allow me to make predictions to plot the interaction
 #update on April 12th to include seasonality and hourly points
+#update on April 18th: only include seasonality for dem
 
 #From terminal on local system: (make sure to be on MPI internet, use VPN)
 #The file with all data (no missing values)
@@ -56,29 +57,27 @@ F_full <- used ~ -1 +
   f(stratum, model = "iid", 
     hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
   f(ind1, dem_100_z, model = "iid",
-    hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
-    group = month, control.group = list(model = "ar1", scale.model = TRUE)) +
+    hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))), #seasonality only for dem
+    group = month, control.group = list(model = "ar1", scale.model = TRUE, cyclic = T)) +
   f(ind2, TRI_100_z, model = "iid",
-    hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
-    group = month, control.group = list(model = "ar1", scale.model = TRUE)) +
+    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) +
   f(ind3, slope_TPI_100_z, model = "iid",
-    hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
-    group = month, control.group = list(model = "ar1", scale.model = TRUE))
+    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
 
 
 mean.beta <- 0
 prec.beta <- 1e-4 
 
 #run model
-M_main <-  inla(F_full, family = "Poisson",
+M_main2 <-  inla(F_full, family = "Poisson",
                  control.fixed = list(
                    mean = mean.beta,
                    prec = list(default = prec.beta)),
                  data = data,
-                 num.threads = 10, 
+                 num.threads = 20, 
                  control.predictor = list(compute = TRUE), #this means that NA values will be predicted.
                  control.compute = list(openmp.strategy =  "pardiso", config = TRUE, cpo = T), #deactivate cpo to save computing power
-                 control.inla(strategy = "adaptive", int.strategy = "eb"),
+                 control.inla = list(strategy = "adaptive", int.strategy = "eb"),
                  inla.mode="experimental", verbose = F)
 
 
@@ -115,9 +114,6 @@ saveRDS(summ_rndm, file = "rnd_coeff_M_main100_hrly.rds")
 
 ## copy files back to local machine.. from local terminal
 scp -r enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_INLA/*M_Main*.rds /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100
-
-
-
 
 ##############################################################################3
 #To make the model without seasonality:

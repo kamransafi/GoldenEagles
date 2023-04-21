@@ -13,7 +13,7 @@ setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
 # PLOT 1: coefficient plots ----------------------------------------------------------------------------------------------------
 
-graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100/graph_M_main100_hrly.rds")
+graph <- readRDS("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100/graph_M_r100_hrly.rds")
 
 #remove weeks since dispersal
 graph <- graph[graph$Factor != "weeks_since_emig_z",]
@@ -36,7 +36,7 @@ coefs <- ggplot(graph, aes(x = Estimate, y = Factor)) +
   #xlim(-0.1,0.6) +
   #scale_y_discrete(name = "",
   #                 labels = c("Weeks since dispersal * TRI","Weeks since dispersal * DEM", "TRI", "DEM")) +
-  geom_linerange(aes(xmin = Lower, xmax = Upper),color = "cornflowerblue", size = 1) +
+  geom_linerange(aes(xmin = Lower, xmax = Upper),color = "cornflowerblue", linewidth = 1) +
   theme_classic()
   
 
@@ -47,9 +47,9 @@ ggsave(plot = coefs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontoge
 # PLOT 2: interaction plots ----------------------------------------------------------------------------------------------------
 
 all_data <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_100_daytemp_inlaready_wks.rds")
-#preds <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Mar23_temp_100/preds_M_main100.rds")
 
-preds_ls <- readRDS("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100/interaction_preds/results_list.rds")
+#preds_ls <- readRDS("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100/interaction_preds/results_list.rds")
+preds_ls <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100/interaction_preds/results_list.rds")
 
 y_axis_var <- c("dem_100_z", "TRI_100_z")
 x_axis_var <- "weeks_since_emig_n_z"
@@ -125,6 +125,7 @@ ggsave(plot = p_2, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny
 
 data <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/all_inds_annotated_static_apr23.rds")
 rnd <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100/rnd_coeff_M_main100_hrly.rds")
+rnd <- readRDS("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100/rnd_coeff_M_r100_hrly.rds")
 graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100/graph_M_main100_hrly.rds")
 
 
@@ -133,8 +134,8 @@ graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/
 
 #Table with summary of random effects; ID is for the unique individuals
 tab_dem <-  rnd$ind1
-tab_tri <-  rnd$ind2
-tab_slope_tpi <-  rnd$ind3
+tab_ridge <-  rnd$ind2
+#tab_slope_tpi <-  rnd$ind3
 
 ind_IDs <- unique(data$ind1)
 
@@ -197,6 +198,27 @@ slope_tpi_coefs <- tab_slope_tpi %>%
 
 ggsave(plot = tpi_inds, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/ind_season_coefs_slope_tpi.png", 
        width = 10, height = 10, dpi = 300)
+
+
+ridge_coefs <- tab_ridge %>% 
+  mutate(ind_ID = rep(ID[1:length(ind_IDs)], 12), #the tab datasets only have the ind id for the first season and then just numbers
+         #month = factor(rep(c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), each = length(ind_IDs)),
+         month = factor(rep(1:12, each = length(ind_IDs)),
+                        labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")))
+
+(ridge_inds <- ggplot(ridge_coefs, aes(x = mean, y = ind_ID)) +
+    geom_vline(xintercept = 0, linetype="dashed", size = 0.5) +
+    geom_linerange(aes(xmin = ridge_coefs$'0.025quant', xmax = ridge_coefs$'0.975quant'), size = 0.6, color = "#a9c4f5") +
+    geom_point(size = 1.5, color =  "#6495ed") +
+    facet_wrap(vars(month), ncol = 6) +
+    labs(x = "Estimate", y = "") +
+    ggtitle("dist to ridge") +
+    theme_classic() +
+    theme(axis.text = element_text(size = 6.5)))
+
+#ggsave(plot = tpi_inds, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/ind_season_coefs_slope_tpi.png", 
+#       width = 10, height = 10, dpi = 300)
+
 
 ################################# compare coeffs to a model without seasonality ####################
 
