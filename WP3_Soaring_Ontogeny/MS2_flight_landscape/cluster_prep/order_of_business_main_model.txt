@@ -58,13 +58,13 @@ F_full <- used ~ -1 +
     hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
   f(ind1, dem_100_z, model = "iid",
     hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
-    group = month, control.group = list(model = "ar1", scale.model = TRUE)) +
+    group = month, control.group = list(model = "ar1", cyclic = T, scale.model = TRUE)) +
   f(ind2, TRI_LF100_z, model = "iid",
     hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
-    group = month, control.group = list(model = "ar1", scale.model = TRUE)) +
+    group = month, control.group = list(model = "ar1", cyclic = T,scale.model = TRUE)) +
   f(ind3, ridge_100_z, model = "iid",
     hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
-    group = month, control.group = list(model = "ar1", scale.model = TRUE))
+    group = month, control.group = list(model = "ar1", cyclic = T, scale.model = TRUE))
 
 
 mean.beta <- 0
