@@ -52,20 +52,19 @@ data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds")
 #define variables and formula
 F_full <- used ~ -1 +
   dem_100_z * step_length_z * weeks_since_emig_z +
-  TRI_LF100_z * step_length_z * weeks_since_emig_z +
+  TRI_100 * step_length_z * weeks_since_emig_z +
   ridge_100_z * step_length_z * weeks_since_emig_z +
   f(stratum, model = "iid", 
     hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
   f(ind1, dem_100_z, model = "iid",
     hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
     group = month, control.group = list(model = "ar1", cyclic = T, scale.model = TRUE)) +
-  f(ind2, TRI_LF100_z, model = "iid",
+  f(ind2, TRI_100, model = "iid",
     hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
     group = month, control.group = list(model = "ar1", cyclic = T, scale.model = TRUE)) +
   f(ind3, ridge_100_z, model = "iid",
     hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
     group = month, control.group = list(model = "ar1", cyclic = T, scale.model = TRUE))
-
 
 mean.beta <- 0
 prec.beta <- 1e-4 
@@ -115,9 +114,9 @@ saveRDS(summ_rndm, file = "rnd_coeff_M_main100_hrly.rds")
 # STEP 3: TRANSFER FILES TO LOCAL MACHINE
 
 ## copy files back to local machine.. from local terminal
-scp -r enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_INLA/*M_Main*.rds /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100
+scp -r enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_INLA/*M_Main*.rds /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Apr2123_seasonality_100
 
-##############################################################################3
+##############################################################################
 #To make the model without seasonality:
 
 mean.beta <- 0
