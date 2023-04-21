@@ -305,19 +305,10 @@ used_av_track <- used_av_track %>%
 #and distance to ridge. TRI and distance to ridge were prepared by Louise.
 #try with 100 m resolution
 
-
-dem <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/region-alpes-dem.tif")
-
 #100m layers were built in the earlier version of this script
 TRI_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/TRI_100_LF.tif")
 ridge_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/TRI_100_LF.tif")
-
-Alps <- st_read("/home/enourani/ownCloud/Work/GIS_files/Alpine_perimeter/Alpine_Convention_Perimeter_2018_v2.shp") %>% 
-  st_transform(crs(TRI_100)) %>% 
-  as("SpatVector")
-
-dem_100 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/dem_100.tif") %>% 
-  mask(Alps)
+dem_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/dem_100_LF.tif")
 
 #create a stack using raster paths
 topo <- c(dem_100, TRI_100, ridge_100)
@@ -328,81 +319,11 @@ topo_ann_df <- used_av_track %>%
   st_as_sf(coords = c("location.long", "location.lat"), crs = wgs) %>% 
   st_transform(crs = crs(topo)) %>% 
   extract(x = topo, y = ., method = "simple", bind = T) %>%
-  project(wgs) %>% 
+  terra::project(wgs) %>% 
   data.frame(., geom(.)) %>% 
   dplyr::select(-c("geom", "part", "hole")) %>% 
   rename(location.long = x,
          location.lat = y)
   
-#cmpl_ann <- topo_ann_df %>% 
-#  mutate(row_id = row_number()) #add this here so I can stitch the files back together after movebank annotation
-  
-  
-saveRDS(cmpl_ann, file = "alt_50_60_min_55_ind_static_100.rds")
-
-
-# STEP 6b: add distance to ridge and TRI (made by Louise) ----------------------------------------------------------------
-ridge_25 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/map_distance_ridge.tif")
-TRI_25 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/TRI/TRI.sdat")
-dem_25 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/region-alpes-dem.tif")
-
-# aggregate to 100m resolution
-ridge_100 <- aggregate(x = ridge_25, fact = 4, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ridge_100.tif")
-TRI_100 <- aggregate(x = TRI_25, fact = 4, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/TRI_100_LF.tif")
-dem_100 <- aggregate(x = dem_25, fact = 4, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/dem_100_LF.tif")
-
-topo_LF <- c(ridge_100, TRI_100)
-names(topo_LF) <- c("ridge_100", "TRI_LF100")
-
-cmpl_ann <- readRDS("alt_50_60_min_55_ind_static_100.rds")
-
-ridge_ann <- cmpl_ann %>% 
-  rename(ridge_25 = distance_ridge) %>% 
-  st_as_sf(coords = c("location.long", "location.lat"), crs = "+proj=longlat +datum=WGS84 +no_defs") %>% 
-  st_transform(crs = crs(topo_LF)) %>% 
-  extract(x = topo_LF, y = ., method = "simple", bind = T) %>%
-  terra::project("+proj=longlat +datum=WGS84 +no_defs") %>% 
-  data.frame(., geom(.)) %>% 
-  dplyr::select(-c("geom", "part", "hole")) %>% 
-  rename(location.long = x,
-         location.lat = y)
-
-
-
-saveRDS(ridge_ann, file = "alt_50_60_min_55_ind_static_r_100.rds")
-
-
-# STEP 7: annotation: weather ----------------------------------------------------------------
-
-cmpl_ann <- readRDS("alt_50_60_min_55_ind_static_100.rds")
-
-#split into 3 files to be suitable for movebank requests
-
-cmpl_ann_m <- cmpl_ann %>% 
-  dplyr::select(c("timestamp", "location.long", "location.lat", "row_id")) %>%  #only select the absolutely necessary columns. so that there are no NAs in the data and hopefully Movebank won't complain
-  mutate(timestamp = paste(as.character(timestamp),"000",sep = ".")) %>% 
-    as.data.frame()
-
-n_each <- nrow(cmpl_ann_m)/3
-
-f1 <- cmpl_ann_m %>% 
-  slice(1:n_each)
-
-f2 <- cmpl_ann_m %>% 
-  slice((n_each+1):(n_each*2))
-
-f3 <- cmpl_ann_m %>% 
-  slice(((n_each*2)+1):nrow(cmpl_ann_m))
-
-#row numbers are over a million, so do separate into two dfs for annotation
-colnames(f1)[c(2,3)] <- c("location-long", "location-lat") #rename columns to match movebank format
-colnames(f2)[c(2,3)] <- c("location-long", "location-lat") #rename columns to match movebank format
-colnames(f3)[c(2,3)] <- c("location-long", "location-lat") #rename columns to match movebank format
-
-write.csv(f1, "GE_ssf_annotation_55inds_1.csv")
-write.csv(f2, "GE_ssf_annotation_55inds_2.csv")
-write.csv(f3, "GE_ssf_annotation_55inds_3.csv")
-
-
-
+saveRDS(topo_ann_df, file = "alt_50_60_min_55_ind_static_r_100.rds")
 
