@@ -8,7 +8,7 @@
 
 scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/all_inds_annotated_static_3yrs_apr23.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_INLA/
   
-#coy over paradiso license
+#copy over paradiso license
 scp /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/pardiso.lic enourani@raven.mpcdf.mpg.de:/raven/u/enourani/
   
 #ssh to cluster
@@ -61,7 +61,7 @@ F_full <- used ~ -1 +
     group = month, control.group = list(model = "ar1", cyclic = T, scale.model = TRUE)) +
   f(ind2, TRI_LF100_z, model = "iid",
     hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
-    group = month, control.group = list(model = "ar1", cyclic = T,scale.model = TRUE)) +
+    group = month, control.group = list(model = "ar1", cyclic = T, scale.model = TRUE)) +
   f(ind3, ridge_100_z, model = "iid",
     hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
     group = month, control.group = list(model = "ar1", cyclic = T, scale.model = TRUE))
