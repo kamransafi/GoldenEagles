@@ -130,40 +130,36 @@ F_full <- used ~ -1 +
     hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
 
 
-# STEP 3: create new data for prediction: step length * dem ----------------------------------------------------------------
+# STEP 3: create new data for predictions to plot interaction terms ----------------------------------------------------------------
 
 data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds") #this is limited to 3 yrs post dispersal
 
 #the model will be run on the cluster.
-#create one separate dataset for each interaction plot, and keep other variables at their mean
 
-#add one new row to unique strata instead of entire empty copies of strata. assign values on a regular grid, to make a raster later on
-#(n needs to be large enough to cover the whole range of vars) # do i even need an n? just predict the combos..... n will be n of combos
+#to make sure the predictions cover the parameter space, create a dataset with all possible combinations. one per interaction term. merge later on
+grd_dem <- expand.grid(x = (1:75), #make the preds up to week 50, which is the mean of weeks_since and is almost one year
+                       y = seq(from = min(data$dem_100, na.rm = T), to = quantile(data$dem_100, .9, na.rm = T), by = 200)) %>% # n = 1050
+  rename(weeks_since_emig = x,
+         dem_100 = y) %>% 
+  mutate(TRI_100 = attr(data[,colnames(data) == "TRI_100_z"],'scaled:center'), #set other variables to their mean
+         ridge_100 = attr(data[,colnames(data) == "ridge_100_z"],'scaled:center'),
+         step_length = attr(data[,colnames(data) == "step_length_z"],'scaled:center'))
 
-#to make sure the predictions cover the parameter space, create a dataset with all possible combinations
-grd_dem <- expand.grid(x = seq(from = min(data$weeks_since_emig_z), to = max(data$weeks_since_emig_z), by = 0.1), #make the preds up to week 50, which is the mean of weeks_since and is almost one year
-                         y = seq(from = min(data$dem_100_z, na.rm = T), to = quantile(data$dem_100_z, .9, na.rm = T), by = 0.1)) %>% # n 1833
+grd_tri <- expand.grid(x = (1:75),
+                       y = seq(from = min(data$TRI_100, na.rm = T), to = quantile(data$TRI_100, .9, na.rm = T), by = 20)) %>%  #n = 675
   rename(weeks_since_emig_z = x,
-         dem_100_z = y) %>% 
-  mutate(TRI_100_z = 0, #set other variables to their mean, which is 0 for the z-transformed variables
-         ridge_100_z = 0,
-         step_length = 0)
+         TRI_100_z = y)  %>% 
+  mutate(dem_100 = attr(data[,colnames(data) == "dem_100_z"],'scaled:center'), #set other variables to their mean
+         ridge_100 = attr(data[,colnames(data) == "ridge_100_z"],'scaled:center'),
+         step_length = attr(data[,colnames(data) == "step_length_z"],'scaled:center'))
 
-grd_tri <- expand.grid(x = seq(from = min(data$weeks_since_emig_z), to = mean(data$weeks_since_emig_z), by = 0.1),
-                       y = seq(from = min(data$TRI_100_z, na.rm = T), to = quantile(data$TRI_100_z, .9, na.rm = T), by = 0.1)) %>%  #n = 559
-  rename(weeks_since_emig_z = x,
-         TRI_100_z = y) %>% 
-  mutate(dem_100_z = 0, #set other variables to their mean, which is 0 for the z-transformed variables
-         ridge_100_z = 0,
-         step_length = 0)
-  
-grd_dist <- expand.grid(x = seq(from = min(data$weeks_since_emig_z), to = mean(data$weeks_since_emig_z), by = 0.1),
-                        y = seq(from = min(data$ridge_100_z, na.rm = T), to = quantile(data$ridge_100_z, .9, na.rm = T), by = 0.1)) %>%  # 286
+grd_dist <- expand.grid(x = (1:75),
+                        y = seq(from = min(data$ridge_100, na.rm = T), to = quantile(data$ridge_100, .9, na.rm = T), by = 50)) %>%  # 525
   rename(weeks_since_emig_z = x,
          ridge_100_z = y) %>% 
-  mutate(TRI_100_z = 0, #set other variables to their mean, which is 0 for the z-transformed variables
-         dem_100_z = 0,
-         step_length = 0)
+  mutate(TRI_100 = attr(data[,colnames(data) == "TRI_100_z"],'scaled:center'), #set other variables to their mean
+         dem_100 = attr(data[,colnames(data) == "dem_100_z"],'scaled:center'),
+         step_length = attr(data[,colnames(data) == "step_length_z"],'scaled:center'))
 
 
 grd_all <- bind_rows(grd_dem, grd_tri, grd_dist) %>% 
@@ -179,13 +175,18 @@ new_data <- data %>%
   slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
   ungroup() %>% 
   slice_sample(n = n, replace = F) %>% #randomly select n of these strata. Make sure n is less than n_distinct(data$stratum)
-  dplyr::select(c("stratum", "ind1", "ind2", "ind3")) %>% #only keep the columns that I need
+  #only keep the columns that I need
+  dplyr::select(c("stratum", "ind1", "ind2", "ind3")) %>% 
   bind_cols(grd_all) %>% 
-  mutate( TRI_LF100 = attr(data[,colnames(data) == "TRI_100"],'scaled:center'), #backtransform....
-          slope_TPI_100 = attr(data[,colnames(data) == "slope_TPI_100_z"],'scaled:center'),
-          weeks_since_emig = attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:center'))
+  #calculate z-scores
+  mutate( dem_100_z = (dem_100 - attr(data[,colnames(data) == "dem_100_z"],'scaled:center'))/attr(data[,colnames(data) == "dem_100_z"],'scaled:scale'),
+          TRI_100_z = (TRI_100 - attr(data[,colnames(data) == "TRI_100_z"],'scaled:center'))/attr(data[,colnames(data) == "TRI_100_z"],'scaled:scale'),
+          ridge_100_z = (ridge_100 - attr(data[,colnames(data) == "ridge_100_z"],'scaled:center'))/attr(data[,colnames(data) == "ridge_100_z"],'scaled:scale'),
+          step_length_z = (step_length - attr(data[,colnames(data) == "step_length_z"],'scaled:center'))/attr(data[,colnames(data) == "step_length_z"],'scaled:scale'), #get the mean(center) and sd(scale) from the previous z transformation. for consistency
+          weeks_since_emig_z = (weeks_since_emig - attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:center'))/attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:scale'))
 
 
+######### old stuff:
 
 
   mutate(used = NA,
