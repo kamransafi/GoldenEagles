@@ -52,14 +52,14 @@ data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds")
 #define variables and formula
 F_full <- used ~ -1 +
   dem_100_z * step_length_z * weeks_since_emig_z +
-  TRI_100 * step_length_z * weeks_since_emig_z +
+  TRI_100_z * step_length_z * weeks_since_emig_z +
   ridge_100_z * step_length_z * weeks_since_emig_z +
   f(stratum, model = "iid", 
     hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
   f(ind1, dem_100_z, model = "iid",
     hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
     group = month, control.group = list(model = "ar1", cyclic = T, scale.model = TRUE)) +
-  f(ind2, TRI_100, model = "iid",
+  f(ind2, TRI_100_z, model = "iid",
     hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
     group = month, control.group = list(model = "ar1", cyclic = T, scale.model = TRUE)) +
   f(ind3, ridge_100_z, model = "iid",
@@ -70,6 +70,7 @@ mean.beta <- 0
 prec.beta <- 1e-4 
 
 #run model
+(b <- Sys.time())
 M_main <-  inla(F_full, family = "Poisson",
                  control.fixed = list(
                    mean = mean.beta,
@@ -80,7 +81,7 @@ M_main <-  inla(F_full, family = "Poisson",
                  control.compute = list(openmp.strategy =  "pardiso", config = TRUE, cpo = T), #deactivate cpo to save computing power
                  control.inla = list(strategy = "adaptive", int.strategy = "eb"),
                  inla.mode="experimental", verbose = F)
-
+Sys.time() -b 
 
 #extract model vlidation results
 eval <- data.frame(CPO = mean(M_main$cpo$cpo, na.rm = T),

@@ -85,15 +85,15 @@ modelsummary(ssf2) #AIC = 351,242.1
 # STEP 2: INLA code for Raven ----------------------------------------------------------------
 ##full model with seasonality (to run on raven in oder_of_business_main_model.txt)
 F_full <- used ~ -1 +
-  dem_100_z * step_length_z * weeks_since_emig_z +
-  TRI_100 * step_length_z * weeks_since_emig_z +
+  dem_100_z * step_length_z * weeks_since_emig_z + #make sure all vars are scaled
+  TRI_100_z * step_length_z * weeks_since_emig_z +
   ridge_100_z * step_length_z * weeks_since_emig_z +
   f(stratum, model = "iid", 
     hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
   f(ind1, dem_100_z, model = "iid",
     hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
     group = month, control.group = list(model = "ar1", cyclic = T, scale.model = TRUE)) +
-  f(ind2, TRI_100, model = "iid",
+  f(ind2, TRI_100_z, model = "iid",
     hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
     group = month, control.group = list(model = "ar1", cyclic = T, scale.model = TRUE)) +
   f(ind3, ridge_100_z, model = "iid",
@@ -103,13 +103,13 @@ F_full <- used ~ -1 +
 ## model without seasonality to compare
 F_OG <- used ~ -1 +
   dem_100_z * step_length_z * weeks_since_emig_z +
-  TRI_100 * step_length_z * weeks_since_emig_z +
+  TRI_100_z * step_length_z * weeks_since_emig_z +
   ridge_100_z * step_length_z * weeks_since_emig_z +
   f(stratum, model = "iid", 
     hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
   f(ind1, dem_100_z, model = "iid",
     hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) +
-  f(ind2, TRI_100, model = "iid",
+  f(ind2, TRI_100_z, model = "iid",
     hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) +
   f(ind3, ridge_100_z, model = "iid",
     hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
@@ -117,14 +117,14 @@ F_OG <- used ~ -1 +
 ## model with seasonality only for dem
 F_full <- used ~ -1 +
   dem_100_z * step_length_z * weeks_since_emig_z +
-  TRI_100 * step_length_z * weeks_since_emig_z +
+  TRI_100_z * step_length_z * weeks_since_emig_z +
   ridge_100_z * step_length_z * weeks_since_emig_z +
   f(stratum, model = "iid", 
     hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
   f(ind1, dem_100_z, model = "iid",
     hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))), #seasonality only for dem
     group = month, control.group = list(model = "ar1", scale.model = TRUE, cyclic = T)) +
-  f(ind2, TRI_100, model = "iid",
+  f(ind2, TRI_100_z, model = "iid",
     hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) +
   f(ind3, ridge_100_z, model = "iid",
     hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
@@ -141,26 +141,53 @@ data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds") #this is limited to 
 #(n needs to be large enough to cover the whole range of vars) # do i even need an n? just predict the combos..... n will be n of combos
 
 #to make sure the predictions cover the parameter space, create a dataset with all possible combinations
-grd_dem<- expand.grid(x = seq(from = min(data$weeks_since_emig_z), to = max(data$weeks_since_emig_z), by = 0.1), #make the preds up to week 50, which is the mean of weeks_since and is almost one year
-                         y = seq(from = min(data$dem_100_z), to = quantile(data$dem_100_z, .9), by = 0.1))
+grd_dem <- expand.grid(x = seq(from = min(data$weeks_since_emig_z), to = max(data$weeks_since_emig_z), by = 0.1), #make the preds up to week 50, which is the mean of weeks_since and is almost one year
+                         y = seq(from = min(data$dem_100_z, na.rm = T), to = quantile(data$dem_100_z, .9, na.rm = T), by = 0.1)) %>% # n 1833
+  rename(weeks_since_emig_z = x,
+         dem_100_z = y) %>% 
+  mutate(TRI_100_z = 0, #set other variables to their mean, which is 0 for the z-transformed variables
+         ridge_100_z = 0,
+         step_length = 0)
 
 grd_tri <- expand.grid(x = seq(from = min(data$weeks_since_emig_z), to = mean(data$weeks_since_emig_z), by = 0.1),
-                       y = seq(from = min(data$TRI_100_z), to = quantile(data$TRI_100_z, .9), by = 0.1))
-
+                       y = seq(from = min(data$TRI_100_z, na.rm = T), to = quantile(data$TRI_100_z, .9, na.rm = T), by = 0.1)) %>%  #n = 559
+  rename(weeks_since_emig_z = x,
+         TRI_100_z = y) %>% 
+  mutate(dem_100_z = 0, #set other variables to their mean, which is 0 for the z-transformed variables
+         ridge_100_z = 0,
+         step_length = 0)
+  
 grd_dist <- expand.grid(x = seq(from = min(data$weeks_since_emig_z), to = mean(data$weeks_since_emig_z), by = 0.1),
-                        y = seq(from = min(data$distance_ridge_z, na.rm = T), to = quantile(data$distance_ridge_z, .9, na.rm = T), by = 0.1))
+                        y = seq(from = min(data$ridge_100_z, na.rm = T), to = quantile(data$ridge_100_z, .9, na.rm = T), by = 0.1)) %>%  # 286
+  rename(weeks_since_emig_z = x,
+         ridge_100_z = y) %>% 
+  mutate(TRI_100_z = 0, #set other variables to their mean, which is 0 for the z-transformed variables
+         dem_100_z = 0,
+         step_length = 0)
+
+
+grd_all <- bind_rows(grd_dem, grd_tri, grd_dist) %>% 
+  mutate(used = NA,
+         month = 6) #make all preds for month 6
+
 
 set.seed(7)
-n <- 1000
-
-
-
+n <- nrow(grd_all)
 
 new_data <- data %>%
   group_by(stratum) %>% 
   slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
   ungroup() %>% 
   slice_sample(n = n, replace = F) %>% #randomly select n of these strata. Make sure n is less than n_distinct(data$stratum)
+  dplyr::select(c("stratum", "ind1", "ind2", "ind3")) %>% #only keep the columns that I need
+  bind_cols(grd_all) %>% 
+  mutate( TRI_LF100 = attr(data[,colnames(data) == "TRI_100"],'scaled:center'), #backtransform....
+          slope_TPI_100 = attr(data[,colnames(data) == "slope_TPI_100_z"],'scaled:center'),
+          weeks_since_emig = attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:center'))
+
+
+
+
   mutate(used = NA,
          dem_100 = sample(seq(min(data$dem_100, na.rm = T), quantile(data$dem_100, 0.9, na.rm = T), length.out = 10), n, replace = T), #use the 90% quantile instead of max. get rid of outliers
          step_length = sample(seq(min(data$step_length, na.rm = T), quantile(data$step_length, 0.9, na.rm = T), length.out = 10), n, replace = T),
