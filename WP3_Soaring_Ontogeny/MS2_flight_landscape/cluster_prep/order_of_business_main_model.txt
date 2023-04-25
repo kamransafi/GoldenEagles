@@ -6,7 +6,7 @@
 #From terminal on local system: (make sure to be on MPI internet, use VPN)
 #The file with all data (no missing values)
 
-scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/all_inds_annotated_static_3yrs_apr23.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_INLA/
+scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/new_data_ssf_inla_preds.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_INLA/
   
 #copy over paradiso license
 scp /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/pardiso.lic enourani@raven.mpcdf.mpg.de:/raven/u/enourani/
@@ -44,7 +44,7 @@ library(INLA)
 inla.setOption(pardiso.license = "pardiso.lic")
 
 #open file
-data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds")
+new_data <- readRDS("new_data_ssf_inla_preds.rds")
 
 #-----------------------------------------------------------------------------------------------
 # STEP 1: MODEL WITH NO MISSING VALUES.
@@ -75,7 +75,7 @@ M_main <-  inla(F_full, family = "Poisson",
                  control.fixed = list(
                    mean = mean.beta,
                    prec = list(default = prec.beta)),
-                 data = data,
+                 data = new_data,
                  num.threads = 20, 
                  control.predictor = list(compute = TRUE, link = 1), #this means that NA values will be predicted.
                  control.compute = list(openmp.strategy =  "pardiso", config = TRUE, cpo = T), #deactivate cpo to save computing power
@@ -103,6 +103,17 @@ saveRDS(graph, file = "graph_M_main100_hrly.rds")
 
 #-----------------------------------------------------------------------------------------------
 # STEP 2: EXTRACT & SAVE PREDICTIONS
+
+#extract predictions for interaction terms
+used_na <- which(is.na(new_data$used))
+
+preds <- new_data %>% 
+slice(used_na) %>% #extract information for rows that had NAs as response variables
+mutate(preds = M_pred$summary.fitted.values[used_na,"mean"]) %>% 
+  mutate(prob_pres = exp(preds)/(1 + exp(preds))) #this should be between 0-1
+
+saveRDS(preds, file = "preds_M_Main100_hrly.rds")
+
 
 #extract info for ind- and month-specific variation
 
