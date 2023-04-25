@@ -50,6 +50,7 @@ data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds")
 # STEP 1: MODEL WITH NO MISSING VALUES.
 
 #define variables and formula
+#decided to go with seasonality only for dem
 F_full <- used ~ -1 +
   dem_100_z * step_length_z * weeks_since_emig_z +
   TRI_100_z * step_length_z * weeks_since_emig_z +
@@ -60,11 +61,10 @@ F_full <- used ~ -1 +
     hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
     group = month, control.group = list(model = "ar1", cyclic = T, scale.model = TRUE)) +
   f(ind2, TRI_100_z, model = "iid",
-    hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
-    group = month, control.group = list(model = "ar1", cyclic = T, scale.model = TRUE)) +
+    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) +
   f(ind3, ridge_100_z, model = "iid",
-    hyper = list(theta=list(initial = log(1), prior = "pc.prec", param = c(3,0.05))),
-    group = month, control.group = list(model = "ar1", cyclic = T, scale.model = TRUE))
+    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
+
 
 mean.beta <- 0
 prec.beta <- 1e-4 
@@ -117,7 +117,7 @@ saveRDS(summ_rndm, file = "rnd_coeff_M_main100_hrly.rds")
 ## copy files back to local machine.. from local terminal
 scp -r enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_INLA/*M_Main*.rds /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Apr2123_seasonality_100
 
-##############################################################################
+########################################################################################################################
 #To make the model without seasonality:
 
 mean.beta <- 0
