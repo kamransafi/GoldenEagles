@@ -31,7 +31,7 @@ X11(width = 8, height = 6)
 
 coefs <- ggplot(graph, aes(x = Estimate, y = Factor)) +
   geom_vline(xintercept = 0, linetype="dashed", 
-             color = "gray", size = 0.5) +
+             color = "gray", linewidth = 0.5) +
   geom_point(color = "cornflowerblue", size = 2)  +
   #xlim(-0.1,0.6) +
   #scale_y_discrete(name = "",
@@ -40,17 +40,51 @@ coefs <- ggplot(graph, aes(x = Estimate, y = Factor)) +
   theme_classic()
   
 
-ggsave(plot = coefs, filename = "/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_coefs_season_dem_100.png", 
+ggsave(plot = coefs, filename = "/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_coefs_season_100.png", 
        width = 8, height = 6, dpi = 300)
 
 
 # PLOT 2: interaction plots ----------------------------------------------------------------------------------------------------
 
-all_data <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alt_50_20_min_48_ind_static_100_daytemp_inlaready_wks.rds")
+preds <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Apr2523_seasonality_100/preds_M_Main100_hrly.rds")
 
-#preds_ls <- readRDS("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100/interaction_preds/results_list.rds")
-preds_ls <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100/interaction_preds/results_list.rds")
 
+#prepare for plotting
+y_axis_var <- c("dem_100", "TRI_100", "ridge_100", "step_length")
+x_axis_var <- "weeks_since_emig"
+
+#older versions of this script contained backtransforming the z-scores in a for loop.
+
+for (i in y_axis_var){
+  
+  #interaction to be plotted
+  interaction_term <- paste0("wk_", i)
+  
+  #create a raster and run a moving window to make the pattern easier to see.
+  pred_r <- preds %>% 
+    filter(interaction == interaction_term) %>%  #only keep the rows that contain data for this interaction term
+    dplyr::select(c(which(names(.) %in% c(x_axis_var, i)), "preds")) %>% 
+    terra::rast(type = "xyz") %>%
+    focal(w = 3, fun = median, na.policy = "all", na.rm = T) %>%
+    as.data.frame(xy = T) %>% 
+    rename(prob_pres = focal_median)
+  
+  #plot
+  pred_p <- pred_r %>% 
+    ggplot() +
+    geom_tile(aes(x = x, y = y, fill = prob_pres)) +
+    scale_fill_gradient2(low = "#005AB5", mid = "seashell2", high = "#D41159",limits = c(0,1), midpoint = 0.5,
+                         na.value = "white", name = "Intensity of use") +
+    labs(x = "", y = i) +
+    theme_classic()
+  
+  #save the plot
+  ggsave(plot = pred_p, filename = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/clogit_", interaction_term,".png"), 
+         width = 9, height = 4, dpi = 500)
+}
+
+
+#old:
 y_axis_var <- c("dem_100_z", "TRI_100_z")
 x_axis_var <- "weeks_since_emig_n_z"
 
@@ -77,6 +111,8 @@ for (i in y_axis_var){
   saveRDS(avg_pred, file = paste0("inla_pred_Mar23_100_", i,".rds"))
   
 }
+
+
 
 #######use ggplot
 

@@ -1,109 +1,27 @@
 #Scripts for modeling the energy landscape for golden eagles past dispersal
 #data contains missing values which will allow me to make predictions to plot the interaction
-#update on April 12th to include seasonality and hourly points
+#update on April 27th to include seasonality (for dem) and hourly points
 
+#STEP 1: copy files to cluster ---------------------------------------------------------------------
 #From terminal on local system: (make sure to be on MPI internet, use VPN)
-#The file with all data (no missing values)
 
-scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/inla_preds_input_* enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_interactions/
+scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/new_data_ssf_inla_preds.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/slrm_inla/
   
 #coy over paradiso license
-scp /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/pardiso.lic enourani@raven.mpcdf.mpg.de:/raven/u/enourani/
+scp /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/pardiso.lic enourani@raven.mpcdf.mpg.de:/raven/u/enourani/slrm_inla/
   
-#ssh to cluster
+#STEP 2: ssh to cluster ---------------------------------------------------------------------
   
 # if not on MPI network: 
 ssh gate.mpcdf.mpg.de
 ssh raven.mpcdf.mpg.de
 
-
 #if on MPI network:
 ssh enourani@raven.mpcdf.mpg.de
 
+#STEP 3: run the job ------------------------------------------------------------------------
+sbatch slrm_inla/inla_interactions.slrm
 
-#load R
-module purge
-module load gcc/10 R/4.2 gdal gsl/2.4
+#STEP 4: after job is done, copy files back to local machine --------------------------------
 
-#open R in new screen
-screen -S inlaGE
-R
-
-#to detach screen anytime, ctr+A,D
-#to go back to the scree: screen -r myScreenName
-#list of screens: screen -list
-#kill screen: screen -S myScreenName -X quit 
-
-######in R
-
-setwd("GE_interactions")
-
-library(dplyr)
-library(INLA)
-inla.setOption(pardiso.license = "pardiso.lic")
-
-#open files into a list
-
-file_ls <- list.files(pattern = "inla_preds_input", full.names = T)
-
-#-----------------------------------------------------------------------------------------------
-# STEP 1: MODEL WITH missing values
-check interactions_slrm.R for the model formula and code
-
-
-
-
-#extract model vlidation results
-eval <- data.frame(CPO = mean(M_pred$cpo$cpo, na.rm = T),
-                   Mlik = as.numeric(M_pred$mlik[,1][2])) 
-
-saveRDS(eval, file = paste0("eval_M_pred100_hrly_", substr(i, 20,25), ".rds"))
-
-# extract info for coefficient plots
-
-# posterior means of coefficients
-graph <- as.data.frame(summary(M_pred)$fixed)
-colnames(graph)[which(colnames(graph)%in%c("0.025quant","0.975quant"))]<-c("Lower","Upper")
-colnames(graph)[which(colnames(graph)%in%c("0.05quant","0.95quant"))]<-c("Lower","Upper")
-colnames(graph)[which(colnames(graph)%in%c("mean"))]<-c("Estimate")
-
-graph$Factor <- rownames(graph)
-
-saveRDS(graph, file = paste0("graph_M_pred100_hrly_", substr(i, 20,25), ".rds"))
-
-#-----------------------------------------------------------------------------------------------
-# STEP 2: EXTRACT & SAVE PREDICTIONS
-
-#extract info to make prediction plots
-
-used_na <- which(is.na(new_data$used))
-
-#extract information for rows that had NAs as response variables
-
-if(substr(i, 20,25) == "dem_wk"){
-
-preds <- data.frame(dem_100_z = new_data[is.na(new_data$used) ,"dem_100_z"],
-                    weeks_since_emig_z = new_data[is.na(new_data$used) ,"weeks_since_emig_z"],
-                    preds = M_pred$summary.fitted.values[used_na,"mean"]) %>%
-  mutate(prob_pres = exp(preds)/(1+exp(preds))) #this should be between 0-1
-
-
-}
-
-
-saveRDS(preds, file = "preds_M_pred100_hrly_", substr(i, 20,25), ".rds")
-
-
-#extract info for ind- and month-specific variation
-
-summ_rndm <- M_main$summary.random
-
-saveRDS(summ_rndm, file = "rnd_coeff_M_pred100_hrly_",substr(i, 20,25), ".rds")
-
-}
-
-#-----------------------------------------------------------------------------------------------
-# STEP 3: TRANSFER FILES TO LOCAL MACHINE
-
-## copy files back to local machine.. from local terminal
-scp -r enourani@raven.mpcdf.mpg.de:/raven/u/enourani/GE_interactions/results_list.rds /home/enourani/ownCloud\ -\ enourani@ab.mpg.de@owncloud.gwdg.de/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100/interaction_preds/
+scp -r enourani@raven.mpcdf.mpg.de:/raven/u/enourani/slrm_inla/*M_main100_hrly.rds /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Apr2723_slrm

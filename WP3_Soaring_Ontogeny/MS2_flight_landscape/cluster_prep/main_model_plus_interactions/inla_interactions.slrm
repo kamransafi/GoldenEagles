@@ -35,8 +35,6 @@ cp -p $HOME/slrm_inla/$FILENAME .
 # Run the program:
 R CMD BATCH $FILENAME 2>&1 errorlog
 
-
-
 ##### copy results over and clean up
 cd $HOME
 cp -pR $SCR_DIR/* . #-p means preserve file attributes. R is recursive
