@@ -59,6 +59,8 @@ data %>%
 
 # STEP 2: CLOGIT- ssf modeling exploration  ----------------------------------------------------------------
 
+data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds")
+
 ## mid_step: investigate using clogit
 f <-  used ~ dem_100_z * step_length_z * weeks_since_emig_z + 
   TRI_100 * step_length_z * weeks_since_emig_z +
@@ -113,7 +115,7 @@ F_OG <- used ~ -1 +
   f(ind3, ridge_100_z, model = "iid",
     hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
 
-## model with seasonality only for dem
+## model with seasonality only for dem. this model crashed on Raven. I've tried to run the model with only tri and ridge, which dont have seasonality
 F_full <- used ~ -1 +
   dem_100_z * step_length_z * weeks_since_emig_z +
   TRI_100_z * step_length_z * weeks_since_emig_z +
@@ -129,7 +131,7 @@ F_full <- used ~ -1 +
     hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
 
 
-# STEP 3: create new data for predictions to plot interaction terms ----------------------------------------------------------------
+# STEP 3: create new data for predictions to plot interaction terms----------------------------------------------------------------
 
 data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds") #this is limited to 3 yrs post dispersal
 

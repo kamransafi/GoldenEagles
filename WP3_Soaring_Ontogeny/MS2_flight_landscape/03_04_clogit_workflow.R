@@ -38,8 +38,7 @@ data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds")
 
 # STEP 1: ssf modeling ----------------------------------------------------------------
 
-f <-  used ~ dem_100_z * step_length_z * weeks_since_emig_z +
-  TRI_100_z * step_length_z * weeks_since_emig_z + 
+f <-  used ~ TRI_100_z * step_length_z * weeks_since_emig_z + 
   ridge_100_z * step_length_z * weeks_since_emig_z + 
   strata(stratum)
 
@@ -107,6 +106,86 @@ for (i in y_axis_var){
   ggsave(plot = pred_p, filename = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/clogit_", interaction_term,".png"), 
          width = 9, height = 4, dpi = 500)
 }
+
+
+# STEP 3: Alpine predictions ----------------------------------------------------------------
+
+#open data 
+data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds") #this is limited to 3 yrs post dispersal
+
+#create a dataframe fro the Alps. layers made by Louise from 02_data_processing_&_annotation.R
+TRI_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/TRI_100_LF.tif")
+ridge_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ridge_100.tif")
+dem_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/dem_100_LF.tif")
+
+topo <- c(dem_100, TRI_100, ridge_100)
+names(topo) <- c("dem_100", "TRI_100", "ridge_100")
+
+topo_df <- as.data.frame(topo, xy = T) %>% 
+  rename(location.long = x,
+         location.lat = y) %>% 
+  mutate(dem_100_z = (dem_100 - attr(data[,colnames(data) == "dem_100_z"],'scaled:center'))/attr(data[,colnames(data) == "dem_100_z"],'scaled:scale'), #calculate z scores using the mean and sd of the modeling dataset
+         TRI_100_z = (TRI_100 - attr(data[,colnames(data) == "TRI_100_z"],'scaled:center'))/attr(data[,colnames(data) == "TRI_100_z"],'scaled:scale'),
+         ridge_100_z = (ridge_100 - attr(data[,colnames(data) == "ridge_100_z"],'scaled:center'))/attr(data[,colnames(data) == "ridge_100_z"],'scaled:scale'))
+
+
+#median step length for each week
+step_length_wks <- data %>% 
+  group_by(weeks_since_emig) %>% 
+  reframe(step_length = median(step_length, na.rm = T)) #calculate median step length for each week
+
+wkly_preds <- lapply(c(1:4, 12, 50, 52, 100, 104, 156), function(one_week){
+  
+  #extract the mean of step lengths within the nth week (for all inds)
+  step_length <- step_length_wks %>% 
+    filter(weeks_since_emig == one_week) %>% 
+    pull(step_length)
+    
+  
+  new_data <- topo_df %>% 
+    mutate(step_length = step_length,
+           step_length_z = (step_length - attr(data[,colnames(data) == "step_length_z"],'scaled:center'))/attr(data[,colnames(data) == "step_length_z"],'scaled:scale'),
+           weeks_since_emig = one_week,
+           weeks_since_emig_z =  (one_week - attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:center'))/attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:scale'),
+           stratum = sample(data$stratum, 1))
+
+  #predict using the model
+  preds <- predict(ssf, newdata = new_data, type = "risk")
+  preds_prob <- preds/(preds+1)
+  
+  preds_pr <- new_data %>% 
+    mutate(preds = preds,
+           probs = preds_prob)
+  
+  preds_pr
+  
+  })
+
+#save the list of preds for each week
+
+
+#have a look at the distribution of probabilities
+lapply(wkly_preds, function(x) summary(x$probs))
+
+#make the maps
+lapply(file_ls, function(x){
+  
+  p <- readRDS(x) %>% 
+    ggplot() +
+    geom_tile(aes(x = location.long, y = location.lat, fill = probs)) +
+    scale_fill_gradient2(low = "#005AB5", mid = "seashell2", high = "#D41159",limits = c(0,1), midpoint = 0.5,
+                         na.value = "white", name = "Intensity of use") +
+    labs(x = "", y = "", title = paste0("week ", str_sub(x,24,-5), " since dispersal")) +
+    theme_classic()
+  
+  ggsave(plot = p, filename = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/clogit_alps_wk_", str_sub(x, 24, -5), ".png"), 
+         width = 9, height = 6, dpi = 300)
+  
+})
+
+
+
+
 
 ######### old code below:
 ################################## predictions for the alps ###########
