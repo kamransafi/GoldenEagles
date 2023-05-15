@@ -305,9 +305,12 @@ used_av_track <- used_av_track %>%
 #and distance to ridge. TRI and distance to ridge were prepared by Louise.
 #try with 100 m resolution
 
+#the previous ridge layer had missing chunks. try with the new layer
+ridge_25 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/distance_to_ridge_line_complete_version.tif")
+ridge_100 <- aggregate(x = ridge_25, fact = 4, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ridge_100_LF.tif")
+
 #100m layers were built in the earlier version of this script
 TRI_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/TRI_100_LF.tif")
-ridge_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ridge_100.tif")
 dem_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/dem_100_LF.tif")
 
 #create a stack using raster paths
