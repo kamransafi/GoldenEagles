@@ -4,7 +4,6 @@
 #02.03.2023. Konstanz, DE.
 #Elham Nourani, PhD.
 
-
 library(tidyverse)
 library(magrittr)
 library(corrr)
@@ -21,19 +20,14 @@ library(patchwork) #patching up interaction plots
 library(oce) #color palette for interaction plots
 library(patchwork) #patching up interaction plots
 library(modelsummary) #to get AIC for the clogit models
+library(TwoStepCLogit)
 
 wgs <- crs("+proj=longlat +datum=WGS84 +no_defs")
 
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
-#data <- readRDS("all_inds_annotated_static_apr23.rds") #this does not have a limit on TRI range. consider including it, or at least compare with Louise's layer
-#there are some large TRI values. for now, replace them with the 90th quantile of TRI. FIX THE PROBLEM LTR!!!
-# data <- readRDS("alt_50_60_min_55_ind_static_r_100.rds") %>% 
-#   mutate(TRI_100 = ifelse(TRI_100 > quantile(TRI_100,0.9), quantile(TRI_100,0.9), TRI_100)) %>% 
-#   mutate_at(c("step_length", "dem_100", "TRI_100", "slope_TPI_100", "distance_ridge", "weeks_since_emig"), list(z = ~(scale(.))))   #calculate the z scores
-
-#open data
+#open data. data was prepared in 03_energy_landscape_modeling_method1.R
 data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds")
 
 # STEP 1: ssf modeling ----------------------------------------------------------------
@@ -47,19 +41,13 @@ summary(ssf)
 plot_summs(ssf)
 modelsummary(ssf) #AIC = 347,895.0
 
-# X11(width = 14, height = 12)
-# coefs <- plot_summs(ssf, point.size = 7, point.shape = 16) +
-#   labs(y = NULL) +
-#   labs(x = NULL) +
-#   scale_y_discrete( labels = c("Elevation:Weeks since dispersal:Temperature", "Weeks since dispersal:Ruggedness", "Week since dispersal: Temperature","Elevation:Temperature",
-#                                "Elevation:Weeks since dispersal","Ruggedness",  "Temperature",  "Elevation")) +
-#   theme_classic() +
-#   theme(axis.text.y = element_text(face="bold", size = 20),
-#                 axis.text.x = element_text(face="bold", size = 20))
-#   
-# 
-# ggsave(plot = coefs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/clogit_coeffs2.png", 
-#        width = 14, height = 12, dpi = 500)
+
+#try twostep clogit
+f <-  used ~ TRI_100_z * step_length_z * weeks_since_emig_z + 
+  ridge_100_z * step_length_z * weeks_since_emig_z + 
+  strata(stratum) + cluster(ind1)
+
+ssf <- Ts.estim(f, data = data, random = ~ TRI_100_z + ridge_100_z, D = "UN") #throws an error because week is constant within strata.
 
 # STEP 2: predict using the ssf ----------------------------------------------------------------
 
@@ -114,9 +102,14 @@ for (i in y_axis_var){
 data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds") #this is limited to 3 yrs post dispersal
 
 #create a dataframe fro the Alps. layers made by Louise from 02_data_processing_&_annotation.R
-TRI_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/TRI_100_LF.tif")
-ridge_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ridge_100.tif")
-dem_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/dem_100_LF.tif")
+#the dimensions and extents are different. so crop based on ridge to match the extents
+ridge_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ridge_100_LF.tif")
+TRI_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/TRI_100_LF.tif") %>% 
+  crop(ridge_100)
+dem_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/dem_100_LF.tif") %>% 
+  crop(ridge_100)
+
+ext(ridge_100) <- ext(dem_100)
 
 topo <- c(dem_100, TRI_100, ridge_100)
 names(topo) <- c("dem_100", "TRI_100", "ridge_100")
@@ -128,13 +121,19 @@ topo_df <- as.data.frame(topo, xy = T) %>%
          TRI_100_z = (TRI_100 - attr(data[,colnames(data) == "TRI_100_z"],'scaled:center'))/attr(data[,colnames(data) == "TRI_100_z"],'scaled:scale'),
          ridge_100_z = (ridge_100 - attr(data[,colnames(data) == "ridge_100_z"],'scaled:center'))/attr(data[,colnames(data) == "ridge_100_z"],'scaled:scale'))
 
+#use the same stratum for all predictions
+set.seed(7)
+stratum_for_pred <- sample(data$stratum, 1)
 
 #median step length for each week
 step_length_wks <- data %>% 
   group_by(weeks_since_emig) %>% 
   reframe(step_length = median(step_length, na.rm = T)) #calculate median step length for each week
 
-wkly_preds <- lapply(c(1:4, 12, 50, 52, 100, 104, 156), function(one_week){
+wkly_preds <- lapply(c(1:nrow(step_length_wks)), function(one_week){ #one pred for each week in the dataset (until year 3)
+  
+  week_i <- one_week %>% 
+    str_pad(2,"left","0")
   
   #extract the mean of step lengths within the nth week (for all inds)
   step_length <- step_length_wks %>% 
@@ -147,7 +146,7 @@ wkly_preds <- lapply(c(1:4, 12, 50, 52, 100, 104, 156), function(one_week){
            step_length_z = (step_length - attr(data[,colnames(data) == "step_length_z"],'scaled:center'))/attr(data[,colnames(data) == "step_length_z"],'scaled:scale'),
            weeks_since_emig = one_week,
            weeks_since_emig_z =  (one_week - attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:center'))/attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:scale'),
-           stratum = sample(data$stratum, 1))
+           stratum = stratum_for_pred)
 
   #predict using the model
   preds <- predict(ssf, newdata = new_data, type = "risk")
@@ -157,33 +156,72 @@ wkly_preds <- lapply(c(1:4, 12, 50, 52, 100, 104, 156), function(one_week){
     mutate(preds = preds,
            probs = preds_prob)
   
-  preds_pr
-  
+  saveRDS(preds_pr, paste0("/media/enourani/Ellham's HDD/Elham_GE/clogit_alpine_preds/alpine_preds_wk_", week_i, ".rds"))
+    
   })
-
-#save the list of preds for each week
 
 
 #have a look at the distribution of probabilities
 lapply(wkly_preds, function(x) summary(x$probs))
 
+#list of pred files
+#pred_ls <- list.files("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/clogit_alpine_preds/", 
+#                      pattern = ".rds", full.names = T)
+
+
+pred_ls <- list.files("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/clogit_alpine_preds/", 
+                      pattern = ".rds", full.names = T)
+
 #make the maps
-lapply(file_ls, function(x){
+lapply(pred_ls, function(x){
   
-  p <- readRDS(x) %>% 
-    ggplot() +
-    geom_tile(aes(x = location.long, y = location.lat, fill = probs)) +
-    scale_fill_gradient2(low = "#005AB5", mid = "seashell2", high = "#D41159",limits = c(0,1), midpoint = 0.5,
-                         na.value = "white", name = "Intensity of use") +
-    labs(x = "", y = "", title = paste0("week ", str_sub(x,24,-5), " since dispersal")) +
-    theme_classic()
+  week_i <- str_sub(x, 145, -5) %>% 
+    str_pad(2,"left","0")
   
-  ggsave(plot = p, filename = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/clogit_alps_wk_", str_sub(x, 24, -5), ".png"), 
-         width = 9, height = 6, dpi = 300)
+  png(paste0("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/weekly_alp_preds_clogit_May11/alps_wk_", week_i, ".png"),
+      width = 13, height = 9, units = "in", res = 400)
+  print(readRDS(x) %>% 
+          ggplot() +
+          geom_tile(aes(x = location.long, y = location.lat, fill = probs)) +
+          scale_fill_gradient2(low = "#005AB5", mid = "seashell2", high = "#D41159",limits = c(0,1), midpoint = 0.5,
+                               na.value = "white", name = "Intensity of use") +
+          labs(x = "", y = "", title = paste0("Week ", str_sub(x, 145, -5), " since dispersal")) +
+          theme_void()
+  )
+  
+  dev.off()
   
 })
 
 
+#calculate suitable areas
+areas_.7 <- data.frame()
+#list the prediction files
+pred_ls <- list.files("/media/enourani/Ellham's HDD/Elham_GE/clogit_alpine_preds/", 
+                      pattern = ".rds", full.names = T)
+
+#areas_.7 <- lapply(pred_ls, function(x){
+  
+for(x in pred_ls){
+  
+  week_i <- str_sub(x, 76, -5) %>% 
+    str_pad(2,"left","0")
+  
+  #create a raster layer
+  area_.7 <- readRDS(x) %>%
+    filter(probs >= 0.7) %>% 
+    summarize(pixels = n()) %>% #count the 
+    mutate(area_m2 = pixels * 100 * 100, #the resolution of the cell size
+           area_km2 = round(area_m2/1e6,3),
+           week_since_dispersal = week_i)
+  
+  areas_.7 <- rbind(areas_.7, area_.7)
+}
+
+saveRDS(areas_.7, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/suitable_areas_wks_1_71.rds")
+
+#}) %>% 
+#  reduce(rbind)
 
 
 

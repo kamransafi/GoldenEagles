@@ -11,6 +11,8 @@ library(patchwork) #patching up interaction plots
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
+result_path <- "/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/May1223_slrm"
+
 # PLOT 1: coefficient plots ----------------------------------------------------------------------------------------------------
 
 graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Apr2523_seasonality_100/graph_M_main100_hrly.rds")

@@ -26,4 +26,4 @@ squeue -u enourani
 
 #STEP 4: after job is done, copy files back to local machine --------------------------------
 
-scp -r enourani@raven.mpcdf.mpg.de:/raven/u/enourani/slrm_inla/*M_main100_hrly.rds /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/May1023_slrm
+scp -r enourani@raven.mpcdf.mpg.de:/raven/u/enourani/*M_main100_hrly_try2.rds /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/May1223_slrm
