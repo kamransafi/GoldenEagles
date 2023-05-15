@@ -305,28 +305,27 @@ used_av_track <- used_av_track %>%
 #and distance to ridge. TRI and distance to ridge were prepared by Louise.
 #try with 100 m resolution
 
-#the previous ridge layer had missing chunks. try with the new layer
-ridge_25 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/distance_to_ridge_line_complete_version.tif")
-ridge_100 <- aggregate(x = ridge_25, fact = 4, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ridge_100_LF.tif")
-
 #100m layers were built in the earlier version of this script
 TRI_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/TRI_100_LF.tif")
 dem_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/dem_100_LF.tif")
+ridge_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ridge_100_LF.tif")
 
-#create a stack using raster paths
-topo <- c(dem_100, TRI_100, ridge_100)
-names(topo) <- c("dem_100", "TRI_100", "ridge_100")
+#create a stack using raster paths. dimensions dont match, so extract values separately
+topo <- c(dem_100, TRI_100)
+names(topo) <- c("dem_100", "TRI_100")
 
 #reproject tracking data to match topo, extract values from topo, convert back to wgs and save as a dataframe
 topo_ann_df <- used_av_track %>% 
   st_as_sf(coords = c("location.long", "location.lat"), crs = wgs) %>% 
   st_transform(crs = crs(topo)) %>% 
   extract(x = topo, y = ., method = "simple", bind = T) %>%
+  extract(x = ridge_100, y = ., method = "simple", bind = T) %>% 
   terra::project(wgs) %>% 
   data.frame(., geom(.)) %>% 
   dplyr::select(-c("geom", "part", "hole")) %>% 
   rename(location.long = x,
-         location.lat = y)
+         location.lat = y,
+         ridge_100 = distance_to_ridge_line_mask)
   
 saveRDS(topo_ann_df, file = "alt_50_60_min_55_ind_static_r_100.rds")
 
