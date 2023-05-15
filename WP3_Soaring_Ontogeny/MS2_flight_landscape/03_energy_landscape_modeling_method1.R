@@ -138,7 +138,7 @@ data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds") #this is limited to 
 #the model will be run on the cluster.
 
 #to make sure the predictions cover the parameter space, create a dataset with all possible combinations. one per interaction term. merge later on
-grd_dem <- expand.grid(x = (1:104), #make the preds up to week 50, which is the mean of weeks_since and is almost one year
+grd_dem <- expand.grid(x = (1:104), 
                        y = seq(from = min(data$dem_100, na.rm = T), to = quantile(data$dem_100, .9, na.rm = T), by = 200)) %>% # n = 1050
   rename(weeks_since_emig = x,
          dem_100 = y) %>% 
