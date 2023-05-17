@@ -116,8 +116,11 @@ topo_df <- as.data.frame(topo, xy = T) %>%
          TRI_100_z = (TRI_100 - attr(data[,colnames(data) == "TRI_100_z"],'scaled:center'))/attr(data[,colnames(data) == "TRI_100_z"],'scaled:scale'),
          ridge_100_z = (ridge_100 - attr(data[,colnames(data) == "ridge_100_z"],'scaled:center'))/attr(data[,colnames(data) == "ridge_100_z"],'scaled:scale'))
 
+saveRDS(topo_df, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/topo_df_100_LF.rds")
+
 rm(ridge_100, dem_100, TRI_100, topo)
 gc();gc()
+
 
 #In the previous version, I used the same stratum for all predictions. In this round, take a random startum per map.
 # set.seed(7)
@@ -127,80 +130,44 @@ gc();gc()
 
 wks_ls <- split(data, data$weeks_since_emig)
 
-
-
-
-
-#mycl <- makeCluster(2) #the number of CPUs to use (adjust this based on your machine)
-
-#clusterExport(mycl, c("wks_ls", "data", "topo_df", )) 
-
-#clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
-#  library(tidyverse)
-#  library(survival)
-#})
-
-
-alps_ls <- lapply(wks_ls, function(x){
+(start <- Sys.time())
+areas <- lapply(wks_ls, function(x){
   
-  #extract week ID
   one_week <- x %>% 
     distinct(weeks_since_emig) %>% 
     pull(weeks_since_emig)
   
-  #extract week ID (to use for naming the files later on)
-  week_i <- one_week %>% 
-    str_pad(3,"left","0")
-  
-  #select 10 random step lengths from week x
-  rnd_sl <- x %>% 
-    filter(used == 1) %>% #only sample from the observed steps
-    reframe(step_length = sample(step_length, 10, replace = F)) %>% 
-    pull(step_length)
-  
-  #create new data frame to add the predictions to. skip step length for now. this will be assigned within the for loop
-  pred_data <- topo_df %>% 
-    mutate(weeks_since_emig = one_week,
-           weeks_since_emig_z =  (one_week - attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:center'))/attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:scale'),
-           stratum = sample(data$stratum, 1)) #take a random stratum
-  
-  #start <- Sys.time()
-  for(one_sl in rnd_sl){
+     week_i <- one_week %>% 
+      str_pad(3,"left","0")
     
-    #add step length to the new dataset
-    new_data <- pred_data %>% 
-      mutate(step_length = one_sl,
-             step_length_z = (step_length - attr(data[,colnames(data) == "step_length_z"],'scaled:center'))/attr(data[,colnames(data) == "step_length_z"],'scaled:scale'))
+     #generate a new dataset
+    new_data <- topo_df %>%
+      mutate(step_length = sample(x$step_length, nrow(topo_df), replace = T),
+             step_length_z = (step_length - attr(data[,colnames(data) == "step_length_z"],'scaled:center'))/attr(data[,colnames(data) == "step_length_z"],'scaled:scale'),
+             weeks_since_emig = one_week,
+             weeks_since_emig_z =  (one_week - attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:center'))/attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:scale'),
+             stratum = sample(x$stratum, nrow(topo_df), replace = T))
     
     #predict using the model
-    pr_df <- data.frame(preds = predict(ssf, newdata = new_data, type = "risk"),
-                        preds_prob = preds/(preds+1))
+    preds <- predict(ssf, newdata = new_data, type = "risk")
+    preds_prob <- preds/(preds+1)
     
-    colnames(pr_df) <- c(paste0("preds_", as.character(round(one_sl))), paste0("probs_", as.character(round(one_sl))))
+    preds_pr <- new_data %>%
+      mutate(preds = preds,
+             probs = preds_prob)
     
-    #add the predictions to the alpine dataframe
-    pred_data <- pred_data %>% 
-      bind_cols(pr_df)
-   
-    #create a raster
-    preds_pr %>% 
-      filter(interaction == interaction_term) %>%  #only keep the rows that contain data for this interaction term
-      dplyr::select(c(which(names(.) %in% c(x_axis_var, i)), "probs")) %>% 
-      terra::rast(type = "xyz")
-     
-  }
-  
-  #Sys.time() - start #8 mins per individual
-  
-  #save the results for week x
-    saveRDS(preds_pr, paste0("/media/enourani/Ellham's HDD/Elham_GE/clogit_alpine_preds/alpine_preds_wk_", week_i, ".rds"))
+    #skip saving this file. it's 1 GB. just get out of it what I need
+    #saveRDS(preds_pr, paste0("/media/enourani/Ellham's HDD/Elham_GE/clogit_alpine_preds2/alpine_preds_wk_", week_i, ".rds"))
     
-
+    #save a raster
+    #preds_r <- preds_pr %>%  #only keep the rows that contain data for this interaction term
+    #  dplyr::select(c("location.long", "location.lat", "probs")) %>% 
+    #  terra::rast(type = "xyz")
+    
     #make the maps
-      
-      png(paste0("/media/enourani/Ellham's HDD/Elham_GE/clogit_alpine_maps/alps_wk_", week_i, ".png"),
+      png(paste0("/media/enourani/Ellham's HDD/Elham_GE/clogit_alpine_maps3/alps_wk_", week_i, ".png"),
           width = 13, height = 9, units = "in", res = 400)
-      print(readRDS(x) %>% 
+      print(preds_pr %>% 
               ggplot() +
               geom_tile(aes(x = location.long, y = location.lat, fill = probs)) +
               scale_fill_gradientn(colours = oce::oceColorsPalette(100), limits = c(0,1),
@@ -211,92 +178,21 @@ alps_ls <- lapply(wks_ls, function(x){
       
       dev.off()
       
-    
-    
-    
-  #progress report
-  print(paste0("Week ", week_i, " done!"))
-  
-  
-  #make predictions for week x
-  
-  
-  
-  
-  
+      #calculate suitable areas
+      area_.7 <- preds_pr %>%
+        filter(probs >= 0.7) %>% 
+        summarize(pixels = n()) %>% #count the 
+        mutate(area_m2 = pixels * 100 * 100, #the resolution of the cell size
+               area_km2 = round(area_m2/1e6,3),
+               week_since_dispersal = week_i)
+      
+       area_.7
+       
 })
 
-# step_length_wks <- data %>% 
-#   group_by(weeks_since_emig) %>% 
-#   reframe(step_length_1 = median(step_length, na.rm = T)) #calculate median step length for each week
-# 
-# lapply(c(1:nrow(step_length_wks)), function(one_week){ #one pred for each week in the dataset (until year 3)
-#   
-#   week_i <- one_week %>% 
-#     str_pad(3,"left","0")
-#   
-#   #extract the mean of step lengths within the nth week (for all inds)
-#   step_length <- step_length_wks %>% 
-#     filter(weeks_since_emig == one_week) %>% 
-#     pull(step_length)
-#   
-#   new_data <- topo_df %>% 
-#     mutate(step_length = step_length,
-#            step_length_z = (step_length - attr(data[,colnames(data) == "step_length_z"],'scaled:center'))/attr(data[,colnames(data) == "step_length_z"],'scaled:scale'),
-#            weeks_since_emig = one_week,
-#            weeks_since_emig_z =  (one_week - attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:center'))/attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:scale'),
-#            stratum = stratum_for_pred)
-#   
-#   #predict using the model
-#   preds <- predict(ssf, newdata = new_data, type = "risk")
-#   preds_prob <- preds/(preds+1)
-#   
-#   preds_pr <- new_data %>% 
-#     mutate(preds = preds,
-#            probs = preds_prob)
-#   
-#   saveRDS(preds_pr, paste0("/media/enourani/Ellham's HDD/Elham_GE/clogit_alpine_preds/alpine_preds_wk_", week_i, ".rds"))
-  
-  #progress report
-  print(paste0("Week ", week_i, " done!"))
-})
+Sys.time() - start
 
-
-
-pred_ls <- list.files("/media/enourani/Ellham's HDD/Elham_GE/clogit_alpine_preds", 
-                      pattern = ".rds", full.names = T)
-
-
-
-#calculate suitable areas
-areas_.7 <- data.frame()
-#list the prediction files
-pred_ls <- list.files("/media/enourani/Ellham's HDD/Elham_GE/clogit_alpine_preds/", 
-                      pattern = ".rds", full.names = T)
-
-#areas_.7 <- lapply(pred_ls, function(x){
-  
-for(x in pred_ls){
-  
-  week_i <- str_sub(x, 76, -5) %>% 
-    str_pad(3,"left","0")
-  
-  #create a raster layer
-  area_.7 <- readRDS(x) %>%
-    filter(probs >= 0.7) %>% 
-    summarize(pixels = n()) %>% #count the 
-    mutate(area_m2 = pixels * 100 * 100, #the resolution of the cell size
-           area_km2 = round(area_m2/1e6,3),
-           week_since_dispersal = week_i)
-  
-  areas_.7 <- rbind(areas_.7, area_.7)
-}
-
-saveRDS(areas_.7, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/suitable_areas_wkly.rds")
-
-#}) %>% 
-#  reduce(rbind)
-
+saveRDS(areas, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/suitable_areas_wkly2.rds")
 
 
 #plot the trends in the suitable areas over time
