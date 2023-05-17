@@ -138,8 +138,8 @@ data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds") #this is limited to 
 #the model will be run on the cluster.
 
 #to make sure the predictions cover the parameter space, create a dataset with all possible combinations. one per interaction term. merge later on
-grd_dem <- expand.grid(x = (1:104), 
-                       y = seq(from = min(data$dem_100, na.rm = T), to = quantile(data$dem_100, .9, na.rm = T), by = 200)) %>% # n = 1050
+grd_dem <- expand.grid(x = (1:156), 
+                       y = seq(from = min(data$dem_100, na.rm = T), to = quantile(data$dem_100, .9, na.rm = T), length.out = 15)) %>% # n = 1050
   rename(weeks_since_emig = x,
          dem_100 = y) %>% 
   mutate(TRI_100 = attr(data[,colnames(data) == "TRI_100_z"],'scaled:center'), #set other variables to their mean
@@ -147,8 +147,8 @@ grd_dem <- expand.grid(x = (1:104),
          step_length = attr(data[,colnames(data) == "step_length_z"],'scaled:center'),
          interaction = "wk_dem_100")
 
-grd_tri <- expand.grid(x = (1:104),
-                       y = seq(from = min(data$TRI_100, na.rm = T), to = quantile(data$TRI_100, .9, na.rm = T), by = 20)) %>%  #n = 675
+grd_tri <- expand.grid(x = (1:156),
+                       y = seq(from = min(data$TRI_100, na.rm = T), to = quantile(data$TRI_100, .9, na.rm = T),  length.out = 15)) %>%  #n = 675
   rename(weeks_since_emig = x,
          TRI_100 = y)  %>% 
   mutate(dem_100 = attr(data[,colnames(data) == "dem_100_z"],'scaled:center'), #set other variables to their mean
@@ -156,8 +156,8 @@ grd_tri <- expand.grid(x = (1:104),
          step_length = attr(data[,colnames(data) == "step_length_z"],'scaled:center'),
          interaction = "wk_TRI_100")
 
-grd_dist <- expand.grid(x = (1:104),
-                        y = seq(from = min(data$ridge_100, na.rm = T), to = quantile(data$ridge_100, .9, na.rm = T), by = 25)) %>%  # 525
+grd_dist <- expand.grid(x = (1:156),
+                        y = seq(from = min(data$ridge_100, na.rm = T), to = quantile(data$ridge_100, .9, na.rm = T), length.out = 15)) %>%  # 525
   rename(weeks_since_emig = x,
          ridge_100 = y) %>% 
   mutate(TRI_100 = attr(data[,colnames(data) == "TRI_100_z"],'scaled:center'), #set other variables to their mean
@@ -165,8 +165,8 @@ grd_dist <- expand.grid(x = (1:104),
          step_length = attr(data[,colnames(data) == "step_length_z"],'scaled:center'),
          interaction = "wk_ridge_100")
 
-grd_sl <- expand.grid(x = (1:104),
-                      y = seq(from = min(data$step_length, na.rm = T), to = quantile(data$step_length, .9, na.rm = T), by = 200)) %>%  # 226
+grd_sl <- expand.grid(x = (1:156),
+                      y = seq(from = min(data$step_length, na.rm = T), to = quantile(data$step_length, .9, na.rm = T), length.out = 15)) %>%  # 226
   rename(weeks_since_emig = x,
          step_length = y) %>% 
   mutate(TRI_100 = attr(data[,colnames(data) == "TRI_100_z"],'scaled:center'), #set other variables to their mean
