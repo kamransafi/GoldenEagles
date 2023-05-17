@@ -87,7 +87,7 @@ for (i in y_axis_var){
   
   #save the plot
   ggsave(plot = pred_p, filename = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/clogit_", interaction_term,".png"), 
-         width = 11, height = 3, dpi = 400)
+         width = 7, height = 2.5, dpi = 400)
 }
 
 
@@ -117,43 +117,145 @@ topo_df <- as.data.frame(topo, xy = T) %>%
          ridge_100_z = (ridge_100 - attr(data[,colnames(data) == "ridge_100_z"],'scaled:center'))/attr(data[,colnames(data) == "ridge_100_z"],'scaled:scale'))
 
 rm(ridge_100, dem_100, TRI_100, topo)
-gc(gc())
+gc();gc()
 
-#use the same stratum for all predictions
-set.seed(7)
-stratum_for_pred <- sample(data$stratum, 1)
+#In the previous version, I used the same stratum for all predictions. In this round, take a random startum per map.
+# set.seed(7)
+# stratum_for_pred <- sample(data$stratum, 1)
 
-#median step length for each week
-step_length_wks <- data %>% 
-  group_by(weeks_since_emig) %>% 
-  reframe(step_length = median(step_length, na.rm = T)) #calculate median step length for each week
+#in the previous version, I used the median step length for each week to make the predictions. Now, take 10 random step length values per week. 
 
-lapply(c(1:nrow(step_length_wks)), function(one_week){ #one pred for each week in the dataset (until year 3)
+wks_ls <- split(data, data$weeks_since_emig)
+
+
+
+
+
+#mycl <- makeCluster(2) #the number of CPUs to use (adjust this based on your machine)
+
+#clusterExport(mycl, c("wks_ls", "data", "topo_df", )) 
+
+#clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
+#  library(tidyverse)
+#  library(survival)
+#})
+
+
+alps_ls <- lapply(wks_ls, function(x){
   
+  #extract week ID
+  one_week <- x %>% 
+    distinct(weeks_since_emig) %>% 
+    pull(weeks_since_emig)
+  
+  #extract week ID (to use for naming the files later on)
   week_i <- one_week %>% 
     str_pad(3,"left","0")
   
-  #extract the mean of step lengths within the nth week (for all inds)
-  step_length <- step_length_wks %>% 
-    filter(weeks_since_emig == one_week) %>% 
+  #select 10 random step lengths from week x
+  rnd_sl <- x %>% 
+    filter(used == 1) %>% #only sample from the observed steps
+    reframe(step_length = sample(step_length, 10, replace = F)) %>% 
     pull(step_length)
   
-  new_data <- topo_df %>% 
-    mutate(step_length = step_length,
-           step_length_z = (step_length - attr(data[,colnames(data) == "step_length_z"],'scaled:center'))/attr(data[,colnames(data) == "step_length_z"],'scaled:scale'),
-           weeks_since_emig = one_week,
+  #create new data frame to add the predictions to. skip step length for now. this will be assigned within the for loop
+  pred_data <- topo_df %>% 
+    mutate(weeks_since_emig = one_week,
            weeks_since_emig_z =  (one_week - attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:center'))/attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:scale'),
-           stratum = stratum_for_pred)
+           stratum = sample(data$stratum, 1)) #take a random stratum
   
-  #predict using the model
-  preds <- predict(ssf, newdata = new_data, type = "risk")
-  preds_prob <- preds/(preds+1)
+  #start <- Sys.time()
+  for(one_sl in rnd_sl){
+    
+    #add step length to the new dataset
+    new_data <- pred_data %>% 
+      mutate(step_length = one_sl,
+             step_length_z = (step_length - attr(data[,colnames(data) == "step_length_z"],'scaled:center'))/attr(data[,colnames(data) == "step_length_z"],'scaled:scale'))
+    
+    #predict using the model
+    pr_df <- data.frame(preds = predict(ssf, newdata = new_data, type = "risk"),
+                        preds_prob = preds/(preds+1))
+    
+    colnames(pr_df) <- c(paste0("preds_", as.character(round(one_sl))), paste0("probs_", as.character(round(one_sl))))
+    
+    #add the predictions to the alpine dataframe
+    pred_data <- pred_data %>% 
+      bind_cols(pr_df)
+   
+    #create a raster
+    preds_pr %>% 
+      filter(interaction == interaction_term) %>%  #only keep the rows that contain data for this interaction term
+      dplyr::select(c(which(names(.) %in% c(x_axis_var, i)), "probs")) %>% 
+      terra::rast(type = "xyz")
+     
+  }
   
-  preds_pr <- new_data %>% 
-    mutate(preds = preds,
-           probs = preds_prob)
+  #Sys.time() - start #8 mins per individual
   
-  saveRDS(preds_pr, paste0("/media/enourani/Ellham's HDD/Elham_GE/clogit_alpine_preds/alpine_preds_wk_", week_i, ".rds"))
+  #save the results for week x
+    saveRDS(preds_pr, paste0("/media/enourani/Ellham's HDD/Elham_GE/clogit_alpine_preds/alpine_preds_wk_", week_i, ".rds"))
+    
+
+    #make the maps
+      
+      png(paste0("/media/enourani/Ellham's HDD/Elham_GE/clogit_alpine_maps/alps_wk_", week_i, ".png"),
+          width = 13, height = 9, units = "in", res = 400)
+      print(readRDS(x) %>% 
+              ggplot() +
+              geom_tile(aes(x = location.long, y = location.lat, fill = probs)) +
+              scale_fill_gradientn(colours = oce::oceColorsPalette(100), limits = c(0,1),
+                                   na.value = "white", name = "Intensity of use") +
+              labs(x = "", y = "", title = paste0("Week ", week_i, " since dispersal")) +
+              theme_void()
+      )
+      
+      dev.off()
+      
+    
+    
+    
+  #progress report
+  print(paste0("Week ", week_i, " done!"))
+  
+  
+  #make predictions for week x
+  
+  
+  
+  
+  
+})
+
+# step_length_wks <- data %>% 
+#   group_by(weeks_since_emig) %>% 
+#   reframe(step_length_1 = median(step_length, na.rm = T)) #calculate median step length for each week
+# 
+# lapply(c(1:nrow(step_length_wks)), function(one_week){ #one pred for each week in the dataset (until year 3)
+#   
+#   week_i <- one_week %>% 
+#     str_pad(3,"left","0")
+#   
+#   #extract the mean of step lengths within the nth week (for all inds)
+#   step_length <- step_length_wks %>% 
+#     filter(weeks_since_emig == one_week) %>% 
+#     pull(step_length)
+#   
+#   new_data <- topo_df %>% 
+#     mutate(step_length = step_length,
+#            step_length_z = (step_length - attr(data[,colnames(data) == "step_length_z"],'scaled:center'))/attr(data[,colnames(data) == "step_length_z"],'scaled:scale'),
+#            weeks_since_emig = one_week,
+#            weeks_since_emig_z =  (one_week - attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:center'))/attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:scale'),
+#            stratum = stratum_for_pred)
+#   
+#   #predict using the model
+#   preds <- predict(ssf, newdata = new_data, type = "risk")
+#   preds_prob <- preds/(preds+1)
+#   
+#   preds_pr <- new_data %>% 
+#     mutate(preds = preds,
+#            probs = preds_prob)
+#   
+#   saveRDS(preds_pr, paste0("/media/enourani/Ellham's HDD/Elham_GE/clogit_alpine_preds/alpine_preds_wk_", week_i, ".rds"))
   
   #progress report
   print(paste0("Week ", week_i, " done!"))
@@ -164,26 +266,7 @@ lapply(c(1:nrow(step_length_wks)), function(one_week){ #one pred for each week i
 pred_ls <- list.files("/media/enourani/Ellham's HDD/Elham_GE/clogit_alpine_preds", 
                       pattern = ".rds", full.names = T)
 
-#make the maps
-lapply(pred_ls, function(x){
-  
-  week_i <- str_sub(x, 76, -5) %>% 
-    str_pad(3,"left","0")
-  
-  png(paste0("/media/enourani/Ellham's HDD/Elham_GE/clogit_alpine_maps/alps_wk_", week_i, ".png"),
-      width = 13, height = 9, units = "in", res = 400)
-  print(readRDS(x) %>% 
-          ggplot() +
-          geom_tile(aes(x = location.long, y = location.lat, fill = probs)) +
-          scale_fill_gradientn(colours = oce::oceColorsPalette(100), limits = c(0,1),
-                               na.value = "white", name = "Intensity of use") +
-          labs(x = "", y = "", title = paste0("Week ", week_i, " since dispersal")) +
-          theme_void()
-  )
-  
-  dev.off()
-  
-})
+
 
 #calculate suitable areas
 areas_.7 <- data.frame()
