@@ -21,6 +21,7 @@ library(oce) #color palette for interaction plots
 library(patchwork) #patching up interaction plots
 library(modelsummary) #to get AIC for the clogit models
 library(TwoStepCLogit)
+library(hrbrthemes)
 
 wgs <- crs("+proj=longlat +datum=WGS84 +no_defs")
 
@@ -40,6 +41,22 @@ ssf <- clogit(f, data = data)
 summary(ssf)
 plot_summs(ssf)
 modelsummary(ssf) #AIC = 347,895.0
+
+#proper plot
+X11(width = 10, height = 3) 
+p_coeffs <- plot_summs(ssf, omit.coefs = c("step_length_z:weeks_since_emig_z:ridge_100_z", "TRI_100_z:step_length_z:weeks_since_emig_z"),
+                       colors = clr, size = 1.5) +
+  scale_y_discrete(labels = rev(c("TRI", "Step length", "Distance to ridge", "TRI: Step length", "TRI: Week",
+                                  "Step length: Week", "Step length: Distance to ridge", "Distance to ridge: Week"))) +
+  labs(x = "Estimate", y = "") +
+  xlim(-.75, .27) +
+  scale_shape_manual(values = 19) +
+  theme_classic() +
+  theme(text = element_text(size = 16))
+
+#save the plot
+ggsave(plot = p_coeffs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/clogit_coeffs.png", 
+       width = 10, height = 3, dpi = 400)
 
 # STEP 2: predict using the ssf ----------------------------------------------------------------
 
@@ -76,13 +93,15 @@ for (i in y_axis_var){
     as.data.frame(xy = T) #%>% 
     #rename(probs = focal_mean)
   
+  #X11(width = 7, height = 2.5)
   pred_p <- pred_r %>% 
     ggplot() +
     geom_tile(aes(x = x, y = y, fill = probs)) +
    scale_fill_gradientn(colours = oce::oceColorsPalette(100), limits = c(0,1),
                         na.value = "white", name = "Intensity of use")+
     labs(x = "", y = label) +
-    theme_classic()
+    theme_classic() +
+    theme(text = element_text(size = 12))
   
   
   #save the plot
@@ -90,6 +109,16 @@ for (i in y_axis_var){
          width = 7, height = 2.5, dpi = 400)
 }
 
+
+# library(patchwork)
+# combined <- lm_maxwind + lm_covwind & theme(legend.position = "bottom")
+# combined + plot_layout(guides = "collect")
+# 
+# 
+# png("/home/enourani/ownCloud/Work/Projects/seabirds_and_storms/paper prep/figs/lm_output_two_panels_blue_shapes.png", 
+#     width = 11, height = 5, units = "in", res = 300)
+# combined + plot_layout(guides = "collect")
+# dev.off()
 
 # STEP 3: Alpine predictions ----------------------------------------------------------------
 
@@ -192,9 +221,30 @@ areas <- lapply(wks_ls, function(x){
 
 Sys.time() - start
 
-saveRDS(areas, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/suitable_areas_wkly2.rds")
+areas_df <- areas %>% 
+  reduce(rbind) %>% 
+  mutate(week_since_dispersal = as.numeric(week_since_dispersal))
 
+saveRDS(areas_df, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/suitable_areas_wkly2.rds")
+
+#create animation of the maps. run the following code in the terminal
+#ffmpeg -framerate 25 -pattern_type glob -i "*.png" output.mp4
 
 #plot the trends in the suitable areas over time
 
-plot(as.numeric(areas_.7$week_since_dispersal), areas_.7$area_km2)
+plot(as.numeric(areas_df$week_since_dispersal), areas_df$area_km2)
+
+clr <- oce::oceColorsPalette(100)[2]
+clr_light <- oce::oceColorsPalette(100)[10]
+
+X11(width = 8, height = 3) 
+p <- ggplot(areas_df, aes(x = week_since_dispersal, y = area_km2)) +
+  geom_smooth(method = "loess", alpha = .1, level = .95, color = clr, fill = clr_light, lwd = 1.2) + #95% standard error
+  geom_point(size = 1.5, stroke = 0.8, color = clr) +
+  labs(x = "Weeks since dispersal",
+       y = bquote("Flyable area " (km^2))) +
+  theme_classic() +
+  theme(text = element_text(size = 16))
+
+ggsave(plot = p, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/area_over_wks.png", 
+       width = 8, height = 3, dpi = 400)
