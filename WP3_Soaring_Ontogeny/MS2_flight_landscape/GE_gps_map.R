@@ -8,7 +8,7 @@ library(mapview)
 library(sp)
 library(oce)
 
-setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
+setwd("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
 
 #open ssf data to filter for individuals included in the study
@@ -40,25 +40,26 @@ clr <- oce::oceColorsPalette(100)[2]
 clr <- oce::oceColorsPalette(100)[80]
 
 # Background 1: NASA
+# m <- leaflet() %>% 
+#   addTiles() %>% 
+#   setView( lng = 11, lat = 46, zoom = 5 ) %>% 
+#   addProviderTiles("NASAGIBS.ViirsEarthAtNight2012")
+# m
+# 
+# # Background 2: World Imagery
+# m <- leaflet() %>% 
+#   addTiles() %>% 
+#   addScaleBar() %>% 
+#   setView(lng = 11, lat = 46, zoom = 6.5) %>% 
+#   addCircles(data = data_sp, color = clr, radius = 0.2, fillOpacity = 0.6, fillColor = clr) %>% 
+#   addProviderTiles("OpenStreetMap")
+# 
+# m
+
 m <- leaflet() %>% 
   addTiles() %>% 
-  setView( lng = 11, lat = 46, zoom = 5 ) %>% 
-  addProviderTiles("NASAGIBS.ViirsEarthAtNight2012")
-m
-
-# Background 2: World Imagery
-m <- leaflet() %>% 
-  addTiles() %>% 
-  setView( lng = 11, lat = 46, zoom = 6.5) %>% 
-  addCircles(data = data_sp, color = clr_light, radius = 0.2, fillOpacity = 0.6, fillColor = clr_light) %>% 
-  addProviderTiles("OpenStreetMap")
-
-m
-
-
-m <- leaflet() %>% 
-  addTiles() %>% 
-  setView( lng = 10.5, lat = 46.5, zoom = 7.5) %>% 
+  addScaleBar() %>% 
+  setView(lng = 10.5, lat = 46.5, zoom = 7.5) %>% 
   addCircles(data = data_sp, color = "", radius = 0.05, fillOpacity = 0.8, fillColor = clr) %>% 
   addProviderTiles("Esri.WorldImagery")
 
