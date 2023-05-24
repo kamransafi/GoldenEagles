@@ -4,7 +4,6 @@
 #02.03.2023. Konstanz, DE.
 #Elham Nourani, PhD.
 
-
 library(tidyverse)
 library(magrittr)
 library(corrr)
@@ -20,66 +19,49 @@ library(gstat) #for interpolations
 library(patchwork) #patching up interaction plots
 library(oce) #color palette for interaction plots
 library(patchwork) #patching up interaction plots
+library(modelsummary) #to get AIC for the clogit models
+library(TwoStepCLogit)
+library(hrbrthemes)
 
 wgs <- crs("+proj=longlat +datum=WGS84 +no_defs")
 
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
-all_data <- readRDS("alt_50_20_min_48_ind_static_100_daytemp_inlaready_wks.rds") #this has the limit on TRI range
+#open data. data was prepared in 03_energy_landscape_modeling_method1.R
+data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds")
 
 # STEP 1: ssf modeling ----------------------------------------------------------------
 
-## mid_step: investigate using clogit
-# control for monthly temperature....
-
-form1a <- used ~ dem_100_z * weeks_since_emig_n_z * t2m_z + 
-  TRI_100_z * weeks_since_emig_n_z + 
+f <-  used ~ TRI_100_z * step_length_z * weeks_since_emig_z + 
+  ridge_100_z * step_length_z * weeks_since_emig_z + 
   strata(stratum)
 
-ssf <- clogit(form1a, data = all_data)
+ssf <- clogit(f, data = data)
 summary(ssf)
+plot_summs(ssf)
+modelsummary(ssf) #AIC = 347,895.0
 
-X11(width = 14, height = 12)
-coefs <- plot_summs(ssf, point.size = 7, point.shape = 16) +
-  labs(y = NULL) +
-  labs(x = NULL) +
-  scale_y_discrete( labels = c("Elevation:Weeks since dispersal:Temperature", "Weeks since dispersal:Ruggedness", "Week since dispersal: Temperature","Elevation:Temperature",
-                               "Elevation:Weeks since dispersal","Ruggedness",  "Temperature",  "Elevation")) +
+#proper plot
+X11(width = 10, height = 3) 
+p_coeffs <- plot_summs(ssf, omit.coefs = c("step_length_z:weeks_since_emig_z:ridge_100_z", "TRI_100_z:step_length_z:weeks_since_emig_z"),
+                       colors = clr, size = 1.5) +
+  scale_y_discrete(labels = rev(c("TRI", "Step length", "Distance to ridge", "TRI: Step length", "TRI: Week",
+                                  "Step length: Week", "Step length: Distance to ridge", "Distance to ridge: Week"))) +
+  labs(x = "Estimate", y = "") +
+  xlim(-.75, .27) +
+  scale_shape_manual(values = 19) +
   theme_classic() +
-  theme(axis.text.y = element_text(face="bold", size = 20),
-                axis.text.x = element_text(face="bold", size = 20))
-  
+  theme(text = element_text(size = 16))
 
-ggsave(plot = coefs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/clogit_coeffs.png", 
-       width = 14, height = 12, dpi = 500)
+#save the plot
+ggsave(plot = p_coeffs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/clogit_coeffs.png", 
+       width = 10, height = 3, dpi = 400)
 
+# STEP 2: predict using the ssf ----------------------------------------------------------------
 
-# STEP 2: predict using the ssf: terrain and week since emig interactions  ----------------------------------------------------------------
-
-#to make sure the predictions cover the parameter space, create a dataset with all possible combinations
-grd_dem <- expand.grid(x = seq(from = min(all_data$weeks_since_emig_n_z), to = max(all_data$weeks_since_emig_n_z), by = 0.1),
-                   y = seq(from = min(all_data$dem_100_z), to = max(all_data$dem_100_z), by = 0.1))
-
-grd_tri <- expand.grid(x = seq(from = min(all_data$weeks_since_emig_n_z), to = max(all_data$weeks_since_emig_n_z), by = 0.1),
-                       y = seq(from = min(all_data$TRI_100_z), to = max(all_data$TRI_100_z), by = 0.1))
-
-grd_temp <- expand.grid(x = seq(from = min(all_data$t2m_z), to = max(all_data$t2m_z), by = 0.1),
-                       y = seq(from = min(all_data$dem_100_z), to = max(all_data$dem_100_z), by = 0.1))
-
-n <- nrow(grd_dem) #the dem grid has more number of rows, so use it
-
-new_data <- all_data %>%
-  group_by(stratum) %>% 
-  slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
-  ungroup() %>% 
-  slice_sample(n = n, replace = T) %>% 
-  mutate(used = NA,
-         weeks_since_emig_n = grd_dem$x, 
-         dem_100_z = grd_dem$y,
-         TRI_100_z = sample(grd_tri$y, n, replace = T),
-         t2m_z = 0) #for the terrain interaction plot, keep temp at mean level
-
+#data created in 03_energy_landscape_modeling_method1.r
+new_data <- readRDS("new_data_only_ssf_preds.rds")
 
 #predict using the model
 preds <- predict(ssf, newdata = new_data, type = "risk")
@@ -89,296 +71,172 @@ preds_pr <- new_data %>%
   mutate(probs = preds/(preds+1))
 
 #prepare for plotting
-y_axis_var <- c("dem_100_z", "TRI_100_z")
-x_axis_var <- "weeks_since_emig_n_z"
-
-#extract center and scale values for time variable, to be used for back transformation. The y-axis attributes will be extracted in the for loop
-x_axis_attr_scale <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:scale')
-x_axis_attr_center <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:center')
+y_axis_var <- c("TRI_100", "ridge_100", "step_length")
+x_axis_var <- "weeks_since_emig"
+labels <- data.frame(vars = y_axis_var, 
+                     label = c("Terrain Ruggedness Index", "Distance to ridge (km)", "Step length (m)"))
+#older versions of this script contained backtransforming the z-scores in a for loop.
 
 for (i in y_axis_var){
-  
-  i_scale <- attr(all_data[,colnames(all_data) == i],'scaled:scale')
-  i_center <- attr(all_data[,colnames(all_data) == i],'scaled:center')
-  
-  #summarize values, so each (x,y) combo has one probability value
-  avg_pred <- preds_pr %>% 
-    group_by_at(c(which(names(preds_pr) == i),which(names(preds_pr) == x_axis_var))) %>%  #group by weeks since emigration and i
-    summarise(avg_pres = mean(probs)) %>% 
-    ungroup() %>% 
-    mutate(dplyr::select(.,all_of(i)) * i_scale + i_center, #back-transform the values for plotting
-           dplyr::select(.,all_of(x_axis_var)) * x_axis_attr_scale + x_axis_attr_center ) %>% #these columns replace the original columns 1 and 2
-    rename(x = which(names(.) == x_axis_var), #weeks since emig
-           y = which(names(.) == i)) %>% #y axis variables
-    dplyr::select(c("x","y","avg_pres")) %>%  #reorder the columns for making xyz raster
-    as.data.frame()
-  
-  #saveRDS(avg_pred, file = paste0("inla_pred_clogit_not_smoothed_", i,".rds"))
-  
-  #comment out below to save the unsmoothed values
-  r <- avg_pred %>%
-    rast(type = "xyz") %>%
-    focal(w = 7, fun = mean, na.policy = "all", na.rm = T) %>%
-    as.data.frame(xy = T) %>%
-    rename(avg_pres = focal_mean)
 
-  saveRDS(r, file = paste0("inla_pred_clogit_", i,".rds"))
-
+  label <- labels %>% 
+    filter(vars == i) %>% 
+    pull(label)
+  
+  #interaction to be plotted
+  interaction_term <- paste0("wk_", i)
+  pred_r <- preds_pr %>% 
+    filter(interaction == interaction_term) %>%  #only keep the rows that contain data for this interaction term
+    dplyr::select(c(which(names(.) %in% c(x_axis_var, i)), "probs")) %>% 
+    terra::rast(type = "xyz") %>%
+    #focal(w = 3, fun = mean, na.policy = "all", na.rm = T) %>%
+    as.data.frame(xy = T) #%>% 
+    #rename(probs = focal_mean)
+  
+  #X11(width = 6.9, height = 3.5)
+  pred_p <- pred_r %>% 
+    ggplot() +
+    geom_tile(aes(x = x, y = y, fill = probs)) +
+   scale_fill_gradientn(colours = oce::oceColorsPalette(100), limits = c(0,1),
+                        na.value = "white", name = "Intensity of use")+
+    labs(x = "Week since dispersal", y = label) + #add label for GRC plot
+    theme(legend.direction="horizontal") + #make horizontal legend label for GRC plot
+    theme_classic() +
+    theme(text = element_text(size = 12),
+          legend.position = "bottom",
+          legend.key.width=unit(1.7,"cm")) 
+  
+  
+  #save the plot
+  ggsave(plot = pred_p, filename = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/clogit_", interaction_term,".png"), 
+         width = 6.9, height = 3.5, dpi = 400)
 }
 
-#create plots
-p_dem <- readRDS("inla_pred_clogit_dem_100_z.rds") %>% 
-  ggplot() +
-  geom_tile(aes(x = x, y = y, fill = avg_pres)) +
-  scale_fill_gradient2(low = "#005AB5", mid = "seashell2", high = "#D41159",limits = c(0,1), midpoint = 0.5,
-                       na.value = "white", name = "Intensity of use") +
-  labs(x = "", y = "Elevation \n (m)") +
-  theme_classic()
+# STEP 3: Alpine predictions ----------------------------------------------------------------
 
-p_rugg <- readRDS("inla_pred_clogit_TRI_100_z.rds") %>% 
-  ggplot() +
-  geom_tile(aes(x = x, y = y, fill = avg_pres)) +
-  scale_fill_gradient2(low = "#005AB5", mid = "seashell2", high = "#D41159",limits = c(0,1), midpoint = 0.5,
-                       na.value = "white", name = "Intensity of use") +
-  labs(x = "Weeks since dispersal", y = "Terrain Ruggedness \n Index") +
-  theme_classic()
+#open data 
+data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds") #this is limited to 3 yrs post dispersal
 
-#put both plots in one device
-X11(width = 9, height = 4)
-combined <- p_dem + p_rugg & theme(legend.position = "right")
-(p_2  <- combined + plot_layout(guides = "collect", nrow = 2))
+#create a dataframe fro the Alps. layers made by Louise from 02_data_processing_&_annotation.R
+#the dimensions and extents are different. so crop based on ridge to match the extents
+ridge_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ridge_100_LF.tif")
+TRI_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/TRI_100_LF.tif") %>% 
+  crop(ridge_100)
+dem_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/dem_100_LF.tif") %>% 
+  crop(ridge_100)
 
-ggsave(plot = p_2, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/clogit_tr_interactions.png", 
-       width = 9, height = 4, dpi = 500)
+ext(ridge_100) <- ext(dem_100)
 
-ggsave(plot = p_2, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/clogit_tr_interactions_raw.png", 
-       width = 9, height = 4, dpi = 500)
+topo <- c(dem_100, TRI_100, ridge_100)
+names(topo) <- c("dem_100", "TRI_100", "ridge_100")
 
-# STEP 3: predict using the ssf: dem and temperature interaction ----------------------------------------------------------------
+topo_df <- as.data.frame(topo, xy = T) %>% 
+  rename(location.long = x,
+         location.lat = y) %>% 
+  mutate(dem_100_z = (dem_100 - attr(data[,colnames(data) == "dem_100_z"],'scaled:center'))/attr(data[,colnames(data) == "dem_100_z"],'scaled:scale'), #calculate z scores using the mean and sd of the modeling dataset
+         TRI_100_z = (TRI_100 - attr(data[,colnames(data) == "TRI_100_z"],'scaled:center'))/attr(data[,colnames(data) == "TRI_100_z"],'scaled:scale'),
+         ridge_100_z = (ridge_100 - attr(data[,colnames(data) == "ridge_100_z"],'scaled:center'))/attr(data[,colnames(data) == "ridge_100_z"],'scaled:scale'))
 
-grd_temp <- expand.grid(x = seq(from = min(all_data$t2m_z), to = max(all_data$t2m_z), by = 0.1),
-                        y = seq(from = min(all_data$dem_100_z), to = max(all_data$dem_100_z), by = 0.1))
+saveRDS(topo_df, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/topo_df_100_LF.rds")
 
-n <- nrow(grd_temp) #the dem grid has more number of rows, so use it
-
-new_data <- all_data %>%
-  group_by(stratum) %>% 
-  slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
-  ungroup() %>% 
-  slice_sample(n = n, replace = T) %>% 
-  mutate(used = NA,
-         weeks_since_emig_n = 0, 
-         dem_100_z = grd_temp$y,
-         TRI_100_z = 0,
-         t2m_z = grd_temp$x) 
+rm(ridge_100, dem_100, TRI_100, topo)
+gc();gc()
 
 
-#predict using the model
-preds <- predict(ssf, newdata = new_data, type = "risk")
-preds_pr <- new_data %>% 
-  mutate(preds = preds) %>% 
-  rowwise %>% 
-  mutate(probs = preds/(preds+1))
+#In the previous version, I used the same stratum for all predictions. In this round, take a random startum per map.
+# set.seed(7)
+# stratum_for_pred <- sample(data$stratum, 1)
 
-#prepare for plotting
-y_axis_var <- "dem_100_z"
-x_axis_var <- "t2m_z"
+#in the previous version, I used the median step length for each week to make the predictions. Now, take 10 random step length values per week. 
 
-#extract center and scale values for time variable, to be used for back transformation. The y-axis attributes will be extracted in the for loop
-x_axis_attr_scale <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:scale')
-x_axis_attr_center <- attr(all_data[,colnames(all_data) == x_axis_var],'scaled:center')
+wks_ls <- split(data, data$weeks_since_emig)
 
-i <- y_axis_var
+(start <- Sys.time())
+areas <- lapply(wks_ls, function(x){
   
-  i_scale <- attr(all_data[,colnames(all_data) == i],'scaled:scale')
-  i_center <- attr(all_data[,colnames(all_data) == i],'scaled:center')
+  one_week <- x %>% 
+    distinct(weeks_since_emig) %>% 
+    pull(weeks_since_emig)
   
-  #summarize values, so each (x,y) combo has one probability value
-  avg_pred <- preds_pr %>% 
-    group_by_at(c(which(names(preds_pr) == i),which(names(preds_pr) == x_axis_var))) %>%  #group by weeks since emigration and i
-    summarise(avg_pres = mean(probs)) %>% 
-    ungroup() %>% 
-    mutate(dplyr::select(.,all_of(i)) * i_scale + i_center, #back-transform the values for plotting
-           dplyr::select(.,all_of(x_axis_var)) * x_axis_attr_scale + x_axis_attr_center ) %>% #these columns replace the original columns 1 and 2
-    rename(x = which(names(.) == x_axis_var), #weeks since emig
-           y = which(names(.) == i)) %>% #y axis variables
-    dplyr::select(c("x","y","avg_pres")) %>%  #reorder the columns for making xyz raster
-    as.data.frame()
-  
-  #saveRDS(avg_pred, file = paste0("inla_pred_clogit_not_smoothed_", i,".rds"))
-  
-  #comment out below to save the unsmoothed values
-  r <- avg_pred %>%
-    rast(type = "xyz") %>%
-    focal(w = 7, fun = mean, na.policy = "all", na.rm = T) %>%
-    as.data.frame(xy = T) %>%
-    rename(avg_pres = focal_mean)
-  
-
-#create plots
-X11(width = 5, height = 5)
-
-p <- r %>% 
-  ggplot() +
-  geom_tile(aes(x = x-273.15, y = y, fill = avg_pres)) +
-  scale_fill_gradient2(low = "#005AB5", mid = "seashell2", high = "#D41159",limits = c(0,1), midpoint = 0.5,
-                       na.value = "white", name = "Intensity of use") +
-  labs(x = "Temperature (°C)", y = "Elevation (m)") +
-  theme_classic()
-
-ggsave(plot = p, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/clogit_temp_interaction.png", 
-       width = 5, height = 5, dpi = 500)
-
-################################## predictions for the alps ###########
-all_data <- readRDS("alt_50_20_min_48_ind_static_100_daytemp_inlaready_wks.rds") %>% 
-  dplyr::select(c("location.long", "location.lat", "track", "stratum", "step_length", "turning_angle", "used","weeks_since_emig_n", "weeks_since_emig_n_z", 
-                  "dem_100", "dem_100_z", "TRI_100", "TRI_100_z", "t2m_z", "t2m"))
-
-alps_df_no_na <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/alps_topo_100m_temp_df.rds")
-
-
-
-n <- nrow(alps_df_no_na)
-
-#first to 4th week, after 6 months, after  a year, after 1.5 years
-lapply(c(1:24,52,76), function(i){
-  
-  wk <- i %>% str_pad(2,"left","0")
-  
-  new_data <- all_data %>%
-    group_by(stratum) %>% 
-    slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
-    ungroup() %>% 
-    slice_sample(n = n, replace = T) %>% 
-    dplyr::select(-c("dem_100", "TRI_100","location.long", "location.lat")) %>%  #remove the rows that will be replaced by the alpine data. location.lat and location.long will only be added for the alpine rows, and not the original
-    bind_cols(alps_df_no_na) %>% 
-    mutate(used = NA,
-           weeks_since_emig_n = i,
-           weeks_since_emig_n_z = (i - mean(all_data$weeks_since_emig_n))/sd(all_data$weeks_since_emig_n),
-           dem_100_z = (dem_100 - mean(all_data$dem_100))/sd(all_data$dem_100), #convert these to z-scores based on the mean and variance of the tracking data.
-           TRI_100_z = (TRI_100 - mean(all_data$TRI_100))/sd(all_data$TRI_100))
-  
-  #predict using the model
-  preds <- predict(ssf, newdata = new_data, type = "risk")
-  preds_prob <- preds/(preds+1)
-  
-  preds_pr <- new_data %>% 
-    mutate(preds = preds,
-           probs = preds_prob,
-           week = wk)
-  
-  
-
-  saveRDS(preds_pr, file = paste0("clogit_alp_pred_week_", wk, ".rds"))
-  
-  #r <- preds_pr %>% 
-  #  dplyr::select(c("location.long", "location.lat", "probs")) %>% 
-  #  rast(crs = crs(TRI_100))
-  
+     week_i <- one_week %>% 
+      str_pad(3,"left","0")
+    
+     #generate a new dataset
+    new_data <- topo_df %>%
+      mutate(step_length = sample(x$step_length, nrow(topo_df), replace = T),
+             step_length_z = (step_length - attr(data[,colnames(data) == "step_length_z"],'scaled:center'))/attr(data[,colnames(data) == "step_length_z"],'scaled:scale'),
+             weeks_since_emig = one_week,
+             weeks_since_emig_z =  (one_week - attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:center'))/attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:scale'),
+             stratum = sample(x$stratum, nrow(topo_df), replace = T))
+    
+    #predict using the model
+    preds <- predict(ssf, newdata = new_data, type = "risk")
+    preds_prob <- preds/(preds+1)
+    
+    preds_pr <- new_data %>%
+      mutate(preds = preds,
+             probs = preds_prob)
+    
+    #skip saving this file. it's 1 GB. just get out of it what I need
+    #saveRDS(preds_pr, paste0("/media/enourani/Ellham's HDD/Elham_GE/clogit_alpine_preds2/alpine_preds_wk_", week_i, ".rds"))
+    
+    #save a raster
+    #preds_r <- preds_pr %>%  #only keep the rows that contain data for this interaction term
+    #  dplyr::select(c("location.long", "location.lat", "probs")) %>% 
+    #  terra::rast(type = "xyz")
+    
+    #make the maps
+      png(paste0("/media/enourani/Ellham's HDD/Elham_GE/clogit_alpine_maps3/alps_wk_", week_i, ".png"),
+          width = 13, height = 9, units = "in", res = 400)
+      print(preds_pr %>% 
+              ggplot() +
+              geom_tile(aes(x = location.long, y = location.lat, fill = probs)) +
+              scale_fill_gradientn(colours = oce::oceColorsPalette(100), limits = c(0,1),
+                                   na.value = "white", name = "Intensity of use") +
+              labs(x = "", y = "", title = paste0("Week ", week_i, " since dispersal")) +
+              theme_void()
+      )
+      
+      dev.off()
+      
+      #calculate suitable areas
+      area_.7 <- preds_pr %>%
+        filter(probs >= 0.7) %>% 
+        summarize(pixels = n()) %>% #count the 
+        mutate(area_m2 = pixels * 100 * 100, #the resolution of the cell size
+               area_km2 = round(area_m2/1e6,3),
+               week_since_dispersal = week_i)
+      
+       area_.7
+       
 })
 
-file_ls <- list.files(pattern = "clogit_alp_pred", full.names = T) 
+Sys.time() - start
 
-#save plots
-lapply(file_ls, function(x){
+areas_df <- areas %>% 
+  reduce(rbind) %>% 
+  mutate(week_since_dispersal = as.numeric(week_since_dispersal))
 
-  p <- readRDS(x) %>% 
-  ggplot() +
-  geom_tile(aes(x = location.long, y = location.lat, fill = probs)) +
-  scale_fill_gradient2(low = "#005AB5", mid = "seashell2", high = "#D41159",limits = c(0,1), midpoint = 0.5,
-                       na.value = "white", name = "Intensity of use") +
-   labs(x = "", y = "", title = paste0("week ", str_sub(x,24,-5), " since dispersal")) +
-  theme_classic()
-  
-  ggsave(plot = p, filename = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/clogit_alps_wk_", str_sub(x, 24, -5), ".png"), 
-         width = 9, height = 6, dpi = 300)
+saveRDS(areas_df, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/suitable_areas_wkly2.rds")
 
-})
+#create animation of the maps. run the following code in the terminal
+#ffmpeg -framerate 25 -pattern_type glob -i "*.png" output.mp4
 
-################################## trends in suitable areas ###########
+#plot the trends in the suitable areas over time
 
-#empty raster stack to store reclassified rasters
-p_stack <- NULL
+plot(as.numeric(areas_df$week_since_dispersal), areas_df$area_km2)
 
-#empty list to store frequency of each suitability clss
-freq_ls <- list()
-  
-#list the weekly prediction files
-file_ls <- list.files(pattern = "clogit_alp_pred_week", full.names = T) 
+clr <- oce::oceColorsPalette(100)[2]
+clr_light <- oce::oceColorsPalette(100)[10]
 
-#create matrix for reclassification. The first two columns are "from" "to" of the input values, and the third column "becomes" 
-classes <- matrix(c(c(0, .3, .5, .7, .85), 
-                  c(.3, .5, .7, .85, 1),
-                  c(1, 2, 3, 4, 5)), ncol = 3, nrow = 5, byrow = F)
+X11(width = 8, height = 3) 
+p <- ggplot(areas_df, aes(x = week_since_dispersal, y = area_km2)) +
+  geom_smooth(method = "loess", alpha = .1, level = .95, color = clr, fill = clr_light, lwd = 1.2) + #95% standard error
+  geom_point(size = 1.5, stroke = 0.8, color = clr) +
+  labs(x = "Weeks since dispersal",
+       y = bquote("Flyable area " (km^2))) +
+  theme_classic() +
+  theme(text = element_text(size = 16))
 
-
-for (i in file_ls){ 
- 
-  r_p <- readRDS(x) %>%
-    dplyr::select(c("location.long", "location.lat", "probs")) %>% 
-    rast(type = "xyz", crs = crs(TRI_100)) %>% 
-    classify(rcl = classes, include.lowest = T, right = T)  #classify the raster into suitability categories
-  
-  names(r_p) <- "suitability"
-  
-  #concatenate to the raster stack
-  p_stack <- c(p_stack, r_p)
-  
- #estimate frequency of each class
-   freq_r <- r_p %>% 
-     freq()
- 
-   freq_ls[[length(freq_ls) + 1]] <- freq_r 
-}
-
-
-ad <- r_p %>%
-  project("+proj=longlat +datum=WGS84 +no_defs") %>%
-  cellSize()
-
-df_a <- r_wgs %>%
-  zonal(x = cellSize(., unit = "km"), z = .) #get summary of each zone
-as.data.frame() %>%
-  group_by(suitability) %>%
-  tally() %>%
-  mutate(area = n * res(r)[1] * res(r)[2]) #calculate the area of each category
-
-
-##################################################
-
-weeks <- unlist(lapply(file_ls, function(x) str_sub(x, 24, -5))) 
-
-rasters_ls <- lapply(file_ls, function(x){
-
-  r <- readRDS(x) %>%
-  dplyr::select(c("location.long", "location.lat", "probs")) %>% 
-    rast(type = "xyz", crs = crs(TRI_100)) 
-  
-  #in the same lapply call, calculate the total area over 0.7 suitability
-  
-
-})
-
-names(rasters_ls) <- weeks
-
-
-
-#subtract the rasters
-rev_ls1 <- rev(rasters_ls)
-rev_ls1[length(rev_ls1)] <- NULL
-
-
-rev_ls2 <- rev(rasters_ls)
-rev_ls2[1] <- NULL
-
-
-diffs_ls2 <- lapply(rev(rasters_ls))
-
-
-diff <- rev(rasters_ls)[[6]]- rev(rasters_ls)[[7]]
-
-diff_non_zero <- diff[diff$probs != 0]
-
-
-
-
+ggsave(plot = p, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/area_over_wks.png", 
+       width = 8, height = 3, dpi = 400)

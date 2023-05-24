@@ -1,8 +1,10 @@
-#script for estimating trends in flight behavior of golden eagles to quantify improvement in soaring flight.
+#the OG script was for estimating trends in flight behavior of golden eagles to quantify improvement in soaring flight. 
+#Now it looks at 1) geomorphological characteristics of the flight types, and 
+# 2) the characteristics of the commuting flights.
 #Elham Nourani, PhD. Konstanz, DE.
 #Feb. 7. 2023
 #to be submitted to the cluster Raven
-
+#update April 18th 2023: using the new behavioral segmentation done by Martina in March 2023
 
 library(tidyverse)
 library(lubridate)
@@ -10,21 +12,147 @@ library(sf)
 library(terra)
 library(mapview)
 library(parallel)
+library(ggridges)
 
 wgs <- crs("+proj=longlat +datum=WGS84 +no_defs")
+setwd("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
-#data prepared by Hester
-flight <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/Golden_eagle_wind_behav_full_Nov_2022.rds") #one element per ind. 1.4 GB
+# STEP 1: Open data and subset for inds in the landscape analysis -------------------------------------------------------------
+#files <- list.files("/home/enourani/Desktop/GE-classification_Mar23", pattern = ".rds", full.names = T)
+
+#behav_data <- lapply(files, readRDS)
+
+#saveRDS(behav_data, file = "/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/Golden_eagle_wind_behav_full_Mar_2023.rds")
+
+#individuals in the landscape analysis
+inds_to_keep <- readRDS("all_inds_annotated_static_apr23.rds") %>% 
+  distinct(individual.local.identifier)%>% 
+  pull(individual.local.identifier)
+
+#read in data
+behav_data <- readRDS("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/Golden_eagle_wind_behav_full_Mar_2023.rds")
+names(behav_data) <- sapply(behav_data, function(x) unique(x$individual.local.identifier))
+
+behav_ls <- behav_data[names(behav_data) %in% inds_to_keep] #only 42 of the 55 individuals are in here
+
+behav_df <- lapply(behav_ls, function(x){
+  if("eobs.status" %in% names(x)){ x <- x %>%  dplyr::select(-"eobs.status")} #some elements of the list have one extra column
+  x
+}) %>% 
+  reduce(rbind)
+
+saveRDS(behav_df, file = "behav_segmented_42inds.rds")
 
 #emigration date info
-load("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/em_fl_dt_recurse_70ind.RData") #emig_fledg_dates
+emig_dates <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/fleding_emigration_timing_Mar2023.rds") #this file only has the juvies.
+
+# STEP 2: summarize geo characteristics of each flight type ----------------------------------------------------------------
+
+# 2.1: extract flight categories of interest
+soaring_only <- behav_df %>% 
+  mutate(flightClust_smooth3 = as.character(flightClust_smooth3)) %>% 
+  mutate(flight_mode = ifelse(behavior == "Flapping", "flapping",
+                              flightClust_smooth3)) %>% 
+  filter(flight_mode %in% c("linear soaring", "circular soaring"))
+
+
+# 2.2: extract terrain values at gps points (25 m resolution terrain. prepared by Louise) 
+ridge25 <- rast("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/map_distance_ridge.tif")
+TRI_25 <- rast("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/TRI/TRI.sdat")
+dem_25 <- rast("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/region-alpes-dem.tif")
+slope_TPI_25 <- terrain(terrain(dem_25, "slope"), "TPI", filename = "/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/slope_TPI_25.tif")
+  
+#create a stack using raster paths
+topo <- c(ridge25, dem_25, TRI_25, slope_TPI_25)
+names(topo) <- c("ridge25", "dem_25", "TRI_25", "slope_TPI_25")
+
+#reproject tracking data to match topo, extract values from topo, convert back to wgs and save as a dataframe
+topo_ann_df <- soaring_only %>% 
+  st_as_sf(coords = c("location.long", "location.lat"), crs = wgs) %>% 
+  st_transform(crs = crs(topo)) %>% 
+  extract(x = topo, y = ., method = "simple", bind = T) %>%
+  project(wgs) %>% 
+  data.frame(., geom(.)) %>% 
+  dplyr::select(-c("geom", "part", "hole")) %>% 
+  rename(location.long = x,
+         location.lat = y)
+
+saveRDS(topo_ann_df, file = "behav_segmented_terrain_42inds.rds")
+
+# 2.3: summarize terrain characteristics at soaring locations
+
+topo_ann_df <- readRDS("behav_segmented_terrain_42inds.rds") %>% 
+  mutate(month = month(timestamp)) %>% 
+  filter(month %in% c(5:8)) #only keep summer
+
+##plots
+to_plot <- topo_ann_df %>% 
+  pivot_longer(cols = ends_with("25"), names_to = "variable", values_to = "value")
+
+
+ggplot(to_model, aes(x = ridge25, y = as.factor(flight_mode))) +
+  geom_density_ridges(
+    jittered_points = TRUE,
+    position = position_points_jitter(width = 0.05, height = 0),
+    point_shape = '|', point_size = 3, point_alpha = 1, alpha = 0.7,
+  )
+
+
+ggplot(data = to_plot, aes(x = variable, y = value, fill = flight_mode)) +
+  geom_boxplot()
+
+#models
+to_model <- topo_ann_df %>% 
+  mutate(circling = ifelse(flight_mode == "circular soaring", 1, 0)) %>%  #create new binomial response with 0 and 1
+  drop_na(c("ridge25", "dem_25", "TRI_25", "slope_TPI_25"))
+
+m <- glm(circling ~ scale(ridge25) + scale(dem_25) + scale(TRI_25) + scale(slope_TPI_25),
+         data = to_model, family = binomial)
+
+plot_summs(m)
+#all vars: AIC: 7089395
+
+m2 <- glm(circling ~ scale(ridge25) + scale(dem_25),
+         data = to_model, family = binomial)
+
+plot_summs(m2)
+#AIC: 7089942
+
+
+#effect plots:
+effect_plot(m2, pred = ridge25, interval = TRUE, y.label = "prob of circling", x.label = "distance to ridge", ylim = c(0,1))
+effect_plot(m2, pred = dem_25, interval = TRUE, y.label = "prob of circling", x.label = "elevation")
+#effect_plot(m, pred = TRI_25, interval = TRUE, y.label = "prob of circling", x.label = "TRI")
+#effect_plot(m, pred = slope_TPI_25, interval = TRUE, y.label = "prob of circling", x.label = "slope TPI")
+
+
+# STEP 2: trends in commuting flight characteristics ----------------------------------------------------------------
+
+data <- readRDS("all_inds_annotated_static_apr23.rds") 
+
+summs <- data %>% 
+  filter(used == 1) %>% 
+  group_by(individual.local.identifier, date(timestamp), burst_id) %>% #each bout of continuous commuting flight has a unique ID. These are bursts with 1hr difference and no more.
+  arrange(desc(timestamp)) %>% 
+  summarize(duration = as.numeric(difftime(head(timestamp, 1), tail(timestamp, 1), units = "hours")),
+            weeks_since_emig = head(weeks_since_emig, 1))
+  
+plot(x = summs$weeks_since_emig, y = summs$duration)
+  
+  
+  
+  
+  
+  
+### old stuff
+
 
 # STEP 1: Summarize flight metrics per burst -------------------------------------------------------------
 
 #calculate total n-rows of each behavior category for each burst 
 
 (b <- Sys.time())
-flight_summary_ls <- lapply(flight, function (x){
+flight_summary_ls <- lapply(behav_data, function (x){
   
   #b <- Sys.time()
   #calculate week and day since emigration and fledging

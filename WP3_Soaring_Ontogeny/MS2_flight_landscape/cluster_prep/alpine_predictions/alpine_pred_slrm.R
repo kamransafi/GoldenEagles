@@ -28,9 +28,13 @@ formulaM <- used ~ -1 +
   f(stratum, model = "iid",
     hyper = list(theta = list(initial = log(1e-6),fixed = T))) +
   f(ind1, dem_200_z, model = "iid",
-    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05)))) +
+    hyper = list(theta=list(initial = log(1), fixed = F, prior="pc.prec", param = c(3,0.05)))) +
   f(ind2, TRI_200_z,  model = "iid",
-    hyper=list(theta=list(initial=log(1),fixed=F,prior="pc.prec",param=c(3,0.05))))
+    hyper = list(theta = list(initial = log(1), fixed = F, prior = "pc.prec", param = c(3,0.05))))
+
+f(year.num, model = "iid",
+  group = month.num, control.group = list(model = "ar1", 
+                                          scale.model = TRUE)) #but this will go over the intercept, which we dont have. unless i use it when specifying the hyperparameter
 
 mean.beta <- 0
 prec.beta <- 1e-4

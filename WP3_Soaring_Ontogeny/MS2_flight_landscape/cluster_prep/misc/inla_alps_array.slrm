@@ -1,3 +1,5 @@
+######## not completed!!!
+
 #!/bin/bash -l
 # Standard output and error:
 #SBATCH -o ./job.out.%j
@@ -8,12 +10,13 @@
 #SBATCH -J alps_slurm
 # Number of nodes and MPI tasks per node:
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=20
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=72    # assign all the cores to that first task to make room for multithreading. This indicates that I'm using once cpu exclusively for this job. For a small job on sh$
 #SBATCH --mail-type=all
 #SBATCH --mail-user=enourani@ab.mpg.de
 # Wall clock limit (max. is 24 hours):
-#SBATCH --time=18:00:00
-#SBATCH --mem=120000
+#SBATCH --time=23:00:00
+#SBATCH --mem=500000 #if not using all CPUS per node, this is limited to 120GB
 
 
 # Load compiler and MPI modules (must be the same as used for compiling the code)
@@ -28,7 +31,7 @@ export SCR_DIR=/ptmp/enourani/scratch #define a path to later create a scratch d
 ##### create a scratch directory and copy over all the files that I want to use
 mkdir -p $SCR_DIR #-p flag allows creation of nested directories. dollar sign means this variable has been defined before
 cd $SCR_DIR
-cp -p $HOME/slrm_jobs/alps_alt_50_20_min_48_ind_static200_wmissing.rds .
+cp -p $HOME/slrm_jobs/alps_alt_50_20_min_48_ind_wmissing_Jun_temp.rds .
 cp -p $HOME/slrm_jobs/pardiso.lic .
 cp -p $HOME/slrm_jobs/weeks_since_z_info.rds .
 cp -p $HOME/slrm_jobs/$FILENAME .
@@ -36,9 +39,12 @@ cp -p $HOME/slrm_jobs/$FILENAME .
 # Run the program:
 R CMD BATCH $FILENAME 2>&1 errorlog
 
+
+
 ##### copy results over and clean up
 cd $HOME
 cp -pR $SCR_DIR/* . #-p means preserve file attributes. R is recursive
 rm -rf $SCR_DIR
+
 
 

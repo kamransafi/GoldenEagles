@@ -1,0 +1,29 @@
+#Scripts for modeling the energy landscape for golden eagles past dispersal
+#data contains missing values which will allow me to make predictions to plot the interaction
+#update on April 27th to include seasonality (for dem) and hourly points
+
+#STEP 1: copy files to cluster ---------------------------------------------------------------------
+#From terminal on local system: (make sure to be on MPI internet, use VPN)
+
+scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/new_data_ssf_inla_preds.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/slrm_inla/
+  
+#coy over paradiso license
+scp /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/pardiso.lic enourani@raven.mpcdf.mpg.de:/raven/u/enourani/slrm_inla/
+  
+#STEP 2: ssh to cluster ---------------------------------------------------------------------
+  
+# if not on MPI network: 
+ssh gate.mpcdf.mpg.de
+ssh raven.mpcdf.mpg.de
+
+#if on MPI network:
+ssh enourani@raven.mpcdf.mpg.de
+
+#STEP 3: run the job ------------------------------------------------------------------------
+sbatch slrm_inla/inla_interactions.slrm
+
+squeue -u enourani
+
+#STEP 4: after job is done, copy files back to local machine --------------------------------
+
+scp -r enourani@raven.mpcdf.mpg.de:/raven/u/enourani/*M_main100_hrly_try2.rds /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/May1223_slrm

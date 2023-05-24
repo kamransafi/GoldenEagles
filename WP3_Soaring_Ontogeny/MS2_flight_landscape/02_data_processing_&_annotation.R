@@ -1,12 +1,12 @@
 #script for analysis of golden eagle data for the dynamics of the energy landscape manuscript: random step generation and annotation
 #follows on from embc_segmentation.R
-#the first attempt will only include static variables. reasons: 1) movebank annotation isn't working and 2) res of static variables is higher
+#the first attempt will only include static variables. res of static variables is higher
 #Jan 28. 2022. Elham Nourani. Konstanz, DE
 
 library(tidyverse)
 library(lubridate)
 library(move)
-library(ctmm)
+#library(ctmm)
 library(sf)
 library(mapview)
 library(parallel)
@@ -15,7 +15,7 @@ library(circular)
 library(fitdistrplus)
 library(terra)
 
-wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
+wgs <- crs("+proj=longlat +datum=WGS84 +no_defs")
 meters_proj <- CRS("+proj=moll +ellps=WGS84") #replace this with utm N32
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
@@ -24,23 +24,26 @@ source("/home/enourani/ownCloud/Work/Projects/functions.R")
 
 # STEP 1: open data and filter out non-commuting flights ----------------------------------------------------------------
 
-bc_output <- readRDS("embc_output_70ind.rds") #n = 57
+bc_output <- readRDS("embc_output_20min_61ind.rds") #n = 61.. some of these have very few data points
 
 flight <- bc_output %>% 
-  filter(embc_clst_smth == 4) #use the smoothed values of clustering
+  filter(embc_clst_smth %in% c(3,4)) #use the smoothed values of clustering. include both levels 3 and 4
 
-save(flight, file = "flight_only_70ind.RData") #n = 56
+saveRDS(flight, file = "flight_only_20min_56ind.rds") #n = 56
+
+#did I filter for post dispersal!??? yes!!
 
 # STEP 2: variogram to decide on data resolution ----------------------------------------------------------------
 
-#create move object
-load("flight_only_70ind.RData") #flight
-mv <- move(x = flight$location.long, y = flight$location.lat, time = flight$timestamp, proj = wgs, data = flight, animal = flight$individual.local.identifier)
-tel <- as.telemetry(mv)
+flight <- readRDS("flight_only_20min_56ind.rds")
+
+tel <- as.telemetry(flight)
 sv <- lapply(tel, variogram)
 
+xlim <- c(0,60 %#% "minute") # 0-12 hour window
+
 var <- sv[[23]]
-plot(var, CTMM = variogram.fit(var, interactive = F),xlim=xlim)
+plot(var, CTMM = variogram.fit(var, interactive = F),xlim = xlim)
 plot(var, CTMM = variogram.fit(var, interactive = F), level = 0.5)
 
 level <- c(0.5,0.95) # 50% and 95% CIs
@@ -51,16 +54,17 @@ plot(var,xlim=xlim,level=level)
 
 # STEP 3: step selection prep- generate alternative steps ----------------------------------------------------------------
 
-load("flight_only_70ind.RData") #flight
+flight <- readRDS("flight_only_20min_56ind.rds")
+
 #create move object
 mv <- move(x = flight$location.long, y = flight$location.lat, time = flight$timestamp, proj = wgs, data = flight, animal = flight$individual.local.identifier)
 
-hr <- 20 #minutes; determine the sub-sampling interval
-tolerance <- 5 #minutes; tolerance for sub-sampling
+hr <- 60 #minutes; determine the sub-sampling interval
+tolerance <- 10 #minutes; tolerance for sub-sampling
 n_alt <- 50 #number of alternative steps.
 
 #prepare cluster for parallel computation
-mycl <- makeCluster(5) #the number of CPUs to use (adjust this based on your machine)
+mycl <- makeCluster(10) #the number of CPUs to use (adjust this based on your machine)
 
 clusterExport(mycl, c("mv", "hr", "tolerance", "n_alt","wgs", "meters_proj", "NCEP.loxodrome.na")) #define the variable that will be used within the ParLapply call
 
@@ -75,8 +79,6 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
 })
 
 (b <- Sys.time()) 
-
-#used_av_ls <- parLapply(mycl, move_ls, function(group){ # for each group (ie. unique species-flyway combination)
   
   sp_obj_ls <- parLapply(mycl, split(mv), function(track){ #for each individual (i.e. track),
     
@@ -112,7 +114,7 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
     burst_ls <- Filter(function(x) length(x) >= 3, burst_ls) #remove bursts with less than 3 observations
     
     burst_ls <- lapply(burst_ls, function(burst){
-      burst$step_length <- c(move::distance(burst),NA) 
+      burst$step_length <- c(NA, move::distance(burst)) #the NA used to be at the end, but it makes more sense for it to be at the beginning. it matches how the random sls are allocated
       burst$turning_angle <- c(NA,turnAngleGc(burst),NA)
       burst
     })
@@ -132,10 +134,10 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
   }) %>% 
     Filter(function(x) length(x) > 1, .) #remove segments with no observation
   
-  Sys.time() - b 
-  stopCluster(mycl) #n = 53
+  Sys.time() - b #1.87 mins
+  stopCluster(mycl) #n = 55
   
-  save(sp_obj_ls, file = paste0("sl_", hr, "_min_70_ind.RData"))
+  saveRDS(sp_obj_ls, file = paste0("sl_", hr, "_min_55_ind2.rds")) #tolerance of 10 min
   
   #--STEP 4: estimate step length and turning angle distributions
   #put everything in one df
@@ -169,10 +171,13 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
   dev.off()
   
   #--STEP 5: produce alternative steps
+  
+  sp_obj_ls <- readRDS("sl_60_min_55_ind2.rds")
+  
   #prepare cluster for parallel computation
   mycl <- makeCluster(10) #the number of CPUs to use (adjust this based on your machine)
   
-  clusterExport(mycl, c("mv", "hr", "mu", "kappa", "fit.gamma1", "tolerance", "n_alt","wgs", "meters_proj", "NCEP.loxodrome.na")) #define the variable that will be used within the ParLapply call
+  clusterExport(mycl, c("sp_obj_ls", "hr", "mu", "kappa", "fit.gamma1", "tolerance", "n_alt","wgs", "meters_proj", "NCEP.loxodrome.na")) #define the variable that will be used within the ParLapply call
   
   clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
     library(sf)
@@ -226,10 +231,10 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
         #put used and available points together
         df <- used_point@data %>%  
           slice(rep(row_number(), n_alt+1)) %>% #paste each row n_alt times for the used and alternative steps
-          mutate(location.long = c(head(coords.x1,1),rnd_sp@coords[,1]), #the coordinates were called x and y in the previous version
-                 location.lat = c(head(coords.x2,1),rnd_sp@coords[,2]),
-                 turning_angle = c(head(turning_angle,1),deg(rnd_sp$turning_angle)),
-                 step_length = c(head(step_length,1),rnd_sp$step_length),
+          mutate(location.long = c(head(coords.x1,1), rnd_sp@coords[,1]), #the coordinates were called x and y in the previous version
+                 location.lat = c(head(coords.x2,1), rnd_sp@coords[,2]),
+                 turning_angle = c(head(turning_angle,1), deg(rnd_sp$turning_angle)),
+                 step_length = c(head(step_length,1), rnd_sp$step_length),
                  used = c(1,rep(0,n_alt)))  %>%
           dplyr::select(-c("coords.x1","coords.x2")) %>% 
           rowwise() %>% 
@@ -247,20 +252,18 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
   }) %>% 
     reduce(rbind)
 
-  Sys.time() - b 
+  Sys.time() - b # 
   stopCluster(mycl) 
 
   
 used_av_track <- used_av_track %>% 
   mutate(stratum = paste(individual.local.identifier, burst_id, step_id, sep = "_"))
   
-save(used_av_track, file = paste0("alt_", n_alt, "_", hr, "_min_70_ind.RData")) #772497; n = 53
-
-
+saveRDS(used_av_track, file = paste0("alt_", n_alt, "_", hr, "_min_55_ind2.rds")) #the diff between this round and the previous is the assignment of NA when calculating step lengths. used to be end of burst, now is start of burst 
 
 # STEP 4: summary stats ----------------------------------------------------------------
 
-load("alt_50_20_min_70_ind.RData") #used_av_track
+load("alt_50_60_min_55_ind2.rds") #used_av_track
 
 used_av_track %>% 
   mutate(yr_mn = paste(year(timestamp), month(timestamp), sep = "_"),
@@ -284,79 +287,45 @@ mn_summary <- used_av_track %>%
 
 barplot(names.arg = mn_summary$mn, height = mn_summary$data, col = as.factor(mn_summary$individual.local.identifier), beside = F)
 
-# STEP 5: annotation: static ----------------------------------------------------------------
+# STEP 5: annotation: life stages ----------------------------------------------------------------
 
-load("alt_50_20_min_70_ind.RData") #used_av_track
+used_av_track <- readRDS("alt_50_60_min_55_ind2.rds") #used_av_track
 
-#manually annotate with static variables: elevation, terrain ruggedness (difference between the maximum and the minimum value of a cell and its 8 surrounding cells),
-#unevenness in slope, aspect and elevation (TPI). (difference between the value of a cell and the mean value of its 8 surrounding cells)
-#previous version aggregated all to 100 m resolution, but I ran into memory issues with the Raven HPC for making predictions at the Alpine region scale. So, try 200 m instead
+emig_dates <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/fleding_emigration_timing_Mar2023.rds")
 
-#200m layers were built in the earlier version of this script
-dem_200 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/dem_200.tif")
-TRI_200 <- rast("/home/enourani/Desktop/golden_eagle_static_layers/whole_region/tri_200.tif")
+used_av_track <- used_av_track %>% 
+  left_join(emig_dates %>% dplyr::select(c("individual.local.identifier", "emigration_dt")), by = "individual.local.identifier") %>% 
+  mutate(days_since_emig = difftime(timestamp,emigration_dt, units = c("days")) %>% as.numeric() %>%  ceiling(),
+         weeks_since_emig = difftime(timestamp,emigration_dt, units = c("weeks")) %>% as.numeric() %>%  ceiling())
 
-#create a stack using raster paths
-topo <- c(dem_200,TRI_200)
-names(topo) <- c("dem_200", "TRI_200")
+
+# STEP 6: annotation: static ----------------------------------------------------------------
+
+#manually annotate with static variables: elevation, terrain ruggedness index (difference between the maximum and the minimum value of a cell and its 8 surrounding cells),
+#and distance to ridge. TRI and distance to ridge were prepared by Louise.
+#try with 100 m resolution
+
+#100m layers were built in the earlier version of this script
+TRI_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/TRI_100_LF.tif")
+dem_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/dem_100_LF.tif")
+ridge_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ridge_100_LF.tif")
+
+#create a stack using raster paths. dimensions dont match, so extract values separately
+topo <- c(dem_100, TRI_100)
+names(topo) <- c("dem_100", "TRI_100")
 
 #reproject tracking data to match topo, extract values from topo, convert back to wgs and save as a dataframe
 topo_ann_df <- used_av_track %>% 
   st_as_sf(coords = c("location.long", "location.lat"), crs = wgs) %>% 
   st_transform(crs = crs(topo)) %>% 
-  #as("SpatVector") %>% 
   extract(x = topo, y = ., method = "simple", bind = T) %>%
-  project(wgs) %>% 
+  extract(x = ridge_100, y = ., method = "simple", bind = T) %>% 
+  terra::project(wgs) %>% 
   data.frame(., geom(.)) %>% 
-  dplyr::select(-c("geom", "part", "hole"))
+  dplyr::select(-c("geom", "part", "hole")) %>% 
+  rename(location.long = x,
+         location.lat = y,
+         ridge_100 = distance_to_ridge_line_mask)
   
-saveRDS(topo_ann_df, file = "alt_50_20_min_70_ind_static_200_ann.rds")
-
-# STEP 6: annotation: days since fledging and emigration ----------------------------------------------------------------
-
-topo_ann_df <- readRDS("alt_50_20_min_70_ind_static_200_ann.rds") # n_distinct(topo_ann_df$individual.local.identifier) = 53
-
-#open emigration information
-#open file containing emigration dates
-load("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/em_fl_dt_recurse_70ind.RData") #emig_fledg_dates
-
-#remove individuals with very narrow post-fledging period. They are a combination of dead, adult, etc. only 5 are in my subset of 53 anyway.
-inds_to_remove <- emig_fledg_dates %>% 
-  mutate(post_fledging_duration = difftime(emigration_dt,fledging_dt, units = "days")) %>% 
-  filter(post_fledging_duration <= 30 )
-
-topo_ann_df <- topo_ann_df %>% 
-  filter(!(individual.local.identifier %in% inds_to_remove$individual.local.identifier)) #n_distinct = 48
-
-
-cmpl_ann <- lapply(split(topo_ann_df, topo_ann_df$individual.local.identifier), function(x){
-  
-  ind_dates <- emig_fledg_dates %>% 
-    filter(individual.local.identifier == unique(x$individual.local.identifier))
-  
-  x <- x %>% 
-    mutate(days_since_emig = difftime(timestamp,ind_dates$emigration_dt, units = c("days")),
-           weeks_since_emig = difftime(timestamp,ind_dates$emigration_dt, units = c("weeks")),
-           days_since_fled = difftime(timestamp,ind_dates$fledging_dt, units = c("days")),
-           weeks_since_fled = difftime(timestamp,ind_dates$fledging_dt, units = c("weeks")))
-  
-  x
-}) %>% 
-  reduce(rbind)
-
-saveRDS(cmpl_ann, file = "alt_50_20_min_70_ind_static_200m_time_ann.rds")
-
-#### i did not redo the below with 200 m terrain file.
-#mid step: save as csv for annotating with temperature to account for weather conditions.
-
-cmpl_ann_w <- cmpl_ann %>% 
-  mutate(timestamp = paste(as.character(timestamp),"000",sep = ".")) %>% 
-    as.data.frame()
-
-#row numbers are over a million, so do separate into two dfs for annotation
-colnames(cmpl_ann_w)[c(26,27)] <- c("location-long","location-lat") #rename columns to match movebank format
-
-write.csv(cmpl_ann_w, "inla_input_for_annotation_70inds.csv")
-
-
+saveRDS(topo_ann_df, file = "alt_50_60_min_55_ind_static_r_100.rds")
 
