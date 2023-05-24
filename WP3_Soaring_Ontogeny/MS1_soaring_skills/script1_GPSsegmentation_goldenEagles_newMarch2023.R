@@ -131,7 +131,7 @@ minResol <- 2 # 1 to max 2 sec timelag
 minBurstDuration <- 30 # we want bursts of at least 30 secs
 
 swV <- 2 #smoothing window of 5 seconds (< min burst duration, 2 before 2 after each loc) for vertical speed for later classification
-swT <- 12 #smoothing window of 29 seconds for thermalling behaviour (according to Rolf/Bart's paper) (we changed it to smooth window of 21 sec)
+swT <- 12 #smoothing window of 29 seconds for thermalling behaviour (according to Rolf/Bart's paper) (we changed it to smooth window of 25 sec)
 circlDegrees <- 200 #degrees of rotation to be achieved in the time defined by swT*2
 minBehavDuration <- 5 #minimum duration in seconds of a specific behaviour, when less than this and if in between two segments of a different behaviour it will be incorporated in the previous and follwoing segment 
 minThermalDuration <- 20 #minimum duration for a circling event to be considered as thermalling
