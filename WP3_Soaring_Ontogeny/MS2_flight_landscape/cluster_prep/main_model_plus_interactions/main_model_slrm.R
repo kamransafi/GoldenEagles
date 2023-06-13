@@ -11,14 +11,10 @@ inla.setOption(pardiso.license = "pardiso.lic")
 
 #STEP 1: open data, define variables and formula -----------------------------------------------------------------
 
-new_data <- readRDS("new_data_ssf_inla_preds.rds")
-
-#if not making predictions:
-#data <- readRDS("new_data_ssf_inla_preds.rds") %>% filter(!(is.na(used)))
+data <- readRDS("new_data_ssf_inla_preds.rds") %>% filter(!(is.na(used)))
 
 
 #define variables and formula
-#decided to go with seasonality only for dem
 F_full <- used ~ -1 +
   dem_100_z * step_length_z * weeks_since_emig_z +
   TRI_100_z * step_length_z * weeks_since_emig_z +
@@ -43,7 +39,7 @@ M_main <-  inla(F_full, family = "Poisson",
                 control.fixed = list(
                   mean = mean.beta,
                   prec = list(default = prec.beta)),
-                data = new_data,
+                data = data,
                 num.threads = 1, 
                 control.predictor = list(compute = TRUE, link = 1), #this means that NA values will be predicted.
                 control.compute = list(openmp.strategy =  "pardiso", config = TRUE, cpo = T))
@@ -53,7 +49,7 @@ M_main <-  inla(F_full, family = "Poisson",
 eval <- data.frame(CPO = mean(M_main$cpo$cpo, na.rm = T),
                    Mlik = as.numeric(M_main$mlik[,1][2])) 
 
-saveRDS(eval, file = "eval_M_main100_hrly.rds")
+saveRDS(eval, file = "eval_M_main100_hrly_nopred.rds")
 
 # extract info for coefficient plots
 
@@ -65,26 +61,26 @@ colnames(graph)[which(colnames(graph)%in%c("mean"))]<-c("Estimate")
 
 graph$Factor <- rownames(graph)
 
-saveRDS(graph, file = "graph_M_main100_hrly.rds")
+saveRDS(graph, file = "graph_M_main100_hrly_nopred.rds")
 
 #-----------------------------------------------------------------------------------------------
 # STEP 2: EXTRACT & SAVE PREDICTIONS
+# 
+# #extract predictions for interaction terms
+# used_na <- which(is.na(data$used))
+# 
+# preds <- data %>% 
+#   slice(used_na) %>% #extract information for rows that had NAs as response variables
+#   mutate(preds = M_main$summary.fitted.values[used_na,"mean"]) %>% 
+#   mutate(prob_pres = exp(preds)/(1 + exp(preds))) #this should be between 0-1
+# 
+# saveRDS(preds, file = "preds_M_main100_hrly.rds")
 
-#extract predictions for interaction terms
-used_na <- which(is.na(new_data$used))
 
-preds <- new_data %>% 
-  slice(used_na) %>% #extract information for rows that had NAs as response variables
-  mutate(preds = M_main$summary.fitted.values[used_na,"mean"]) %>% 
-  mutate(prob_pres = exp(preds)/(1 + exp(preds))) #this should be between 0-1
-
-saveRDS(preds, file = "preds_M_main100_hrly.rds")
-
-
-#extract info for ind- and month-specific variation
+#extract info for ind- variation
 
 summ_rndm <- M_main$summary.random
 
-saveRDS(summ_rndm, file = "rnd_coeff_M_main100_hrly.rds")
+saveRDS(summ_rndm, file = "rnd_coeff_M_main100_hrly_nopred.rds")
 
 

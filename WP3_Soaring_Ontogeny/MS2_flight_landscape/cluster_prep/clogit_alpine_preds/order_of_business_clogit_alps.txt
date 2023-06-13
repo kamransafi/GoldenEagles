@@ -5,13 +5,15 @@
 #STEP 1: copy files to cluster ---------------------------------------------------------------------
 #From terminal on local system: (make sure to be on MPI internet, use VPN)
 
-scp /home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/new_data_ssf_inla_preds.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/slrm_inla/
+scp /home/enourani/ownCloud\ -\ enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/ssf_model_for_raven.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/slrm_clogit/ 
+
+scp /home/enourani/ownCloud\ -\ enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/all_inds_annotated_static_3yrs_apr23.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/slrm_clogit/ 
+
+scp /home/enourani/ownCloud\ -\ enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/topo_df_100_LF.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/slrm_clogit/ 
   
-#coy over paradiso license
-scp /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/pardiso.lic enourani@raven.mpcdf.mpg.de:/raven/u/enourani/slrm_inla/
   
-#STEP 2: ssh to cluster ---------------------------------------------------------------------
-  
+  #STEP 2: ssh to cluster ---------------------------------------------------------------------
+
 # if not on MPI network: 
 ssh gate.mpcdf.mpg.de
 ssh raven.mpcdf.mpg.de

@@ -15,7 +15,7 @@ result_path <- "/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/re
 
 # PLOT 1: coefficient plots ----------------------------------------------------------------------------------------------------
 
-graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Apr2523_seasonality_100/graph_M_main100_hrly.rds")
+graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/May1223_slrm/graph_M_main100_hrly_try2.rds")
 
 #remove weeks since dispersal
 graph <- graph[graph$Factor != "weeks_since_emig_z",]
@@ -28,36 +28,43 @@ levels(graph$Factor) <- VarNames
 
 graph$Factor_n <- as.numeric(graph$Factor)
 
-#plot in ggplot2... later on reorder the variables and make the names more cohesive
+#plot
 X11(width = 8, height = 6)
 
 coefs <- ggplot(graph, aes(x = Estimate, y = Factor)) +
   geom_vline(xintercept = 0, linetype="dashed", 
              color = "gray", linewidth = 0.5) +
   geom_point(color = "cornflowerblue", size = 2)  +
-  #xlim(-0.1,0.6) +
-  #scale_y_discrete(name = "",
-  #                 labels = c("Weeks since dispersal * TRI","Weeks since dispersal * DEM", "TRI", "DEM")) +
+  labs(x = "Estimate", y = "") +
+  scale_y_discrete(labels = rev(c("TRI", "Step length", "Distance to ridge", "TRI: Step length", "TRI: Week",
+                                  "Step length: Week", "Step length: Distance to ridge", "Distance to ridge: Week", "TRI: Step length: Week", "Distance to ridge: Step length: Week"))) +
   geom_linerange(aes(xmin = Lower, xmax = Upper),color = "cornflowerblue", linewidth = 1) +
   theme_classic()
   
 
-ggsave(plot = coefs, filename = "/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_coefs_season_100.png", 
+ggsave(plot = coefs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_coefs_May23.png", 
        width = 8, height = 6, dpi = 300)
 
 
 # PLOT 2: interaction plots ----------------------------------------------------------------------------------------------------
 
-preds <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Apr2523_seasonality_100/preds_M_Main100_hrly.rds")
+preds <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/May1223_slrm/preds_M_main100_hrly_try2.rds")
 
 
 #prepare for plotting
-y_axis_var <- c("dem_100", "TRI_100", "ridge_100", "step_length")
+y_axis_var <- c("TRI_100", "ridge_100", "step_length")
 x_axis_var <- "weeks_since_emig"
+
+labels <- data.frame(vars = y_axis_var, 
+                     label = c("Terrain Ruggedness Index", "Distance to ridgeline (km)", "Step length (m)"))
 
 #older versions of this script contained backtransforming the z-scores in a for loop.
 
 for (i in y_axis_var){
+  
+  label <- labels %>% 
+    filter(vars == i) %>% 
+    pull(label)
   
   #interaction to be plotted
   interaction_term <- paste0("wk_", i)
@@ -65,7 +72,7 @@ for (i in y_axis_var){
   #create a raster and run a moving window to make the pattern easier to see.
   pred_r <- preds %>% 
     filter(interaction == interaction_term) %>%  #only keep the rows that contain data for this interaction term
-    dplyr::select(c(which(names(.) %in% c(x_axis_var, i)), "preds")) %>% 
+    dplyr::select(c(which(names(.) %in% c(x_axis_var, i)), "prob_pres")) %>% 
     terra::rast(type = "xyz") %>%
     focal(w = 3, fun = median, na.policy = "all", na.rm = T) %>%
     as.data.frame(xy = T) %>% 
@@ -161,131 +168,52 @@ ggsave(plot = p_2, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny
 
 # PLOT 3: individual variation plots ----------------------------------------------------------------------------------------------------
 
-data <- readRDS("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/all_inds_annotated_static_3yrs_apr23.rds")
-#rnd <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100/rnd_coeff_M_main100_hrly.rds")
-rnd <- readRDS("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/cluster_computing/GE_inla_static/results/Apr2523_dem_seas_100/rnd_coeff_M_main100_hrly.rds")
-#graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100/graph_M_main100_hrly.rds")
+data <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/new_data_ssf_inla_preds.rds")
+rnd <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/May1223_slrm/rnd_coeff_M_main100_hrly_try2.rds")
+graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/May1223_slrm/graph_M_main100_hrly_try2.rds")
 
+
+#the ind names are messed up. fix it using the emigration date dataframe
+emig_dates <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/fleding_emigration_timing_Mar2023.rds")
 
 
 #plot the effect of the grouped effect
 
 #Table with summary of random effects; ID is for the unique individuals
-tab_dem <-  rnd$ind1
 tab_tri <- rnd$ind2
-tab_ridge <-  rnd$ind3
+tab_ridge <- rnd$ind3
 
 ind_IDs <- unique(data$ind1)
 
-dem_coefs <- tab_dem %>% 
-  mutate(ind_ID = rep(ID[1:length(ind_IDs)], 12), #the tab datasets only have the ind id for the first season and then just numbers
-         #month = factor(rep(c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), each = length(ind_IDs)),
-         month = factor(rep(1:12, each = length(ind_IDs)),
-                        labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")))
+tri_vars <- rnd[[2]] %>% 
+  mutate(coef = mean + graph %>% filter(Factor == "TRI_100_z") %>% pull(Estimate),
+         lower = .[,4] +  graph %>% filter(Factor == "TRI_100_z") %>% pull(Lower),
+         upper = .[,6] +  graph %>% filter(Factor == "TRI_100_z") %>% pull(Upper),
+         variable = "TRI")
 
-X11(width = 10, height = 10)
-(dem_inds <- ggplot(dem_coefs, aes(x = mean, y = ind_ID)) +
-    geom_vline(xintercept = 0, linetype="dashed", size = 0.5) +
-    geom_linerange(aes(xmin = dem_coefs$'0.025quant', xmax = dem_coefs$'0.975quant'), size = 0.6, color = "#a9c4f5") +
-    geom_point(size = 1.5, color =  "#6495ed") +
-    facet_wrap(vars(month), ncol = 6) +
+
+two_vars <- rnd[[3]] %>% 
+  mutate(coef = mean + graph %>% filter(Factor == "ridge_100_z") %>% pull(Estimate),
+         lower = .[,4] +  graph %>% filter(Factor == "ridge_100_z") %>% pull(Lower),
+         upper = .[,6] +  graph %>% filter(Factor == "ridge_100_z") %>% pull(Upper),
+         variable = "Distance_to_ridge") %>% 
+  bind_rows(tri_vars)
+
+cols <- c(TRI = "lightcoral",
+          Distance_to_ridge = "cornflowerblue")
+
+X11(width = 7, height = 9)
+(coefs_inds <- ggplot(two_vars, aes(x = coef, y = ID, color = variable)) +
+    geom_vline(xintercept = graph %>% filter(Factor == "TRI_100_z") %>% pull(Estimate), linetype="dashed", 
+               color = "lightcoral", size = 0.5) +
+    geom_vline(xintercept = graph %>% filter(Factor == "ridge_100_z") %>% pull(Estimate), linetype="dashed", 
+               color = "cornflowerblue", size = 0.5) +
+    geom_point(size = 2, position = position_dodge(width = .7))  +
+    geom_linerange(aes(xmin = lower, xmax = upper), size = 0.8, position = position_dodge(width = .7)) +
+    scale_color_manual(values = cols) + 
+    scale_y_discrete(labels = ind_IDs) +
     labs(x = "Estimate", y = "") +
-    ggtitle("Elevation") +
-    theme_classic() +
-    theme(axis.text = element_text(size = 6.5)))
+    theme_classic()) 
 
-ggsave(plot = dem_inds, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/ind_season_coefs_dem.png", 
-       width = 10, height = 10, dpi = 300)
-
-
-tri_coefs <- tab_tri %>% 
-  mutate(ind_ID = rep(ID[1:length(ind_IDs)], 12), #the tab datasets only have the ind id for the first season and then just numbers
-         #month = factor(rep(c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), each = length(ind_IDs)),
-         month = factor(rep(1:12, each = length(ind_IDs)),
-                        labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")))
-
-(tri_inds <- ggplot(tri_coefs, aes(x = mean, y = ind_ID)) +
-    geom_vline(xintercept = 0, linetype="dashed", size = 0.5) +
-    geom_linerange(aes(xmin = tri_coefs$'0.025quant', xmax = tri_coefs$'0.975quant'), size = 0.6, color = "#a9c4f5") +
-    geom_point(size = 1.5, color =  "#6495ed") +
-    facet_wrap(vars(month), ncol = 6) +
-    labs(x = "Estimate", y = "") +
-    ggtitle("Terrain Ruggedness Index") +
-    theme_classic() +
-    theme(axis.text = element_text(size = 6.5)))
-
-ggsave(plot = tri_inds, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/ind_season_coefs_tri.png", 
-       width = 10, height = 10, dpi = 300)
-
-
-# slope_tpi_coefs <- tab_slope_tpi %>% 
-#   mutate(ind_ID = rep(ID[1:length(ind_IDs)], 12), #the tab datasets only have the ind id for the first season and then just numbers
-#   #month = factor(rep(c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), each = length(ind_IDs)),
-#   month = factor(rep(1:12, each = length(ind_IDs)),
-#                  labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")))
-# 
-# (tpi_inds <- ggplot(slope_tpi_coefs, aes(x = mean, y = ind_ID)) +
-#     geom_vline(xintercept = 0, linetype="dashed", size = 0.5) +
-#     geom_linerange(aes(xmin = slope_tpi_coefs$'0.025quant', xmax = slope_tpi_coefs$'0.975quant'), size = 0.6, color = "#a9c4f5") +
-#     geom_point(size = 1.5, color =  "#6495ed") +
-#     facet_wrap(vars(month), ncol = 6) +
-#     labs(x = "Estimate", y = "") +
-#     ggtitle("Slope Variation Index") +
-#     theme_classic() +
-#     theme(axis.text = element_text(size = 6.5)))
-# 
-# ggsave(plot = tpi_inds, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/ind_season_coefs_slope_tpi.png", 
-#        width = 10, height = 10, dpi = 300)
-
-
-ridge_coefs <- tab_ridge %>% 
-  mutate(ind_ID = rep(ID[1:length(ind_IDs)], 12), #the tab datasets only have the ind id for the first season and then just numbers
-         #month = factor(rep(c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), each = length(ind_IDs)),
-         month = factor(rep(1:12, each = length(ind_IDs)),
-                        labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")))
-
-(ridge_inds <- ggplot(ridge_coefs, aes(x = mean, y = ind_ID)) +
-    geom_vline(xintercept = 0, linetype="dashed", size = 0.5) +
-    geom_linerange(aes(xmin = ridge_coefs$'0.025quant', xmax = ridge_coefs$'0.975quant'), size = 0.6, color = "#a9c4f5") +
-    geom_point(size = 1.5, color =  "#6495ed") +
-    facet_wrap(vars(month), ncol = 6) +
-    labs(x = "Estimate", y = "") +
-    ggtitle("dist to ridge") +
-    theme_classic() +
-    theme(axis.text = element_text(size = 6.5)))
-
-#ggsave(plot = tpi_inds, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/ind_season_coefs_slope_tpi.png", 
-#       width = 10, height = 10, dpi = 300)
-
-
-################################# compare coeffs to a model without seasonality ####################
-
-graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/Apr23_seasonality_100/graph_M_OG_100_hrly.rds")
-
-#remove weeks since dispersal
-graph <- graph[graph$Factor != "weeks_since_emig_z",]
-#droplevels(graph$Factor)
-VarOrder <- rev(unique(graph$Factor))
-VarNames <- VarOrder
-
-graph$Factor <- factor(graph$Factor, levels = VarOrder)
-levels(graph$Factor) <- VarNames
-
-graph$Factor_n <- as.numeric(graph$Factor)
-
-#plot in ggplot2... later on reorder the variables and make the names more cohesive
-X11(width = 8, height = 6)
-
-coefs <- ggplot(graph, aes(x = Estimate, y = Factor)) +
-  geom_vline(xintercept = 0, linetype="dashed", 
-             color = "gray", size = 0.5) +
-  geom_point(color = "cornflowerblue", size = 2)  +
-  #xlim(-0.1,0.6) +
-  #scale_y_discrete(name = "",
-  #                 labels = c("Weeks since dispersal * TRI","Weeks since dispersal * DEM", "TRI", "DEM")) +
-  geom_linerange(aes(xmin = Lower, xmax = Upper),color = "cornflowerblue", size = 1) +
-  theme_classic()
-
-
-ggsave(plot = coefs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/inla_coefs_OG_static100_sl.png", 
-       width = 8, height = 6, dpi = 300)
+ggsave(plot = coefs_inds, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/ind_coefs_inds_May23.png", 
+       width = 7.5, height = 10, dpi = 300)

@@ -20,8 +20,8 @@ library(patchwork) #patching up interaction plots
 library(oce) #color palette for interaction plots
 library(patchwork) #patching up interaction plots
 library(modelsummary) #to get AIC for the clogit models
-library(TwoStepCLogit)
 library(hrbrthemes)
+library(rstanarm)
 
 wgs <- crs("+proj=longlat +datum=WGS84 +no_defs")
 
@@ -31,18 +31,58 @@ setwd("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projec
 #open data. data was prepared in 03_energy_landscape_modeling_method1.R
 data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds")
 
-#save only step length and week for raven. or not. just copy over the whole file
-#data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds") %>% 
-#  dplyr::select(c("weeks_since_emig", "step_length", "weeks_since_emig_z", "stratum"))
-
-
+#define colors
+clr <- oce::oceColorsPalette(100)[9] #was [2] before
+clr_light <- oce::oceColorsPalette(100)[10]
 
 # STEP 1: ssf modeling ----------------------------------------------------------------
 
-f <-used ~ TRI_100_z * step_length_z * weeks_since_emig_z + 
-  ridge_100_z * step_length_z * weeks_since_emig_z + 
-  strata(stratum)
+#write up the model for stan_clogit syntax
 
+f <- used ~ TRI_100_z * step_length_z * weeks_since_emig_z + 
+  ridge_100_z * step_length_z * weeks_since_emig_z + 
+  (TRI_100_z | ind1) + (ridge_100_z | ind2)
+
+#work on a sample first
+sample <- data %>% 
+  filter(data$stratum %in% sample(data$stratum, 100, replace = F)) %>% 
+  arrange(stratum)
+  
+ssf <- stan_clogit(f, 
+                   strata = stratum,
+                   data = sample,
+                   QR = TRUE,
+                   chains = 5,
+                   cores = 5,
+                   warmup = 1000,
+                   iter = 2000)
+
+
+# STEP 2: k-fold cross validation ----------------------------------------------------------------
+
+folds <- kfold_split_stratified(K = 10, x = data$stratum)
+table(data = data$stratum, fold = folds)
+kfold10 <- kfold(ssf, K = 10, cores = 7)
+
+
+folds_cyl <- loo::kfold_split_stratified(K = 3, x = mtcars$cyl)
+
+kfold4 <- kfold(fit4, folds = folds_cyl, cores = 2)
+print(kfold4)
+
+
+# STEP 3: make predictions using the model ----------------------------------------------------------------
+
+new_data <- readRDS("new_data_only_ssf_preds.rds") %>% 
+  arrange(stratum)
+
+# next line would fail without case and stratum variables                                 
+pred <- posterior_epred(ssf, newdata = new_data) #get predicted probabilities
+
+# not a random variable b/c probabilities add to 1 within strata
+all.equal(rep(sum(nd$case), nrow(pr)), rowSums(pr))
+
+############ old stuff  
 ssf <- clogit(f, data = data)
 
 #save to use on Raven
@@ -53,20 +93,24 @@ plot_summs(ssf)
 modelsummary(ssf) #AIC = 347,895.0
 
 #proper plot
-X11(width = 10, height = 3) 
-p_coeffs <- plot_summs(ssf, omit.coefs = c("step_length_z:weeks_since_emig_z:ridge_100_z", "TRI_100_z:step_length_z:weeks_since_emig_z"),
-                       colors = clr, size = 1.5) +
+X11(width = 7, height = 2) 
+p_coeffs <- plot_summs(ssf, colors = clr, point.size = 1.5, point.alpha = .5, point.shape = 19) +
   scale_y_discrete(labels = rev(c("TRI", "Step length", "Distance to ridge", "TRI: Step length", "TRI: Week",
-                                  "Step length: Week", "Step length: Distance to ridge", "Distance to ridge: Week"))) +
+                                  "Step length: Week", "Step length: Distance to ridge", "Distance to ridge: Week",
+                                  "TRI: Step length: Week", "Distance to ridge: Step length: Week"))) +
   labs(x = "Estimate", y = "") +
-  xlim(-.75, .27) +
-  scale_shape_manual(values = 19) +
-  theme_classic() +
-  theme(text = element_text(size = 16))
+  xlim(-.71, .25) +
+  theme_minimal() +
+  theme(text = element_text(size = 8), #font size should be between 6-8
+        axis.title.x = element_text(hjust = 1, margin = margin(t=6)), #align the axis labels
+        axis.title.y = element_text(angle = 90, hjust = 1, margin=margin(r=6)))
 
 #save the plot
-ggsave(plot = p_coeffs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/clogit_coeffs.png", 
-       width = 10, height = 3, dpi = 400)
+pdf("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/figs/clogit_coeffs.pdf", 
+    width = 7, height = 2)
+p_coeffs
+dev.off()
+
 
 # STEP 2: predict using the ssf ----------------------------------------------------------------
 
@@ -108,18 +152,31 @@ for (i in y_axis_var){
     geom_tile(aes(x = x, y = y, fill = probs)) +
    scale_fill_gradientn(colours = oce::oceColorsPalette(100), limits = c(0,1),
                         na.value = "white", name = "Intensity of use")+
+    #guides(fill = guide_colourbar(title.position = "top")) +
+    guides(fill = guide_colourbar(title.vjust = .95)) + #the legend title needs to move up a bit
     labs(x = "Week since dispersal", y = label) + #add label for GRC plot
-    theme(legend.direction="horizontal") + #make horizontal legend label for GRC plot
-    theme_classic() +
-    theme(text = element_text(size = 12),
+    theme_minimal() +
+    theme(plot.margin = margin(0, 15, 0, 0, "pt"),
+          legend.direction="horizontal",
           legend.position = "bottom",
-          legend.key.width=unit(1.7,"cm")) 
+          legend.key.width=unit(.7,"cm"),
+          legend.key.height=unit(.25,"cm"),
+          text = element_text(size = 8), #font size should be between 6-8
+          axis.title.x = element_text(hjust = 1, margin = margin(t=6)), #align the axis labels
+          axis.title.y = element_text(angle = 90, hjust = 1, margin=margin(r=6))) 
   
-  
-  #save the plot
-  ggsave(plot = pred_p, filename = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/clogit_", interaction_term,".png"), 
-         width = 6.9, height = 3.5, dpi = 400)
+  assign(paste0(i, "_p"), pred_p)
 }
+
+#plot all interaction plots together
+X11(width = 7, height = 3)
+combined <- TRI_100_p + ridge_100_p + step_length_p & theme(legend.position = "bottom")
+combined + plot_layout( guides = "collect")
+
+pdf("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/figs/clogit_interactions.pdf", 
+     width = 7, height = 3)
+combined + plot_layout( guides = "collect")
+dev.off()
 
 # STEP 3: Alpine predictions ----------------------------------------------------------------
 
@@ -233,22 +290,24 @@ saveRDS(areas_df, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_s
 
 #plot the trends in the suitable areas over time
 
-plot(as.numeric(areas_df$week_since_dispersal), areas_df$area_km2)
+areas_df <- readRDS("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/suitable_areas_wkly2.rds")
 
-clr <- oce::oceColorsPalette(100)[2]
-clr_light <- oce::oceColorsPalette(100)[10]
-
-X11(width = 8, height = 3) 
+X11(width = 3.4, height = 3.4) 
 p <- ggplot(areas_df, aes(x = week_since_dispersal, y = area_km2)) +
-  geom_smooth(method = "loess", alpha = .1, level = .95, color = clr, fill = clr_light, lwd = 1.2) + #95% standard error
-  geom_point(size = 1.5, stroke = 0.8, color = clr) +
+  geom_smooth(method = "loess", alpha = .1, level = .95, color = clr, fill = clr_light, lwd = 1) + #95% standard error
+  geom_point(size = 1.5,  alpha = .5, color = clr, fill = clr) +
   labs(x = "Weeks since dispersal",
        y = bquote("Flyable area " (km^2))) +
-  theme_classic() +
-  theme(text = element_text(size = 16))
+  theme_minimal() +
+  theme(plot.margin = margin(0, 5, 0, 0, "pt"),
+        text = element_text(size = 8), #font size should be between 6-8
+        axis.title.x = element_text(hjust = 1, margin = margin(t=6)), #align the axis labels
+        axis.title.y = element_text(angle = 90, hjust = 1, margin=margin(r=6)))
 
-ggsave(plot = p, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/area_over_wks.png", 
-       width = 8, height = 3, dpi = 400)
+pdf("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/figs/area_over_wks.pdf", 
+    width = 3.4, height = 3.4)
+p
+dev.off()
 
 
 #calculate the percentage increase in suitable areas

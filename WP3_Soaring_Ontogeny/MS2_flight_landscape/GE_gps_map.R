@@ -5,6 +5,7 @@
 library(tidyverse)
 library(leaflet)
 library(mapview)
+library(sf)
 library(sp)
 library(oce)
 
@@ -69,7 +70,7 @@ m2
 
 #library(rworldmap)
 
-world <- st_read("/home/enourani/ownCloud/Work/GIS_files/continent_shapefile/World_Continents.shp") %>% 
+world <- st_read("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/GIS_files/continent_shapefile/World_Continents.shp") %>% 
  # st_crop(xmin = -10, xmax = 40, ymin = 30, ymax = 60) %>%
   st_union()
 
@@ -84,12 +85,12 @@ dev.off()
 library(marmap)
 library(ggspatial)
 
-png("/home/enourani/ownCloud/Work/conferences/GRC_GRS_23/Europe_map.png", width = 11, height = 8.93, units = "in", res = 400)
+png("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/conferences/GRC_GRS_23/Europe_map2.png", width = 6, height = 3.7, units = "in", res = 400)
 ggplot() +
-  geom_sf(data = world, fill = "grey40", col = NA) +
-  xlim(c(-8, 40)) + ylim(c(30, 58)) +
+  geom_sf(data = ld, fill = "grey40", col = NA) +
+  xlim(c(-6, 28)) + ylim(c(37, 52)) +
   geom_polygon(data = data.frame(y = c(45.2,46.65, 46.65, 45.2), x = c(7.2, 7.2, 13.89, 13.89)), aes(x = x, y = y), 
-               color = clr, fill = NA, linewidth = 1.3) +
+               color = clr2, fill = NA, linewidth = 1.8) +
   ggspatial::annotation_scale(
     location = "bl",
     bar_cols = c("black", "white"),
@@ -136,3 +137,10 @@ ggplot(ridge_df) +
   theme_void() +
   theme(legend.position = "bottom")
 dev.off()
+
+
+#exponential growth and plateau for the GRS talk
+y <- c(1,1.5,2,2.5, 3,4,5,6,6,6,6)
+x <- c(1:11)
+
+

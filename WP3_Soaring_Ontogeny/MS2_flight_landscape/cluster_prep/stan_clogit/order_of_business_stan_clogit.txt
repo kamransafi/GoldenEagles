@@ -1,0 +1,26 @@
+#Scripts for modeling the energy landscape for golden eagles past dispersal
+#using stan clogit to include random slopes for individuals
+#update on June 12. 2023
+
+#STEP 1: copy files to cluster ---------------------------------------------------------------------
+#From terminal on local system: (make sure to be on MPI internet, use VPN)
+
+scp /home/enourani/ownCloud\ -\ enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/all_inds_annotated_static_3yrs_apr23.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/stan_clogit/ 
+
+  
+#STEP 2: ssh to cluster ---------------------------------------------------------------------
+  
+# if not on MPI network: 
+ssh gate.mpcdf.mpg.de
+ssh raven.mpcdf.mpg.de
+
+#if on MPI network:
+ssh enourani@raven.mpcdf.mpg.de
+
+#STEP 3: run the job ------------------------------------------------------------------------
+sbatch stan_clogit/stan_clogit.slrm
+
+squeue -u enourani
+
+#STEP 4: after job is done, copy files back to local machine --------------------------------
+scp -r enourani@raven.mpcdf.mpg.de:/raven/u/enourani/xxx /home/enourani/ownCloud/Work/cluster_computing/xxx
