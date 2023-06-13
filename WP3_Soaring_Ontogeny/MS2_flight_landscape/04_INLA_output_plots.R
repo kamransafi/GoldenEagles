@@ -9,13 +9,13 @@ library(sf)
 library(scales)
 library(patchwork) #patching up interaction plots
 
-setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
+setwd("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
-result_path <- "/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/May1223_slrm"
+result_path <- "/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/cluster_computing/GE_inla_static/results/Jun1_2023/"
 
 # PLOT 1: coefficient plots ----------------------------------------------------------------------------------------------------
 
-graph <- readRDS("/home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/May1223_slrm/graph_M_main100_hrly_try2.rds")
+graph <- readRDS("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/cluster_computing/GE_inla_static/results/Jun1_2023/graph_M_main100_hrly_nopred.rds")
 
 #remove weeks since dispersal
 graph <- graph[graph$Factor != "weeks_since_emig_z",]
@@ -36,8 +36,8 @@ coefs <- ggplot(graph, aes(x = Estimate, y = Factor)) +
              color = "gray", linewidth = 0.5) +
   geom_point(color = "cornflowerblue", size = 2)  +
   labs(x = "Estimate", y = "") +
-  scale_y_discrete(labels = rev(c("TRI", "Step length", "Distance to ridge", "TRI: Step length", "TRI: Week",
-                                  "Step length: Week", "Step length: Distance to ridge", "Distance to ridge: Week", "TRI: Step length: Week", "Distance to ridge: Step length: Week"))) +
+  #scale_y_discrete(labels = rev(c("TRI", "Step length", "Distance to ridge", "TRI: Step length", "TRI: Week",
+  #                                "Step length: Week", "Step length: Distance to ridge", "Distance to ridge: Week", "TRI: Step length: Week", "Distance to ridge: Step length: Week"))) +
   geom_linerange(aes(xmin = Lower, xmax = Upper),color = "cornflowerblue", linewidth = 1) +
   theme_classic()
   

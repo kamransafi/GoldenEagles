@@ -20,7 +20,6 @@ library(patchwork) #patching up interaction plots
 library(oce) #color palette for interaction plots
 library(patchwork) #patching up interaction plots
 library(modelsummary) #to get AIC for the clogit models
-library(TwoStepCLogit)
 library(hrbrthemes)
 
 wgs <- crs("+proj=longlat +datum=WGS84 +no_defs")
@@ -31,15 +30,13 @@ setwd("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projec
 #open data. data was prepared in 03_energy_landscape_modeling_method1.R
 data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds")
 
-#save only step length and week for raven. or not. just copy over the whole file
-#data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds") %>% 
-#  dplyr::select(c("weeks_since_emig", "step_length", "weeks_since_emig_z", "stratum"))
-
-
+#define colors
+clr <- oce::oceColorsPalette(100)[9] #was [2] before
+clr_light <- oce::oceColorsPalette(100)[10]
 
 # STEP 1: ssf modeling ----------------------------------------------------------------
 
-f <-used ~ TRI_100_z * step_length_z * weeks_since_emig_z + 
+f <- used ~ TRI_100_z * step_length_z * weeks_since_emig_z + 
   ridge_100_z * step_length_z * weeks_since_emig_z + 
   strata(stratum)
 
@@ -53,20 +50,24 @@ plot_summs(ssf)
 modelsummary(ssf) #AIC = 347,895.0
 
 #proper plot
-X11(width = 10, height = 3) 
-p_coeffs <- plot_summs(ssf, omit.coefs = c("step_length_z:weeks_since_emig_z:ridge_100_z", "TRI_100_z:step_length_z:weeks_since_emig_z"),
-                       colors = clr, size = 1.5) +
+X11(width = 7, height = 2) 
+p_coeffs <- plot_summs(ssf, colors = clr, point.size = 1.5, point.alpha = .5, point.shape = 19) +
   scale_y_discrete(labels = rev(c("TRI", "Step length", "Distance to ridge", "TRI: Step length", "TRI: Week",
-                                  "Step length: Week", "Step length: Distance to ridge", "Distance to ridge: Week"))) +
+                                  "Step length: Week", "Step length: Distance to ridge", "Distance to ridge: Week",
+                                  "TRI: Step length: Week", "Distance to ridge: Step length: Week"))) +
   labs(x = "Estimate", y = "") +
-  xlim(-.75, .27) +
-  scale_shape_manual(values = 19) +
-  theme_classic() +
-  theme(text = element_text(size = 16))
+  xlim(-.71, .25) +
+  theme_minimal() +
+  theme(text = element_text(size = 8), #font size should be between 6-8
+        axis.title.x = element_text(hjust = 1, margin = margin(t=6)), #align the axis labels
+        axis.title.y = element_text(angle = 90, hjust = 1, margin=margin(r=6)))
 
 #save the plot
-ggsave(plot = p_coeffs, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/clogit_coeffs.png", 
-       width = 10, height = 3, dpi = 400)
+pdf("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/figs/clogit_coeffs.pdf", 
+    width = 7, height = 2)
+p_coeffs
+dev.off()
+
 
 # STEP 2: predict using the ssf ----------------------------------------------------------------
 
@@ -108,23 +109,37 @@ for (i in y_axis_var){
     geom_tile(aes(x = x, y = y, fill = probs)) +
    scale_fill_gradientn(colours = oce::oceColorsPalette(100), limits = c(0,1),
                         na.value = "white", name = "Intensity of use")+
+    #guides(fill = guide_colourbar(title.position = "top")) +
+    guides(fill = guide_colourbar(title.vjust = .95)) + #the legend title needs to move up a bit
     labs(x = "Week since dispersal", y = label) + #add label for GRC plot
-    theme(legend.direction="horizontal") + #make horizontal legend label for GRC plot
-    theme_classic() +
-    theme(text = element_text(size = 12),
+    theme_minimal() +
+    theme(plot.margin = margin(0, 15, 0, 0, "pt"),
+          legend.direction="horizontal",
           legend.position = "bottom",
-          legend.key.width=unit(1.7,"cm")) 
+          legend.key.width=unit(.7,"cm"),
+          legend.key.height=unit(.25,"cm"),
+          text = element_text(size = 8), #font size should be between 6-8
+          axis.title.x = element_text(hjust = 1, margin = margin(t=6)), #align the axis labels
+          axis.title.y = element_text(angle = 90, hjust = 1, margin=margin(r=6))) 
   
-  
-  #save the plot
-  ggsave(plot = pred_p, filename = paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/clogit_", interaction_term,".png"), 
-         width = 6.9, height = 3.5, dpi = 400)
+  assign(paste0(i, "_p"), pred_p)
 }
+
+#plot all interaction plots together
+X11(width = 7, height = 3)
+combined <- TRI_100_p + ridge_100_p + step_length_p & theme(legend.position = "bottom")
+combined + plot_layout( guides = "collect")
+
+pdf("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/figs/clogit_interactions.pdf", 
+     width = 7, height = 3)
+combined + plot_layout( guides = "collect")
+dev.off()
 
 # STEP 3: Alpine predictions ----------------------------------------------------------------
 
 #open data 
 data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds") #this is limited to 3 yrs post dispersal
+ssf <- readRDS("ssf_model_for_raven.rds")
 
 #create a dataframe fro the Alps. layers made by Louise from 02_data_processing_&_annotation.R
 #the dimensions and extents are different. so crop based on ridge to match the extents
@@ -172,8 +187,10 @@ areas <- lapply(wks_ls, function(x){
     
      #generate a new dataset
     new_data <- topo_df %>%
-      mutate(step_length = sample(x$step_length, nrow(topo_df), replace = T),
-             step_length_z = (step_length - attr(data[,colnames(data) == "step_length_z"],'scaled:center'))/attr(data[,colnames(data) == "step_length_z"],'scaled:scale'),
+      mutate(step_length = mean(x$step_length), #try again with the average step length
+             #step_length = sample(x$step_length, nrow(topo_df), replace = T),
+             #step_length_z = (step_length - attr(data[,colnames(data) == "step_length_z"],'scaled:center'))/attr(data[,colnames(data) == "step_length_z"],'scaled:scale'),
+             step_length_z = 0,
              weeks_since_emig = one_week,
              weeks_since_emig_z =  (one_week - attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:center'))/attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:scale'),
              stratum = sample(x$stratum, nrow(topo_df), replace = T))
@@ -187,7 +204,7 @@ areas <- lapply(wks_ls, function(x){
              probs = preds_prob)
     
     #skip saving this file. it's 1 GB. just get out of it what I need
-    #saveRDS(preds_pr, paste0("/media/enourani/Ellham's HDD/Elham_GE/clogit_alpine_preds2/alpine_preds_wk_", week_i, ".rds"))
+    saveRDS(preds_pr, paste0("/home/enourani/Documents/alpine_preds/alpine_preds_wk_", week_i, ".rds"))
     
     #save a raster
     #preds_r <- preds_pr %>%  #only keep the rows that contain data for this interaction term
@@ -195,18 +212,18 @@ areas <- lapply(wks_ls, function(x){
     #  terra::rast(type = "xyz")
     
     #make the maps
-      png(paste0("/media/enourani/Ellham's HDD/Elham_GE/clogit_alpine_maps3/alps_wk_", week_i, ".png"),
-          width = 13, height = 9, units = "in", res = 400)
-      print(preds_pr %>% 
-              ggplot() +
-              geom_tile(aes(x = location.long, y = location.lat, fill = probs)) +
-              scale_fill_gradientn(colours = oce::oceColorsPalette(100), limits = c(0,1),
-                                   na.value = "white", name = "Intensity of use") +
-              labs(x = "", y = "", title = paste0("Week ", week_i, " since dispersal")) +
-              theme_void()
-      )
+    #  png(paste0("/media/enourani/Ellham's HDD/Elham_GE/clogit_alpine_maps3/alps_wk_", week_i, ".png"),
+    #      width = 13, height = 9, units = "in", res = 400)
+    #  print(preds_pr %>% 
+    #          ggplot() +
+    #          geom_tile(aes(x = location.long, y = location.lat, fill = probs)) +
+    #          scale_fill_gradientn(colours = oce::oceColorsPalette(100), limits = c(0,1),
+    #                               na.value = "white", name = "Intensity of use") +
+    #          labs(x = "", y = "", title = paste0("Week ", week_i, " since dispersal")) +
+    #          theme_void()
+    #  )
       
-      dev.off()
+    #  dev.off()
       
       #calculate suitable areas
       area_.7 <- preds_pr %>%
@@ -233,22 +250,24 @@ saveRDS(areas_df, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_s
 
 #plot the trends in the suitable areas over time
 
-plot(as.numeric(areas_df$week_since_dispersal), areas_df$area_km2)
+areas_df <- readRDS("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/suitable_areas_wkly2.rds")
 
-clr <- oce::oceColorsPalette(100)[2]
-clr_light <- oce::oceColorsPalette(100)[10]
-
-X11(width = 8, height = 3) 
+X11(width = 3.4, height = 3.4) 
 p <- ggplot(areas_df, aes(x = week_since_dispersal, y = area_km2)) +
-  geom_smooth(method = "loess", alpha = .1, level = .95, color = clr, fill = clr_light, lwd = 1.2) + #95% standard error
-  geom_point(size = 1.5, stroke = 0.8, color = clr) +
+  geom_smooth(method = "loess", alpha = .1, level = .95, color = clr, fill = clr_light, lwd = 1) + #95% standard error
+  geom_point(size = 1.5,  alpha = .5, color = clr, fill = clr) +
   labs(x = "Weeks since dispersal",
        y = bquote("Flyable area " (km^2))) +
-  theme_classic() +
-  theme(text = element_text(size = 16))
+  theme_minimal() +
+  theme(plot.margin = margin(0, 5, 0, 0, "pt"),
+        text = element_text(size = 8), #font size should be between 6-8
+        axis.title.x = element_text(hjust = 1, margin = margin(t=6)), #align the axis labels
+        axis.title.y = element_text(angle = 90, hjust = 1, margin=margin(r=6)))
 
-ggsave(plot = p, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/initial_figs/area_over_wks.png", 
-       width = 8, height = 3, dpi = 400)
+pdf("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/figs/area_over_wks.pdf", 
+    width = 3.4, height = 3.4)
+p
+dev.off()
 
 
 #calculate the percentage increase in suitable areas

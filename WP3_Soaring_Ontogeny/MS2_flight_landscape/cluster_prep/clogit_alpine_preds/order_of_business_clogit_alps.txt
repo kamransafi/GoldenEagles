@@ -12,7 +12,7 @@ scp /home/enourani/ownCloud\ -\ enourani@ab.mpg.de@owncloud.gwdg.de/Work/Project
 scp /home/enourani/ownCloud\ -\ enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/topo_df_100_LF.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/slrm_clogit/ 
   
   
-  #STEP 2: ssh to cluster ---------------------------------------------------------------------
+#STEP 2: ssh to cluster ---------------------------------------------------------------------
 
 # if not on MPI network: 
 ssh gate.mpcdf.mpg.de
@@ -22,10 +22,7 @@ ssh raven.mpcdf.mpg.de
 ssh enourani@raven.mpcdf.mpg.de
 
 #STEP 3: run the job ------------------------------------------------------------------------
-sbatch slrm_inla/inla_interactions.slrm
-
-#for model with no interaction predictions:
-#sbatch slrm_inla/inla_main_model.slrm
+sbatch slrm_clogit/clogit_alp_pred.slrm
 
 squeue -u enourani
 
