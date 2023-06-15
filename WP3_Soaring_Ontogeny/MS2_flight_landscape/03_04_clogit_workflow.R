@@ -174,9 +174,10 @@ gc();gc()
 #in the previous version, I used the median step length for each week to make the predictions. Now, take 10 random step length values per week. 
 
 wks_ls <- split(data, data$weeks_since_emig)
+wks_ls2 <- wks_ls[42:156]
 
 (start <- Sys.time())
-areas <- lapply(wks_ls, function(x){
+areas <- lapply(wks_ls2, function(x){
   
   one_week <- x %>% 
     distinct(weeks_since_emig) %>% 
@@ -237,24 +238,48 @@ areas <- lapply(wks_ls, function(x){
        
 })
 
-Sys.time() - start #
+Sys.time() - start # 3.366299 hours for 42-156
+
+
+## add areas of weeks 1 - 41 to the dataframe
+files <- list.files("/home/enourani/Documents/alpine_preds", full.names = T, pattern = ".rds")[1:41]
+
+areas_1_41 <- data.frame()
+
+for (i in files){
+  preds_pr <- readRDS(i)
+  
+  week_i <- str_sub(i, -7, -5)
+  
+  area_.7 <- preds_pr %>%
+    filter(probs >= 0.7) %>% 
+    summarize(pixels = n()) %>% #count the 
+    mutate(area_m2 = pixels * 100 * 100, #the resolution of the cell size
+           area_km2 = round(area_m2/1e6,3),
+           week_since_dispersal = week_i)
+  
+  areas_1_41 <- rbind(areas_1_41, area_.7)
+  
+}
+
 
 areas_df <- areas %>% 
   reduce(rbind) %>% 
+  bind_rows(areas_1_41,.) %>% 
   mutate(week_since_dispersal = as.numeric(week_since_dispersal))
 
-saveRDS(areas_df, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/suitable_areas_wkly2.rds")
+saveRDS(areas_df, file = "/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/suitable_areas_meansl_wkly.rds")
 
 #create animation of the maps. run the following code in the terminal
 #ffmpeg -framerate 25 -pattern_type glob -i "*.png" output.mp4
 
 #plot the trends in the suitable areas over time
 
-areas_df <- readRDS("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/suitable_areas_wkly2.rds")
+areas_df <- readRDS("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/suitable_areas_meansl_wkly.rds")
 
 X11(width = 3.4, height = 3.4) 
 p <- ggplot(areas_df, aes(x = week_since_dispersal, y = area_km2)) +
-  geom_smooth(method = "loess", alpha = .1, level = .95, color = clr, fill = clr_light, lwd = 1) + #95% standard error
+  geom_smooth(method = "lm", alpha = .1, level = .95, color = clr, fill = clr_light, lwd = 1) + #95% standard error
   geom_point(size = 1.5,  alpha = .5, color = clr, fill = clr) +
   labs(x = "Weeks since dispersal",
        y = bquote("Flyable area " (km^2))) +
@@ -264,11 +289,12 @@ p <- ggplot(areas_df, aes(x = week_since_dispersal, y = area_km2)) +
         axis.title.x = element_text(hjust = 1, margin = margin(t=6)), #align the axis labels
         axis.title.y = element_text(angle = 90, hjust = 1, margin=margin(r=6)))
 
-pdf("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/figs/area_over_wks.pdf", 
+pdf("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/figs/area_over_wks_meansl.pdf", 
     width = 3.4, height = 3.4)
 p
 dev.off()
 
+cor.test(areas_df$week_since_dispersal, areas_df$area_km2)
 
 #calculate the percentage increase in suitable areas
 #calc area of the Alpine region
@@ -286,10 +312,10 @@ alps_area <- alps %>%
 #190,544.7 km2
 
 #compare with the flyable ares
-areas <- readRDS("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/suitable_areas_wkly2.rds")
+areas_df <- readRDS("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/suitable_areas_meansl_wkly.rds")
 
 #add a ratio column 
-areas <- areas %>% 
+areas <- areas_df %>% 
   mutate(alp_ratio = area_km2/alps_area$area_km2)
 
 #percentage change over time
@@ -298,3 +324,16 @@ year_1 <- (areas %>% filter(week_since_dispersal == 52) %>%  pull(area_km2)) / (
 year_3 <- (areas %>% slice(1) %>% pull(area_km2)) / (areas %>% filter(week_since_dispersal == 156) %>%  pull(area_km2)) 
 
 #68% increase
+
+#plot the percentage of suitable area instead of the raw area
+X11(width = 3.4, height = 3.4) 
+p <- ggplot(areas, aes(x = week_since_dispersal, y = alp_ratio)) +
+  geom_smooth(method = "lm", alpha = .1, level = .95, color = clr, fill = clr_light, lwd = 1) + #95% standard error
+  geom_point(size = 1.5,  alpha = .5, color = clr, fill = clr) +
+  labs(x = "Weeks since dispersal",
+       y = "Flyable area (%)") +
+  theme_minimal() +
+  theme(plot.margin = margin(0, 5, 0, 0, "pt"),
+        text = element_text(size = 8), #font size should be between 6-8
+        axis.title.x = element_text(hjust = 1, margin = margin(t=6)), #align the axis labels
+        axis.title.y = element_text(angle = 90, hjust = 1, margin=margin(r=6)))

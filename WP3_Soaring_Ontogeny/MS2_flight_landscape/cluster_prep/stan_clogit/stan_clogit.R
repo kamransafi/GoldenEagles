@@ -4,13 +4,14 @@
 
 
 library(dplyr)
-library(stringr)
 library(rstanarm)
 
 
 
 #STEP 1: open data, define variables and formula -----------------------------------------------------------------
-data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds")  %>% 
+data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds") %>% 
+  mutate(stratum_IDs = stratum,
+         stratum = as.numeric(as.factor(stratum))) %>% 
   arrange(stratum) #to use stan_clogit, data should be ordered by startum
 
 

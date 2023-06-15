@@ -29,7 +29,13 @@ wgs <- crs("+proj=longlat +datum=WGS84 +no_defs")
 setwd("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
 #open data. data was prepared in 03_energy_landscape_modeling_method1.R
-data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds")
+data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds") %>% 
+  mutate(stratum_IDs = stratum,
+         stratum = as.numeric(as.factor(stratum))) %>% 
+  arrange(stratum)
+
+saveRDS(data, "all_inds_annotated_static_3yrs_apr23_ordered.rds")
+
 
 #define colors
 clr <- oce::oceColorsPalette(100)[9] #was [2] before
@@ -45,7 +51,7 @@ f <- used ~ TRI_100_z * step_length_z * weeks_since_emig_z +
 
 #work on a sample first
 sample <- data %>% 
-  filter(data$stratum %in% sample(data$stratum, 100, replace = F)) %>% 
+  filter(data$stratum %in% sample(data$stratum, 100, replace = F))
   arrange(stratum)
   
 ssf <- stan_clogit(f, 
