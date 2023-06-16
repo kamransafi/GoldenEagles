@@ -21,9 +21,9 @@ library(oce) #color palette for interaction plots
 library(patchwork) #patching up interaction plots
 library(modelsummary) #to get AIC for the clogit models
 library(hrbrthemes)
+library(ggnewscale)
 
 wgs <- crs("+proj=longlat +datum=WGS84 +no_defs")
-
 
 setwd("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
@@ -206,25 +206,7 @@ areas <- lapply(wks_ls2, function(x){
     
     #skip saving this file. it's 1 GB. just get out of it what I need
     saveRDS(preds_pr, paste0("/home/enourani/Documents/alpine_preds/alpine_preds_wk_", week_i, ".rds"))
-    
-    #save a raster
-    #preds_r <- preds_pr %>%  #only keep the rows that contain data for this interaction term
-    #  dplyr::select(c("location.long", "location.lat", "probs")) %>% 
-    #  terra::rast(type = "xyz")
-    
-    #make the maps
-    #  png(paste0("/media/enourani/Ellham's HDD/Elham_GE/clogit_alpine_maps3/alps_wk_", week_i, ".png"),
-    #      width = 13, height = 9, units = "in", res = 400)
-    #  print(preds_pr %>% 
-    #          ggplot() +
-    #          geom_tile(aes(x = location.long, y = location.lat, fill = probs)) +
-    #          scale_fill_gradientn(colours = oce::oceColorsPalette(100), limits = c(0,1),
-    #                               na.value = "white", name = "Intensity of use") +
-    #          labs(x = "", y = "", title = paste0("Week ", week_i, " since dispersal")) +
-    #          theme_void()
-    #  )
-      
-    #  dev.off()
+  
       
       #calculate suitable areas
       area_.7 <- preds_pr %>%
@@ -270,8 +252,7 @@ areas_df <- areas %>%
 
 saveRDS(areas_df, file = "/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/suitable_areas_meansl_wkly.rds")
 
-#create animation of the maps. run the following code in the terminal
-#ffmpeg -framerate 25 -pattern_type glob -i "*.png" output.mp4
+
 
 #plot the trends in the suitable areas over time
 
@@ -319,21 +300,113 @@ areas <- areas_df %>%
   mutate(alp_ratio = area_km2/alps_area$area_km2)
 
 #percentage change over time
-year_1 <- (areas %>% filter(week_since_dispersal == 52) %>%  pull(area_km2)) / (areas %>% slice(1) %>% pull(area_km2))
+year_1 <- (areas %>% filter(week_since_dispersal == 52) %>%  pull(area_km2)) / (alps_area %>% slice(1) %>% pull(area_km2))
+year_3 <- (areas %>% filter(week_since_dispersal == 156) %>%  pull(area_km2)) / (alps_area %>% slice(1) %>% pull(area_km2))
 
-year_3 <- (areas %>% slice(1) %>% pull(area_km2)) / (areas %>% filter(week_since_dispersal == 156) %>%  pull(area_km2)) 
+year_1_3 <- (areas %>% slice(1) %>% pull(area_km2)) / (areas %>% filter(week_since_dispersal == 156) %>%  pull(area_km2)) 
+
+
 
 #68% increase
 
-#plot the percentage of suitable area instead of the raw area
-X11(width = 3.4, height = 3.4) 
-p <- ggplot(areas, aes(x = week_since_dispersal, y = alp_ratio)) +
-  geom_smooth(method = "lm", alpha = .1, level = .95, color = clr, fill = clr_light, lwd = 1) + #95% standard error
-  geom_point(size = 1.5,  alpha = .5, color = clr, fill = clr) +
-  labs(x = "Weeks since dispersal",
-       y = "Flyable area (%)") +
-  theme_minimal() +
-  theme(plot.margin = margin(0, 5, 0, 0, "pt"),
-        text = element_text(size = 8), #font size should be between 6-8
-        axis.title.x = element_text(hjust = 1, margin = margin(t=6)), #align the axis labels
-        axis.title.y = element_text(angle = 90, hjust = 1, margin=margin(r=6)))
+
+# STEP 4: Alpine maps ----------------------------------------------------------------
+
+
+pred_files <- list.files("/home/enourani/Documents/alpine_preds", full.names = T, pattern = ".rds")
+  
+
+#work on a sample
+pred_files <- pred_files[1:5]
+
+
+r_ls <- lapply(pred_files, function(wk){
+  
+  r_.7 <- readRDS(wk) %>% 
+    filter(probs >= .7) %>% 
+    dplyr::select(c("location.long", "location.lat", "probs")) %>% 
+    terra::rast(type = "xyz")
+  
+  r_.7
+  
+})
+
+#save a raster
+#preds_r <- preds_pr %>%  #only keep the rows that contain data for this interaction term
+#  dplyr::select(c("location.long", "location.lat", "probs")) %>% 
+#  terra::rast(type = "xyz")
+
+#make the maps
+X11(width = 13, height = 9)
+
+r_.7 %>%
+  ggplot() +
+  geom_tile(aes(x = location.long, y = location.lat, fill = probs)) +
+  scale_fill_gradientn(colours = oce::oceColorsPalette(100), limits = c(0,1),
+                       na.value = "white", name = "Intensity of use") +
+  labs(x = "", y = "") +
+  theme_void()
+
+
+ggplot(r_.7, aes(x = location.long, y = location.lat)) + geom_density2d()
+
+ggplot(r_.7, aes(x = location.long, y = location.lat)) +
+  stat_density_2d(aes(color = stat(level)))+
+  scale_color_gradientn(colours = oce::oceColorsPalette(100))
+
+ggplot(r_.7, aes(x = location.long, y = location.lat)) +
+  stat_density_2d(aes(fill = stat(level)), geom = "polygon")+
+  scale_fill_gradientn(colours = oce::oceColorsPalette(100))
+
+ggplot(r_.7, aes(x = location.long, y = location.lat)) +
+  stat_density_2d(geom = "raster", aes(fill = stat(density)), contour = FALSE) +
+  scale_fill_gradientn(colours = oce::oceColorsPalette(100), na.value = "white") +
+  labs(x = "", y = "") +
+  theme_void()
+
+ggplot(r_.7, aes(x = location.long, y = location.lat)) + geom_bin2d(bins = 100)
+
+
+#put dist to ridge as the base layer
+ridge_100 <- rast("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/ridge_100_LF.tif") %>% 
+  as.data.frame(xy = T)
+ridge_100[ridge_100$distance_to_ridge_line_mask > 5000, "distance_to_ridge_line_mask"] <- NA
+
+ 
+ggplot() +
+  geom_tile(data = ridge_100, aes(x = x, y = y, fill = scale(distance_to_ridge_line_mask))) +
+  scale_fill_viridis2(option = "magma", midpoint = -0.2)
+#scale_fill_gradientn(colors = rev(grey.colors(50)), guide = "none", 
+  #                     breaks = c(50, 100, 200, 500, 1000, max(ridge_100$distance_to_ridge_line_mask))) +
+  new_scale_fill() +
+  stat_density_2d(data = r_.7, aes(x = location.long, y = location.lat, color = stat(level))) +
+  scale_color_gradientn(colours = oce::oceColorsPalette(100)) +
+  labs(x = "", y = "") +
+  theme_void()
+
+  
+ggplot(ridge_100) +
+         geom_tile(aes(x = x, y = y, fill = distance_to_ridge_line_mask)) +
+         scale_fill_gradient2(low = "#09378e", mid = "#afc9fa", high = "#e7effd", midpoint = 500,
+                              na.value = "white", name = "")
+  
+  
+X11();ggplot(ridge_100) +
+  geom_tile(aes(x = x, y = y, fill = distance_to_ridge_line_mask)) +
+  scale_fill_gradient2(low = "#09378e", mid = "#a9edfd", high = "#dbf7fe", midpoint = 1500,
+                       na.value = "white", name = "")
+
+#grayscale version
+X11();ggplot(ridge_100) +
+  geom_tile(aes(x = x, y = y, fill = distance_to_ridge_line_mask)) +
+  scale_fill_gradient2(low = "#404040", mid = "#999999", high = "#EEEEEE", midpoint = 1500,
+                       na.value = "white", name = "")
+
+#this one is good!
+X11();ggplot() +
+geom_tile(data = ridge_100, aes(x = x, y = y, fill = scale(distance_to_ridge_line_mask))) +
+       scale_fill_gradientn(colors = grey.colors(100), guide = "none", na.value = "white", alpha = .8)
+
+
+#create animation of the maps. run the following code in the terminal
+#ffmpeg -framerate 25 -pattern_type glob -i "*.png" output.mp4
