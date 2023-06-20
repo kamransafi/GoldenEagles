@@ -20,14 +20,16 @@ f <- used ~ TRI_100_z * step_length_z * weeks_since_emig_z +
   ridge_100_z * step_length_z * weeks_since_emig_z + 
   (TRI_100_z | ind1) + (ridge_100_z | ind2)
 
+(b <- Sys.time())
 ssf <- stan_clogit(f, 
                    strata = stratum,
                    data = data,
                    QR = TRUE,
                    chains = 5,
                    cores = 5,
-                   warmup = 1000,
-                   iter = 2000)
+                   warmup = 100,
+                   iter = 200)
+Sys.time() - b
 
 saveRDS(ssf, file = "ssf_stan_clogit_model.rds")
 

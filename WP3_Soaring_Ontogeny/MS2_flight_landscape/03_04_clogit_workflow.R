@@ -8,17 +8,13 @@ library(tidyverse)
 library(magrittr)
 library(corrr)
 library(jtools) #to plot coeffs of clogit
-library(INLA)
 library(fields)
-library(raster)
 library(survival)
-library(ggregplot)
 library(terra)
 library(gstat) #for interpolations
 #library(rastervis) #remotes::install_github("oscarperpinan/rastervis")
 library(patchwork) #patching up interaction plots
 library(oce) #color palette for interaction plots
-library(patchwork) #patching up interaction plots
 library(modelsummary) #to get AIC for the clogit models
 library(hrbrthemes)
 library(ggnewscale)
@@ -312,24 +308,44 @@ year_1_3 <- (areas %>% slice(1) %>% pull(area_km2)) / (areas %>% filter(week_sin
 
 # STEP 4: Alpine maps ----------------------------------------------------------------
 
-
 pred_files <- list.files("/home/enourani/Documents/alpine_preds", full.names = T, pattern = ".rds")
   
+#put dist to ridge as the base layer
+ridge_100 <- rast("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/ridge_100_LF.tif") %>% 
+  as.data.frame(xy = T)
+ridge_100[ridge_100$distance_to_ridge_line_mask > 5000, "distance_to_ridge_line_mask"] <- NA #do this for the plot to look nicer... NA values will be white
 
-#work on a sample
-pred_files <- pred_files[1:5]
+setwd("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/figs/alpine_preds/")
 
+(b <- Sys.time())
 
-r_ls <- lapply(pred_files, function(wk){
+for(wk in pred_files[79:156]){
+#lapply(pred_files[4:6], function(wk){
+  
+  week_i <- str_sub(wk, -7, -5)
   
   r_.7 <- readRDS(wk) %>% 
     filter(probs >= .7) %>% 
-    dplyr::select(c("location.long", "location.lat", "probs")) %>% 
-    terra::rast(type = "xyz")
+    dplyr::select(c("location.long", "location.lat", "probs"))
   
-  r_.7
+  p <- ggplot() +
+    geom_tile(data = ridge_100, aes(x = x, y = y, fill = scale(distance_to_ridge_line_mask))) +
+    scale_fill_gradientn(colors = grey.colors(100), guide = "none", na.value = "white") +
+    new_scale_fill() +
+    stat_density_2d(data = r_.7, aes(x = location.long, y = location.lat, fill = after_stat(level)), geom = "polygon") +
+    scale_fill_gradientn(colours = alpha(oce::oceColorsPalette(100)[51:100], alpha = .2), guide = "none") +
+    labs(title = paste0("Week ", as.numeric(week_i), " since dispersal"), x = "", y = "") +
+    theme_void()
   
-})
+  
+  ggsave(plot = p, filename = paste0(week_i, "_alpine_pred.png"), width = 7, height = 5, dpi = 300)
+
+
+  print(paste0("week ", week_i, " done"))
+#})
+}
+
+Sys.time() - b
 
 #save a raster
 #preds_r <- preds_pr %>%  #only keep the rows that contain data for this interaction term
@@ -348,7 +364,7 @@ r_.7 %>%
   theme_void()
 
 
-ggplot(r_.7, aes(x = location.long, y = location.lat)) + geom_density2d()
+X11(width = 13, height = 9); ggplot(r_.7, aes(x = location.long, y = location.lat)) + geom_density2d()
 
 ggplot(r_.7, aes(x = location.long, y = location.lat)) +
   stat_density_2d(aes(color = stat(level)))+
@@ -356,7 +372,7 @@ ggplot(r_.7, aes(x = location.long, y = location.lat)) +
 
 ggplot(r_.7, aes(x = location.long, y = location.lat)) +
   stat_density_2d(aes(fill = stat(level)), geom = "polygon")+
-  scale_fill_gradientn(colours = oce::oceColorsPalette(100))
+  scale_fill_gradientn(colours = alpha(oce::oceColorsPalette(100)[80:100], alpha = .3)) #set transparency
 
 ggplot(r_.7, aes(x = location.long, y = location.lat)) +
   stat_density_2d(geom = "raster", aes(fill = stat(density)), contour = FALSE) +
@@ -367,46 +383,26 @@ ggplot(r_.7, aes(x = location.long, y = location.lat)) +
 ggplot(r_.7, aes(x = location.long, y = location.lat)) + geom_bin2d(bins = 100)
 
 
-#put dist to ridge as the base layer
-ridge_100 <- rast("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/ridge_100_LF.tif") %>% 
-  as.data.frame(xy = T)
-ridge_100[ridge_100$distance_to_ridge_line_mask > 5000, "distance_to_ridge_line_mask"] <- NA
-
- 
-ggplot() +
-  geom_tile(data = ridge_100, aes(x = x, y = y, fill = scale(distance_to_ridge_line_mask))) +
-  scale_fill_viridis2(option = "magma", midpoint = -0.2)
-#scale_fill_gradientn(colors = rev(grey.colors(50)), guide = "none", 
-  #                     breaks = c(50, 100, 200, 500, 1000, max(ridge_100$distance_to_ridge_line_mask))) +
-  new_scale_fill() +
-  stat_density_2d(data = r_.7, aes(x = location.long, y = location.lat, color = stat(level))) +
-  scale_color_gradientn(colours = oce::oceColorsPalette(100)) +
-  labs(x = "", y = "") +
-  theme_void()
-
-  
-ggplot(ridge_100) +
-         geom_tile(aes(x = x, y = y, fill = distance_to_ridge_line_mask)) +
-         scale_fill_gradient2(low = "#09378e", mid = "#afc9fa", high = "#e7effd", midpoint = 500,
-                              na.value = "white", name = "")
-  
-  
-X11();ggplot(ridge_100) +
-  geom_tile(aes(x = x, y = y, fill = distance_to_ridge_line_mask)) +
-  scale_fill_gradient2(low = "#09378e", mid = "#a9edfd", high = "#dbf7fe", midpoint = 1500,
-                       na.value = "white", name = "")
-
-#grayscale version
-X11();ggplot(ridge_100) +
-  geom_tile(aes(x = x, y = y, fill = distance_to_ridge_line_mask)) +
-  scale_fill_gradient2(low = "#404040", mid = "#999999", high = "#EEEEEE", midpoint = 1500,
-                       na.value = "white", name = "")
 
 #this one is good!
-X11();ggplot() +
+X11(width = 13, height = 9); ggplot() +
 geom_tile(data = ridge_100, aes(x = x, y = y, fill = scale(distance_to_ridge_line_mask))) +
-       scale_fill_gradientn(colors = grey.colors(100), guide = "none", na.value = "white", alpha = .8)
-
+       scale_fill_gradientn(colors = grey.colors(100), guide = "none", na.value = "white") +
+  new_scale_fill() +
+  geom_density2d(data = r_.7, aes(x = location.long, y = location.lat, fill = stat(density)))
+  #stat_density_2d(r_.7, aes(x = location.long, y = location.lat, fill = stat(density)), geom = "polygon", contour = FALSE) +
+  #scale_fill_gradientn(colours = oce::oceColorsPalette(100), na.value = "white") +
+  labs(x = "", y = "") +
+  theme_void()
+  
+  
+  X11(width = 13, height = 9); ggplot() +
+    geom_tile(data = ridge_100, aes(x = x, y = y, fill = scale(distance_to_ridge_line_mask))) +
+    scale_fill_gradientn(colors = grey.colors(100), guide = "none", na.value = "white") +
+    new_scale_fill() +
+    stat_density_2d(data = r_.7, aes(x = location.long, y = location.lat, fill = stat(level)), geom = "polygon") +
+    scale_fill_gradientn(colours = alpha(oce::oceColorsPalette(100)[51:100], alpha = .2), guide = "none") +
+    theme_void()
 
 #create animation of the maps. run the following code in the terminal
 #ffmpeg -framerate 25 -pattern_type glob -i "*.png" output.mp4
