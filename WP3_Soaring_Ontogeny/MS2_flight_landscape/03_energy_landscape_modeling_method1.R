@@ -133,12 +133,15 @@ F_full <- used ~ -1 +
 
 # STEP 3: create new data for predictions to plot interaction terms----------------------------------------------------------------
 
-data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds") #this is limited to 3 yrs post dispersal
+#to use this with glmmTMB, make sure to convert ind ID and stratum ID to numeric
+data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds") %>% #this is limited to 3 yrs post dispersal
+  mutate(animal_ID = as.numeric(as.factor(ind1)), #animal ID and stratum ID should be numeric
+         stratum_ID = as.numeric(as.factor(stratum)))
 
 #the model will be run on the cluster.
 
 #to make sure the predictions cover the parameter space, create a dataset with all possible combinations. one per interaction term. merge later on
-grd_dem <- expand.grid(x = (1:156), 
+grd_dem <- expand.grid(x = (1:156), #n of weeks
                        y = seq(from = min(data$dem_100, na.rm = T), to = quantile(data$dem_100, .9, na.rm = T), length.out = 15)) %>% # n = 1050
   rename(weeks_since_emig = x,
          dem_100 = y) %>% 
@@ -184,12 +187,12 @@ set.seed(777)
 n <- nrow(grd_all)
 
 new_data_only <- data %>%
-  group_by(stratum) %>% 
+  group_by(stratum_ID) %>% 
   slice_sample(n = 1) %>% #randomly selects one row (from each stratum)
   ungroup() %>% 
   slice_sample(n = n, replace = F) %>% #randomly select n of these strata. Make sure n is less than n_distinct(data$stratum)
   #only keep the columns that I need
-  dplyr::select(c("stratum", "ind1", "ind2", "ind3")) %>% 
+  dplyr::select(c("stratum_ID", "animal_ID")) %>% 
   bind_cols(grd_all) %>% 
   #calculate z-scores. get the mean(center) and sd(scale) from the previous z transformation. for consistency
   mutate( dem_100_z = (dem_100 - attr(data[,colnames(data) == "dem_100_z"],'scaled:center'))/attr(data[,colnames(data) == "dem_100_z"],'scaled:scale'),

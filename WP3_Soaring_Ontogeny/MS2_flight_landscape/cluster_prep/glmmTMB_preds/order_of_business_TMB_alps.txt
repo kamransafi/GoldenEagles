@@ -1,0 +1,31 @@
+#Scripts for modeling the energy landscape for golden eagles past dispersal
+#data contains missing values which will allow me to make predictions to plot the interaction
+#update on April 27th to include seasonality (for dem) and hourly points
+
+#STEP 1: copy files to cluster ---------------------------------------------------------------------
+#From terminal on local system: (make sure to be on MPI internet, use VPN)
+
+scp /home/enourani/ownCloud\ -\ enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/ssf_model_for_raven.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/slrm_clogit/ 
+
+scp /home/enourani/ownCloud\ -\ enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/all_inds_annotated_static_3yrs_apr23.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/slrm_clogit/ 
+
+scp /home/enourani/ownCloud\ -\ enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/topo_df_100_LF.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/slrm_clogit/ 
+  
+  
+#STEP 2: ssh to cluster ---------------------------------------------------------------------
+
+# if not on MPI network: 
+ssh gate.mpcdf.mpg.de
+ssh raven.mpcdf.mpg.de
+
+#if on MPI network:
+ssh enourani@raven.mpcdf.mpg.de
+
+#STEP 3: run the job ------------------------------------------------------------------------
+sbatch "--args Line=$SLURM_ARRAY_TASK_ID" TMB_alps/TMB_alp_pred.slrm
+
+squeue -u enourani
+
+#STEP 4: after job is done, copy files back to local machine --------------------------------
+
+scp -r enourani@raven.mpcdf.mpg.de:/raven/u/enourani/*M_main100_hrly_try2.rds /home/enourani/ownCloud/Work/cluster_computing/GE_inla_static/results/May1223_slrm
