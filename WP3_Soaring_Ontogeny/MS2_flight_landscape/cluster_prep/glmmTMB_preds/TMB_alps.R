@@ -1,78 +1,71 @@
-#R script to predict the flyability of the alpine region for golden eagle juvies
-#Elham Nourani, PhD
-#Jan 31, 2023. Konstanz, DE
+#script for making Alpine prediction maps for golden eagles
+#21.06.2023. Canberra, AU.
+#Elham Nourani, PhD.
 
+library(foreach)
+library(doParallel)
 
-library(dplyr)
-library(stringr)
-library(survival)
-library(purrr)
+# Set the number of cores to be used
+num_cores <- 8
+registerDoParallel(cores = num_cores)
 
+# Create a list of unique week values
+week_list <- unique(data$weeks_since_emig)
 
-#STEP 1: open data, define variables and formula -----------------------------------------------------------------
+# Empty dataframe to save the areas
+areas_df <- data.frame(week_since_dispersal = integer(156),
+                       area_m2 = numeric(156),
+                       area_km2 = numeric(156))
 
-data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds")
-topo_df <- readRDS("topo_df_100_LF.rds")
-ssf <- readRDS("ssf_model_for_raven.rds")
-
-#STEP 2: make predictions for each week since dispersal
-wks_ls <- split(data, data$weeks_since_emig)
-
-n <- 10 #make n predictions for each week
-
-areas <- lapply(wks_ls, function(x){
+# Create a foreach loop to iterate over the week values in parallel
+foreach(week_i = week_list, .packages = c("ggplot2", "oce", "dplyr", "gtools", "glmmTMB")) %dopar% {
+  # Generate a new dataset for the current week
+  topo_df <- topo_df %>%
+    mutate(step_length = mean(x$step_length),
+           step_length_z = 0,
+           weeks_since_emig = week_i,
+           weeks_since_emig_z = (week_i - attr(data[, colnames(data) == "weeks_since_emig_z"], "scaled:center")) / attr(data[, colnames(data) == "weeks_since_emig_z"], "scaled:scale"),
+           stratum_ID = NA,
+           animal_ID = sample(x$animal_ID, nrow(topo_df), replace = TRUE))
   
-  one_week <- x %>% 
-    distinct(weeks_since_emig) %>% 
-    pull(weeks_since_emig)
+  # Predict using the model
+  topo_df$preds <- predict(TMB_M, newdata = topo_df, type = "link", newparams = F, allow.new.levels = F, se.fit = F)
+  #Sys.time() - b #24 min for one week
+  topo_df$probs <- gtools::inv.logit(preds)
   
-  week_i <- one_week %>% 
-    str_pad(3,"left","0")
+  gc()
   
-  areas_wk <- data.frame()
+  # Extract flyable areas
+  r_.6 <- topo_df %>% 
+    filter(probs >= 0.6) %>% 
+    dplyr::select(c("location.long", "location.lat", "probs"))
   
-  #make predictions 10 times for each week. select step lengths randomly for each trial
+  # Calculate suitable areas
+  area_.6 <- r_.6 %>% 
+    summarize(pixels = n()) %>% 
+    mutate(area_m2 = pixels * 100 * 100,
+           area_km2 = round(area_m2 / 1e6, 3),
+           week_since_dispersal = week_i)
   
-  for(i in 1:n){
-    
-    #generate a new dataset
-    new_data <- topo_df %>%
-      mutate(step_length = sample(x$step_length, nrow(topo_df), replace = T),
-             step_length_z = (step_length - attr(data[,colnames(data) == "step_length_z"],'scaled:center'))/attr(data[,colnames(data) == "step_length_z"],'scaled:scale'),
-             weeks_since_emig = one_week,
-             weeks_since_emig_z =  (one_week - attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:center'))/attr(data[,colnames(data) == "weeks_since_emig_z"],'scaled:scale'),
-             stratum = sample(x$stratum, nrow(topo_df), replace = T))
-    
-    #predict using the model
-    preds <- predict(ssf, newdata = new_data, type = "risk")
-    preds_prob <- preds/(preds+1)
-    
-    preds_pr <- new_data %>%
-      mutate(preds = preds,
-             probs = preds_prob)
-    
-    #skip saving this file if on local machine. it's 1 GB
-    saveRDS(preds_pr, paste0("alpine_preds_wk_", week_i, "_trial_", i, ".rds"))
-    
-    #calculate suitable areas
-    area_.7 <- preds_pr %>%
-      filter(probs >= 0.7) %>% 
-      summarize(pixels = n()) %>% #count the 
-      mutate(area_m2 = pixels * 100 * 100, #the resolution of the cell size
-             area_km2 = round(area_m2/1e6,3),
-             week_since_dispersal = week_i,
-             trial = i)
-    
-    
-    areas_wk <- rbind(areas_wk, area_.7)
-  }
+  # Combine the results with the global data frame (areas_df)
+  areas_df[one_week,] <- area_.6
   
-  areas_wk
+  # Plot
+  p <- ggplot() +
+    geom_tile(data = ridge_100, aes(x = x, y = y, fill = scale(distance_to_ridge_line_mask))) +
+    scale_fill_gradientn(colors = grey.colors(100), guide = "none", na.value = "white") +
+    new_scale_fill() +
+    stat_density_2d(data = r_.6, aes(x = location.long, y = location.lat, fill = after_stat(level)), geom = "polygon") +
+    scale_fill_gradientn(colours = alpha(oce::oceColorsPalette(100)[51:100], alpha = 0.2), guide = "none") +
+    labs(title = paste0("Week ", as.numeric(week_i), " since dispersal"), x = "", y = "") +
+    theme_void()
   
-}) %>% 
-  reduce(rbind)
+  ggsave(plot = p, filename = paste0(week_i, "_alpine_pred.png"), dev = "cairo_pdf", width = 7, height = 5, dpi = 300)
+  
+  #clean up
+  rm(p, r_0.6); gc(); gc()
 
-saveRDS(areas, file = "alpine_preds_areas.rds")
+}
 
-
-
+# Stop the parallel processing
+stopImplicitCluster()
