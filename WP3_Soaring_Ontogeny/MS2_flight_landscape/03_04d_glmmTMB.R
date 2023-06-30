@@ -322,34 +322,34 @@ for(x in wks_ls[c(75:156)]){
 Sys.time() - start #30 min per week
 
 
-## add areas of weeks 1 - 41 to the dataframe
-files <- list.files("/home/enourani/Documents/alpine_preds", full.names = T, pattern = ".rds")[1:41]
-
-areas_1_41 <- data.frame()
-
-for (i in files){
-  preds_pr <- readRDS(i)
-  
-  week_i <- str_sub(i, -7, -5)
-  
-  area_.7 <- preds_pr %>%
-    filter(probs >= 0.7) %>% 
-    summarize(pixels = n()) %>% #count the 
-    mutate(area_m2 = pixels * 100 * 100, #the resolution of the cell size
-           area_km2 = round(area_m2/1e6,3),
-           week_since_dispersal = week_i)
-  
-  areas_1_41 <- rbind(areas_1_41, area_.7)
-  
-}
-
-areas_df <- areas %>% 
-  reduce(rbind) %>% 
-  bind_rows(areas_1_41,.) %>% 
-  mutate(week_since_dispersal = as.numeric(week_since_dispersal))
-
-saveRDS(areas_df, file = "/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/xxx")
-
+# ## add areas of weeks 1 - 41 to the dataframe
+# files <- list.files("/home/enourani/Documents/alpine_preds", full.names = T, pattern = ".rds")[1:41]
+# 
+# areas_1_41 <- data.frame()
+# 
+# for (i in files){
+#   preds_pr <- readRDS(i)
+#   
+#   week_i <- str_sub(i, -7, -5)
+#   
+#   area_.7 <- preds_pr %>%
+#     filter(probs >= 0.7) %>% 
+#     summarize(pixels = n()) %>% #count the 
+#     mutate(area_m2 = pixels * 100 * 100, #the resolution of the cell size
+#            area_km2 = round(area_m2/1e6,3),
+#            week_since_dispersal = week_i)
+#   
+#   areas_1_41 <- rbind(areas_1_41, area_.7)
+#   
+# }
+# 
+# areas_df <- areas %>% 
+#   reduce(rbind) %>% 
+#   bind_rows(areas_1_41,.) %>% 
+#   mutate(week_since_dispersal = as.numeric(week_since_dispersal))
+# 
+# saveRDS(areas_df, file = "/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/xxx")
+# 
 
 
 

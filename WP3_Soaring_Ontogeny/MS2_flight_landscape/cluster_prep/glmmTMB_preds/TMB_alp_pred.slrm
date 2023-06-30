@@ -7,13 +7,13 @@
 # Job Name:
 #SBATCH -J TMB_alps
 # Number of nodes and MPI tasks per node:
-#SBATCH --nodes=8 #based on the size of the data, etc. I think i can do 8 weeks at a time
+#SBATCH --nodes=1 
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=72
+#SBATCH --cpus-per-task=5
 #SBATCH --mail-type=all
 #SBATCH --mail-user=enourani@ab.mpg.de
-# Wall clock limit (max. is 24 hours):
-#SBATCH --time=23:30:00
+#Wall clock limit (max. is 24 hours):
+#SBATCH --time=23:50:00
 #SBATCH --mem=120000 #if not using all CPUS per node, this is limited to 120GB
 
 # Load compiler and MPI modules (must be the same as used for compiling the code)
@@ -22,18 +22,21 @@ module load gcc/10 R/4.2 gdal gsl/2.4
 
 #assign paths and file names
 export FILENAME=TMB_alps.R
-export SCR_DIR=/ptmp/enourani/scratch #define a path to later create a scratch directory in>
+export SCR_DIR=/ptmp/enourani/scratch #define a path to later create a scratch directory 
 
 ##### create a scratch directory and copy over all the files that I want to use
-mkdir -p $SCR_DIR #-p flag allows creation of nested directories. dollar sign means this va>
+mkdir -p $SCR_DIR #-p flag allows creation of nested directories. 
 cd $SCR_DIR 
 cp -p $HOME/TMB_alps/all_inds_annotated_static_3yrs_apr23.rds .
+cp -p $HOME/TMB_alps/TMB_model.rds .
+cp -p $HOME/TMB_alps/topo_df_100_LF.rds .
+cp -p $HOME/TMB_alps/ridge_100_LF.tif .
 cp -p $HOME/TMB_alps/$FILENAME .
 
 # Run the program:
 R CMD BATCH $FILENAME 2>&1 errorlog
 
 ##### copy results over and clean up
-cd $HOME
+cd $HOME/TMB_alps
 cp -pR $SCR_DIR/* . #-p means preserve file attributes. R is recursive
 rm -rf $SCR_DIR
