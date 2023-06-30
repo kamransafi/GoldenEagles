@@ -223,17 +223,19 @@ ridge_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/
   drop_na(distance_to_ridge_line_mask)
 ridge_100[ridge_100$distance_to_ridge_line_mask > 5000, "distance_to_ridge_line_mask"] <- NA #do this for the plot to look nicer... NA values will be white
 
-areas_df <- data.frame(pixels = numeric(156),
-                       area_m2 = numeric(156),
-                       area_km2 = numeric(156),
-                       week_since_dispersal = integer(156))
+#areas_df <- data.frame(pixels = numeric(156),
+#                       area_m2 = numeric(156),
+#                       area_km2 = numeric(156),
+#                       week_since_dispersal = integer(156))
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/tmb_figs/alpine_preds/")
 
 wks_ls <- split(data, data$weeks_since_emig)
 
+gc()
+
 (start <- Sys.time())
-#for(x in wks_ls){
+for(x in wks_ls[c(75:156)]){
   
   #extract week number
   one_week <- x %>% 
@@ -273,8 +275,8 @@ wks_ls <- split(data, data$weeks_since_emig)
            area_km2 = round(area_m2/1e6,3),
            week_since_dispersal = week_i)
   
-  #write area to a file
-  areas_df[one_week,] <- area_.6
+  #save area as a file
+  save(area_.6, file = paste0("area_alps_wk_", week_i, ".r"))
   
   
   #plot the raw map for a few weeks
@@ -313,10 +315,11 @@ wks_ls <- split(data, data$weeks_since_emig)
   
   rm(p)
   gc()
+  print(paste0("week ", week_i, " of 156 done!"))
 
-#}
+}
 
-Sys.time() - start
+Sys.time() - start #30 min per week
 
 
 ## add areas of weeks 1 - 41 to the dataframe

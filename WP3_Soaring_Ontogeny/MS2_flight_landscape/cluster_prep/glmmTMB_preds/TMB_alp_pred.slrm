@@ -14,7 +14,7 @@
 #SBATCH --mail-user=enourani@ab.mpg.de
 # Wall clock limit (max. is 24 hours):
 #SBATCH --time=23:30:00
-#SBATCH --mem=500000 #if not using all CPUS per node, this is limited to 120GB
+#SBATCH --mem=120000 #if not using all CPUS per node, this is limited to 120GB
 
 # Load compiler and MPI modules (must be the same as used for compiling the code)
 module purge
