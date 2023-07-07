@@ -2,12 +2,11 @@
 #21.06.2023. Canberra, AU.
 #Elham Nourani, PhD.
 
-library(tidyverse)
+library(dplyr)
+library(ggplot2)
 library(glmmTMB)
 library(patchwork) #patching up interaction plots
 library(oce) #color palette for interaction plots
-library(corrr)
-library(terra)
 library(ggnewscale)
 
 

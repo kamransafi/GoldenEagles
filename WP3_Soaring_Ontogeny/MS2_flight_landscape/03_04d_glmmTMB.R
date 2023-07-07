@@ -228,14 +228,14 @@ ridge_100[ridge_100$distance_to_ridge_line_mask > 5000, "distance_to_ridge_line_
 #                       area_km2 = numeric(156),
 #                       week_since_dispersal = integer(156))
 
-setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/tmb_figs/alpine_preds/")
+setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/tmb_figs/alpine_preds_7/")
 
 wks_ls <- split(data, data$weeks_since_emig)
 
 gc()
 
 (start <- Sys.time())
-for(x in wks_ls[c(75:156)]){
+for(x in wks_ls){
   
   #extract week number
   one_week <- x %>% 
@@ -268,19 +268,19 @@ for(x in wks_ls[c(75:156)]){
   #saveRDS(preds_pr, paste0("/home/enourani/Documents/alpine_preds/alpine_preds_wk_", week_i, ".rds"))
   
   #calculate suitable areas
-  area_.6 <- topo_df %>% 
-    filter(probs >= .6) %>% 
+  area_.7 <- topo_df %>% 
+    filter(probs >= .7) %>% 
     summarize(pixels = n()) %>% #count the 
     mutate(area_m2 = pixels * 100 * 100, #the resolution of the cell size
            area_km2 = round(area_m2/1e6,3),
            week_since_dispersal = week_i)
   
   #save area as a file
-  save(area_.6, file = paste0("area_alps_wk_", week_i, ".r"))
+  save(area_.7, file = paste0("area_alps_wk_", week_i, ".r"))
   
   
   #plot the raw map for a few weeks
-  if(one_week %in% c(1,24,52,104,156)){
+#  if(one_week %in% c(1,24,52,104,156)){
    # tiff(paste0("alps_wk_", week_i, ".tiff"), width = 7, height = 5, units = "in", res = 400)
     t <- topo_df %>% 
             ggplot() +
@@ -294,27 +294,27 @@ for(x in wks_ls[c(75:156)]){
    # dev.off()
     rm(t)
     gc()
-  }
+ # }
 
   
   #plot
   #tiff(paste0(week_i, "_alpine_pred.tiff"), width = 7, height = 5, units = "in", res = 400)
   #p <- ggplot() +
-  p <- ggplot() +  
-  geom_tile(data = ridge_100, aes(x = x, y = y, fill = scale(distance_to_ridge_line_mask))) +
-    scale_fill_gradientn(colors = grey.colors(100), guide = "none", na.value = "white") +
-    new_scale_fill() +
-    stat_density_2d(data = topo_df %>% filter(probs >= .6) %>% dplyr::select("location.lat", "location.long", "probs"), 
-                    aes(x = location.long, y = location.lat, fill = after_stat(level)), geom = "polygon") +
-    scale_fill_gradientn(colours = alpha(oce::oceColorsPalette(100)[51:100], alpha = .2)) +
-    labs(title = paste0("Week ", one_week, " since dispersal"), x = "", y = "") +
-    theme_void()
-  
-  #dev.off()
-  ggsave(plot = p, filename = paste0(week_i, "_alpine_pred.tiff"), device = "tiff", width = 7, height = 4.5, dpi = 400) #3min
-  
-  rm(p)
-  gc()
+  # p <- ggplot() +  
+  # geom_tile(data = ridge_100, aes(x = x, y = y, fill = scale(distance_to_ridge_line_mask))) +
+  #   scale_fill_gradientn(colors = grey.colors(100), guide = "none", na.value = "white") +
+  #   new_scale_fill() +
+  #   stat_density_2d(data = topo_df %>% filter(probs >= .6) %>% dplyr::select("location.lat", "location.long", "probs"), 
+  #                   aes(x = location.long, y = location.lat, fill = after_stat(level)), geom = "polygon") +
+  #   scale_fill_gradientn(colours = alpha(oce::oceColorsPalette(100)[51:100], alpha = .2)) +
+  #   labs(title = paste0("Week ", one_week, " since dispersal"), x = "", y = "") +
+  #   theme_void()
+  # 
+  # #dev.off()
+  # ggsave(plot = p, filename = paste0(week_i, "_alpine_pred.tiff"), device = "tiff", width = 7, height = 4.5, dpi = 400) #3min
+  # 
+  # rm(p)
+  # gc()
   print(paste0("week ", week_i, " of 156 done!"))
 
 }
