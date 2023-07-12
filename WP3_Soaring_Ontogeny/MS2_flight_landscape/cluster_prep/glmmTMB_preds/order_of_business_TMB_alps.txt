@@ -11,6 +11,7 @@ scp /home/enourani/ownCloud\ -\ enourani@ab.mpg.de@owncloud.gwdg.de/Work/Project
 
 scp /home/enourani/ownCloud\ -\ enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/ridge_100_LF.tif enourani@raven.mpcdf.mpg.de:/raven/u/enourani/TMB_alps/
   
+scp /home/mahle68/ownCloud\ -\ enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/ridge_100_LF_df.rds enourani@raven.mpcdf.mpg.de:/raven/u/enourani/TMB_alps/  
   
 #STEP 2: ssh to cluster ---------------------------------------------------------------------
 

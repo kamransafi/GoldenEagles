@@ -13,7 +13,7 @@ library(terra)
 library(ggnewscale)
 
 
-setwd("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/")
+setwd("/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
 #colors
@@ -46,25 +46,25 @@ TMB_struc <- glmmTMB(used ~ -1 + TRI_100_z * step_length_z * weeks_since_emig_z 
                    start = list(theta = c(log(1e3),0,0))) #add a 0 for each random slope. in this case, 2
 
 
-TMB_m <- glmmTMB:::fitTMB(TMB_struc)
-summary(TMB_m)
+TMB_M <- glmmTMB:::fitTMB(TMB_struc)
+summary(TMB_M)
 
-saveRDS(TMB_m, file = "TMB_model.rds")
+saveRDS(TMB_M, file = "TMB_model.rds")
 
 #extract coefficient estimates and confidence intervals
-confint(TMB_m)
+confint(TMB_M)
 
 #extract individual-specific random effects:
-ranef(TMB_m)[[1]]$animal_ID
+ranef(TMB_M)[[1]]$animal_ID
 
 # STEP 2: model validation ------------------------------------------------------------------ 
 
 #calculate the RMSE
-performance_rmse(TMB_m)
+performance_rmse(TMB_M)
 
 # STEP 3: PLOT coefficient estimates ------------------------------------------------------------------ 
 
-graph <- confint(TMB_m) %>% 
+graph <- confint(TMB_M) %>% 
   as.data.frame() %>% 
   rownames_to_column(var = "Factor") %>% 
   filter(!(Factor %in% c("weeks_since_emig_z", "Std.Dev.ridge_100_z|animal_ID", "Std.Dev.TRI_100_z|animal_ID.1")))
@@ -99,7 +99,7 @@ ggsave(coefs, filename = "/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.
 
 # STEP 4: PLOT individual-specific coefficients ------------------------------------------------------------------ 
 
-rnd <- ranef(TMB_m) %>% 
+rnd <- ranef(TMB_M) %>% 
   as.data.frame() %>% 
   filter(grpvar == "animal_ID") %>% 
   mutate(ID = rep(levels(as.factor(data$ind1)),2),
@@ -143,14 +143,15 @@ ggsave(plot = coefs_inds, filename = "/home/enourani/ownCloud - enourani@ab.mpg.
 #new dataset created in 03_energy_landscape_modeling_method1.r ... this file was updated to have stratum_ID and animal_ID as numeric variables
 #accoring to the predict.glmmTMB help file: "To compute population-level predictions for a given grouping variable 
 #(i.e., setting all random effects for that grouping variable to zero), set the grouping variable values to NA."
-new_data <- readRDS("new_data_only_ssf_preds.rds") #%>% 
+new_data <- readRDS("new_data_only_ssf_preds.rds") %>% 
   mutate(stratum_ID = NA)
   #       animal_ID = NA) #set these to NA for population-level predictions
 
 
 #predict using the model
-preds <- predict(TMB_m, newdata = new_data, type = "link")
-
+#preds <- predict(TMB_M, newdata = new_data, type = "link", se.fit = T)
+preds <- predict(TMB_M, newdata = new_data, type = "link")
+  
 preds_pr <- new_data %>% 
   mutate(preds = preds) %>% 
   rowwise() %>% 
@@ -160,7 +161,7 @@ preds_pr <- new_data %>%
 y_axis_var <- c("TRI_100", "ridge_100")
 x_axis_var <- "weeks_since_emig"
 labels <- data.frame(vars = y_axis_var, 
-                     label = c("Terrain Ruggedness Index", "Distance to ridge (km)"))
+                     label = c("Topographic Ruggedness Index", "Distance to ridge line (km)"))
 
 for (i in y_axis_var){
   
@@ -179,12 +180,12 @@ for (i in y_axis_var){
   #rename(probs = focal_mean)
   
   #X11(width = 6.9, height = 3.5)
+  if(i == "ridge_100"){
   pred_p <- pred_r %>% 
     ggplot() +
     geom_tile(aes(x = x, y = y, fill = probs)) +
     scale_fill_gradientn(colours = oce::oceColorsPalette(100), limits = c(0,1),
-                         na.value = "white", name = "Intensity of use")+
-    #guides(fill = guide_colourbar(title.position = "top")) +
+                         na.value = "white", name = "Energy availability Index")+
     guides(fill = guide_colourbar(title.vjust = .95)) + #the legend title needs to move up a bit
     labs(x = "Week since dispersal", y = label) + #add label for GRC plot
     theme_minimal() +
@@ -196,18 +197,35 @@ for (i in y_axis_var){
           text = element_text(size = 8), #font size should be between 6-8
           axis.title.x = element_text(hjust = 1, margin = margin(t=6)), #align the axis labels
           axis.title.y = element_text(angle = 90, hjust = 1, margin=margin(r=6))) 
-  
+  } else{
+    pred_p <- pred_r %>% 
+      ggplot() +
+      geom_tile(aes(x = x, y = y, fill = probs)) +
+      scale_fill_gradientn(colours = oce::oceColorsPalette(100), limits = c(0,1),
+                           na.value = "white", name = "Energy availability Index")+
+      guides(fill = guide_colourbar(title.vjust = .95)) + #the legend title needs to move up a bit
+      labs(x = "", y = label) + #add label for GRC plot
+      theme_minimal() +
+      theme(plot.margin = margin(0, 15, 0, 0, "pt"),
+            legend.direction="horizontal",
+            legend.position = "bottom",
+            legend.key.width=unit(.7,"cm"),
+            legend.key.height=unit(.25,"cm"),
+            text = element_text(size = 8), #font size should be between 6-8
+            axis.title.x = element_text(hjust = 1, margin = margin(t=6)), #align the axis labels
+            axis.title.y = element_text(angle = 90, hjust = 1, margin=margin(r=6))) 
+  }
   assign(paste0(i, "_p"), pred_p)
+  
 }
-
 
 #plot all interaction plots together
 X11(width = 4.5, height = 4.8)
 combined <- TRI_100_p + ridge_100_p & theme(legend.position = "bottom")
 p <- combined + plot_layout( guides = "collect", nrow = 2)
 
-ggsave(p, filename = "/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/tmb_figs/interactions.pdf", 
-       width = 4.5, height = 4.6, dpi = 300)
+ggsave(p, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/tmb_figs/interactions_EAI.pdf", 
+       width = 4.5, height = 4.8, dpi = 400)
 
 # STEP 6: predictions for the Alps + PLOTS ------------------------------------------------------------------ 
 
@@ -218,19 +236,19 @@ TMB_M <- readRDS( "TMB_model.rds")
 topo_df <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/topo_df_100_LF.rds")
 
 #prepare dist to ridge to be used as the base layer for plotting
-ridge_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ridge_100_LF.tif") %>% 
-  as.data.frame(xy = T) %>% 
-  drop_na(distance_to_ridge_line_mask)
-ridge_100[ridge_100$distance_to_ridge_line_mask > 5000, "distance_to_ridge_line_mask"] <- NA #do this for the plot to look nicer... NA values will be white
+ ridge_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ridge_100_LF.tif") %>% 
+   #aggregate(fact = 5) %>% #200*200 m
+   as.data.frame(xy = T) %>% 
+   drop_na(distance_to_ridge_line_mask)
+ ridge_100[ridge_100$distance_to_ridge_line_mask > 5000, "distance_to_ridge_line_mask"] <- NA #do this for the plot to look nicer... NA values will be white
 
-#areas_df <- data.frame(pixels = numeric(156),
-#                       area_m2 = numeric(156),
-#                       area_km2 = numeric(156),
-#                       week_since_dispersal = integer(156))
+#saveRDS(ridge_100, file = "ridge_100_LF_df.rds")
+
+#ridge_100 <- readRDS("ridge_100_LF_df.rds")
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/tmb_figs/alpine_preds_7/")
 
-wks_ls <- split(data, data$weeks_since_emig)
+wks_ls <- split(data, data$weeks_since_emig)[c(4,24)] #only use these 4 for density plots
 
 gc()
 
@@ -264,93 +282,110 @@ for(x in wks_ls){
   
   gc()
   
-  #skip saving this file. it's 1 GB. just get out of it what I need
-  #saveRDS(preds_pr, paste0("/home/enourani/Documents/alpine_preds/alpine_preds_wk_", week_i, ".rds"))
   
   #calculate suitable areas
-  area_.7 <- topo_df %>% 
-    filter(probs >= .7) %>% 
-    summarize(pixels = n()) %>% #count the 
-    mutate(area_m2 = pixels * 100 * 100, #the resolution of the cell size
-           area_km2 = round(area_m2/1e6,3),
-           week_since_dispersal = week_i)
+  #area_.7 <- topo_df %>% 
+  #  filter(probs >= .7) %>% 
+  #  summarize(pixels = n()) %>% #count the 
+  #  mutate(area_m2 = pixels * 100 * 100, #the resolution of the cell size
+  #         area_km2 = round(area_m2/1e6,3),
+  #         week_since_dispersal = week_i)
   
   #save area as a file
-  save(area_.7, file = paste0("area_alps_wk_", week_i, ".r"))
+  #save(area_.7, file = paste0("area_alps_wk_", week_i, ".r"))
   
   
   #plot the raw map for a few weeks
-#  if(one_week %in% c(1,24,52,104,156)){
-   # tiff(paste0("alps_wk_", week_i, ".tiff"), width = 7, height = 5, units = "in", res = 400)
-    t <- topo_df %>% 
-            ggplot() +
-            geom_tile(aes(x = location.long, y = location.lat, fill = probs)) +
-            scale_fill_gradientn(colours = oce::oceColorsPalette(100), limits = c(0,1),
-                                 na.value = "white", name = "Intensity of use") +
-            labs(x = "", y = "", title = paste0("Week ", one_week, " since dispersal")) +
-            theme_void()
+  #  t <- topo_df %>% 
+  #          ggplot() +
+  #          geom_tile(aes(x = location.long, y = location.lat, fill = probs)) +
+  #          scale_fill_gradientn(colours = oce::oceColorsPalette(100), limits = c(0,1),
+  #                               na.value = "white", name = "Intensity of use") +
+  #          labs(x = "", y = "", title = paste0("Week ", one_week, " since dispersal")) +
+  #          theme_void()
     
-    ggsave(plot = t, filename = paste0("alps_wk_", week_i, ".tiff"), device = "tiff", width = 7, height = 4.5, dpi = 400)
-   # dev.off()
-    rm(t)
-    gc()
- # }
-
+  #  ggsave(plot = t, filename = paste0("alps_wk_", week_i, ".tiff"), device = "tiff", width = 7, height = 4.5, dpi = 400)
   
-  #plot
-  #tiff(paste0(week_i, "_alpine_pred.tiff"), width = 7, height = 5, units = "in", res = 400)
-  #p <- ggplot() +
-  # p <- ggplot() +  
-  # geom_tile(data = ridge_100, aes(x = x, y = y, fill = scale(distance_to_ridge_line_mask))) +
-  #   scale_fill_gradientn(colors = grey.colors(100), guide = "none", na.value = "white") +
-  #   new_scale_fill() +
-  #   stat_density_2d(data = topo_df %>% filter(probs >= .6) %>% dplyr::select("location.lat", "location.long", "probs"), 
-  #                   aes(x = location.long, y = location.lat, fill = after_stat(level)), geom = "polygon") +
-  #   scale_fill_gradientn(colours = alpha(oce::oceColorsPalette(100)[51:100], alpha = .2)) +
-  #   labs(title = paste0("Week ", one_week, " since dispersal"), x = "", y = "") +
-  #   theme_void()
-  # 
-  # #dev.off()
-  # ggsave(plot = p, filename = paste0(week_i, "_alpine_pred.tiff"), device = "tiff", width = 7, height = 4.5, dpi = 400) #3min
-  # 
-  # rm(p)
-  # gc()
+  #density plot
+  p <- ggplot() +  
+    geom_tile(data = ridge_100, aes(x = x, y = y, fill = scale(distance_to_ridge_line_mask))) +
+    scale_fill_gradientn(colors = grey.colors(100), guide = "none", na.value = "white") +
+    new_scale_fill() +
+    stat_density_2d(data = topo_df %>% filter(probs >= .7) %>% dplyr::select("location.lat", "location.long", "probs"), 
+                    aes(x = location.long, y = location.lat, fill = after_stat(level)), geom = "polygon") +
+    scale_fill_gradientn(colours = alpha(oce::oceColorsPalette(100)[51:100], alpha = .2)) +
+    labs(title = paste0("Week ", one_week, " since dispersal"), x = "", y = "") +
+    theme_void()
+  
+  #dev.off()
+  ggsave(plot = p, filename = paste0(week_i, "_alpine_pred.tiff"), device = "tiff", width = 7, height = 4.5, dpi = 400) #3min
+      rm(p)
+    gc()
+
   print(paste0("week ", week_i, " of 156 done!"))
 
 }
 
 Sys.time() - start #30 min per week
 
+#create animation of the maps. run the following code in the terminal
+#ffmpeg -framerate 25 -pattern_type glob -i "*.tiff" output.mp4
+#add white background
+#ffmpeg -framerate 25 -pattern_type glob -i "*.tiff" output2.mp4 -f lavfi -i color=white:640x480:d=3,format=rgb24
 
-# ## add areas of weeks 1 - 41 to the dataframe
-# files <- list.files("/home/enourani/Documents/alpine_preds", full.names = T, pattern = ".rds")[1:41]
-# 
-# areas_1_41 <- data.frame()
-# 
-# for (i in files){
-#   preds_pr <- readRDS(i)
-#   
-#   week_i <- str_sub(i, -7, -5)
-#   
-#   area_.7 <- preds_pr %>%
-#     filter(probs >= 0.7) %>% 
-#     summarize(pixels = n()) %>% #count the 
-#     mutate(area_m2 = pixels * 100 * 100, #the resolution of the cell size
-#            area_km2 = round(area_m2/1e6,3),
-#            week_since_dispersal = week_i)
-#   
-#   areas_1_41 <- rbind(areas_1_41, area_.7)
-#   
-# }
-# 
-# areas_df <- areas %>% 
-#   reduce(rbind) %>% 
-#   bind_rows(areas_1_41,.) %>% 
-#   mutate(week_since_dispersal = as.numeric(week_since_dispersal))
-# 
-# saveRDS(areas_df, file = "/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/xxx")
-# 
+#used for making the animation:
+#for i in raw_preds/*.tiff; do    convert "$i" -background white -alpha remove -alpha off raw_preds_white/"$i"; done
+#ffmpeg -framerate 15 -pattern_type glob -i "raw_preds_white/*.tiff" output_white.mp4
 
+# STEP 7: flyable areas + PLOTS ------------------------------------------------------------------ 
 
+#list files contain area info saved in the previous step
+files <- list.files("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/tmb_figs/alpine_preds_7",
+                    pattern = "area_alps_wk_", full.names = T)
 
-# STEP 9: xxx ------------------------------------------------------------------ 
+areas_df <- files %>%
+  map_df(~ get(load(file = .x)))  %>%
+  mutate(week_since_dispersal = as.numeric(week_since_dispersal))
+
+X11(width = 3.4, height = 2) 
+p <- ggplot(areas_df, aes(x = week_since_dispersal, y = area_km2)) +
+  #geom_smooth(method = "lm", alpha = .1, level = .95, color = clr, fill = clr_light, lwd = 1) + #95% standard error
+  geom_point(size = 1.5,  alpha = .4, color = clr, fill = clr) +
+  labs(x = "Weeks since dispersal",
+       y = bquote("Flyable area " (km^2))) +
+  theme_minimal() +
+  theme(plot.margin = margin(0, 5, 0, 0, "pt"),
+        text = element_text(size = 8), #font size should be between 6-8
+        axis.title.x = element_text(hjust = 1, margin = margin(t = 6)), #align the axis labels
+        axis.title.y = element_text(angle = 90, hjust = 1, margin = margin(r = 6)))
+
+ggsave(p, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/tmb_figs/area_over_wks_meansl.pdf", 
+       width = 3.4, height = 2, dpi = 400)
+
+#compare with the flyable areas
+#open alpine df
+alps <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/topo_df_100_LF.rds")
+
+alps_area <- alps %>%
+  dplyr::select(ridge_100) %>% 
+  drop_na(ridge_100) %>% 
+  summarize(pixels = n()) %>% #count the 
+  mutate(area_m2 = pixels * 100 * 100, #the resolution of the cell size
+         area_km2 = round(area_m2/1e6,3))
+
+#190,544.7 km2
+#add a ratio column 
+areas <- areas_df %>% 
+  mutate(alp_ratio = area_km2/alps_area$area_km2)
+
+#percentage change over time
+#year_1 <- (areas %>% filter(week_since_dispersal == 52) %>%  pull(area_km2)) / (alps_area %>% slice(1) %>% pull(area_km2))
+#year_3 <- (areas %>% filter(week_since_dispersal == 156) %>%  pull(area_km2)) / (alps_area %>% slice(1) %>% pull(area_km2))
+
+#year_0_1 <- (((areas %>% filter(week_since_dispersal == 52) %>%  pull(area_km2)) - (areas %>% slice(1) %>% pull(area_km2)))/ (areas %>% slice(1) %>% pull(area_km2))) *100
+
+year_0_3 <- (((areas %>% filter(week_since_dispersal == 156) %>%  pull(area_km2)) - (areas %>% slice(1) %>% pull(area_km2)))/ (areas %>% slice(1) %>% pull(area_km2))) *100
+
+year3_alps <- (areas %>% filter(week_since_dispersal == 156) %>%  pull(area_km2)) / (alps_area %>% slice(1) %>% pull(area_km2))
+
+#68% increase

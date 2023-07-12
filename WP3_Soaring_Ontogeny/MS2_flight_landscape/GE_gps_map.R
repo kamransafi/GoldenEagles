@@ -9,7 +9,7 @@ library(sf)
 library(sp)
 library(oce)
 
-setwd("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/")
+setwd("/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
 
 #open ssf data to filter for individuals included in the study
@@ -144,3 +144,61 @@ y <- c(1,1.5,2,2.5, 3,4,5,6,6,6,6)
 x <- c(1:11)
 
 
+### plot for manuscript ######################
+
+# Eur <- st_read("/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/GIS_files/continent_shapefile/World_Continents.shp") %>% 
+#   filter(CONTINENT == "Europe") 
+#   # st_crop(xmin = -10, xmax = 40, ymin = 30, ymax = 60) %>%
+#   st_union()
+
+EU <- st_read("/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/GIS_files/EU_countries/Europe/Europe.shp") %>%
+  filter(!(NAME %in% c("Lithuania", "Latvia", "Estonia", "Finland", "Sweden", "United Kingdom", "Iceland", "Norway", "Russia", "Denmark", 
+                       "Iceland", "Ireland", "Svalbard (Norway)", "Turkey", "Ukraine", "Belarus", "Azerbaijan", "Georgia", "Armenia", "Moldova",
+                       "Faeroe Islands (Denmark)", "Jan Mayen (Norway)"))) %>% 
+  st_union()
+
+  
+Alps <- st_read("/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/GIS_files/Alpine_perimeter/Alpine_Convention_Perimeter_2018_v2.shp")
+
+X11()
+
+#png("/home/enourani/ownCloud/Work/conferences/GRC_GRS_23/Europe_map.png", width = 12, height = 12, units = "in", res = 400)
+#plot(Eur, fill = "white", col = "black")
+#polygon(y = c(45,46.65, 46.65, 45.2), x = c(7.2, 7.2, 13.89, 13.89), border = "white", add = T)
+#dev.off()
+
+
+library(marmap)
+library(ggspatial)
+
+png("/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/figs/Europe_inset.png", width = 2.8, height = 2.4, units = "in", res = 400)
+ggplot() +
+  geom_sf(data = EU, fill = "gray30", col = NA,  linewidth = 1) +
+  xlim(c(-8.5, 28)) + ylim(c(35, 55)) +
+  geom_sf(data = Alps, fill = "grey70", col = NA, linewidth = 1) +
+  ggspatial::annotation_scale(
+    location = "br",
+    bar_cols = c("black", "white"),
+    text_family = "ArcherPro Book",
+    text_col = "black",
+    height = unit(0.2, "cm"),
+    text_cex = 0.6) +
+  ggspatial::annotation_north_arrow(
+    location = "br", which_north = "true", pad_y = unit(0.6, "cm"), pad_x = unit(0.3, "cm"),
+    height = unit(0.6, "cm"), width = unit(0.4, "cm"), style = north_arrow_orienteering(line_col = "black", line_width = 1.2, text_size = 6)) +
+  theme_void()
+  # ggspatial::annotation_scale(
+  #   location = "br",
+  #   bar_cols = c("black", "white"),
+  #   text_family = "ArcherPro Book",
+  #   text_col = "black",
+  #   height = unit(1.5, "mm"),
+  #   ) +
+  # ggspatial::annotation_north_arrow(
+  #   location = "br", which_north = "true",
+  #   height = unit(2, "mm"),
+  #   width = unit(2, "mm"),
+  #   style = north_arrow_fancy_orienteering(line_col = "black", line_width = 1)) +
+  # theme_void()
+
+dev.off()
