@@ -10,11 +10,17 @@ library(patchwork) #patching up interaction plots
 library(oce) #color palette for interaction plots
 library(corrr)
 library(terra)
+library(sf)
+library(stars) #use for st_rasterize
+library(move2)
+library(mapview)
 library(ggnewscale)
-
+library(performance)
 
 setwd("/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
+
+wgs <- crs("+proj=longlat +datum=WGS84 +no_defs")
 
 #colors
 clr <- oce::oceColorsPalette(100)[9] #was [2] before
@@ -248,7 +254,7 @@ topo_df <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/tmb_figs/alpine_preds_7/")
 
-wks_ls <- split(data, data$weeks_since_emig)[c(4,24)] #only use these 4 for density plots
+wks_ls <- split(data, data$weeks_since_emig) #density maps were only made for four timestamps
 
 gc()
 
@@ -340,9 +346,11 @@ Sys.time() - start #30 min per week
 # STEP 7: flyable areas + PLOTS ------------------------------------------------------------------ 
 
 #list files contain area info saved in the previous step
-files <- list.files("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/tmb_figs/alpine_preds_7",
-                    pattern = "area_alps_wk_", full.names = T)
+#files <- list.files("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/tmb_figs/alpine_preds_7",
+#                    pattern = "area_alps_wk_", full.names = T)
 
+files <- list.files("/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/tmb_figs/alpine_preds_7",
+                    pattern = "area_alps_wk_", full.names = T)
 areas_df <- files %>%
   map_df(~ get(load(file = .x)))  %>%
   mutate(week_since_dispersal = as.numeric(week_since_dispersal))
@@ -364,7 +372,9 @@ ggsave(p, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soari
 
 #compare with the flyable areas
 #open alpine df
-alps <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/topo_df_100_LF.rds")
+#alps <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/topo_df_100_LF.rds")
+alps <- readRDS("/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/topo_df_100_LF.rds")
+
 
 alps_area <- alps %>%
   dplyr::select(ridge_100) %>% 
@@ -388,4 +398,133 @@ year_0_3 <- (((areas %>% filter(week_since_dispersal == 156) %>%  pull(area_km2)
 
 year3_alps <- (areas %>% filter(week_since_dispersal == 156) %>%  pull(area_km2)) / (alps_area %>% slice(1) %>% pull(area_km2))
 
-#68% increase
+##compare this to the used area...
+
+# STEP 8: calc total area used by the birds ------------------------------------------------------------------ 
+data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds") %>% 
+  mutate(animal_ID = as.numeric(as.factor(ind1)), #animal ID and stratum ID should be numeric
+         stratum_ID = as.numeric(as.factor(stratum))) %>% 
+  filter(used == 1) %>% 
+  mutate(ind_step_id = paste(individual.local.identifier, burst_id, sep = "_")) #assign ID to each burst of uninterrupted flight. to make sure that non-flight trajectories arent added to the data
+
+ridge_100 <- rast("/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/ridge_100_LF.tif") 
+
+#before overlapping the tracking data with a raster and counting the cells, convert the points to trajectories
+mv_w <- mt_as_move2(data %>% 
+                      st_as_sf(coords = c("location.long", "location.lat"), crs = wgs),
+                      time_column = "timestamp", track_id_column = "ind_step_id") 
+
+mv_w <- mv_w %>% sf::st_transform(crs = st_crs(ridge_100))
+
+#create line objects
+w_lines <- mt_track_lines(mv_w)
+
+#create raster object, convert to a dataframe and count the cells.
+r_lines <- w_lines %>% 
+  st_rasterize(dx = 100, dy = 100) %>% 
+  as.data.frame() %>% 
+  drop_na(ID) %>% 
+  summarize(pixels = n()) %>% #count nrows
+  mutate(area_m2 = pixels * 100 * 100, #the resolution of the cell size
+         area_km2 = round(area_m2/1e6,3)) # 9228.63 area_km2
+
+mapview(w_lines, zcol = "ind_step_id") + mapview(r_lines)
+
+# ####
+# 
+# wk1_156 <- data %>% 
+#   filter(used == 1) %>% 
+#   dplyr::select(location.long, location.lat, used) %>% 
+#   st_as_sf(coords = c("location.long", "location.lat"), crs = wgs)
+# 
+# wk1_156 <- wk1_156 %>% sf::st_transform(crs = st_crs(ridge_100))
+# 
+# #rasterize and calculate total area
+# w156 <- wk1_156 %>% 
+#   st_rasterize(dx = 100, dy = 100) %>% 
+#   as.data.frame() %>% 
+#   drop_na(used) %>% 
+#   summarize(pixels = n()) %>% #count nrows
+#   mutate(area_m2 = pixels * 100 * 100, #the resolution of the cell size
+#          area_km2 = round(area_m2/1e6,3)) # 4.78 area_km2
+# 
+# rr <- crop(ridge_100, wk1_156, mask = TRUE)
+# 
+# mapview(w156) + mapview(raster(rr))
+# mapview(w156) + mapview(wk1_156)
+# 
+# 
+# wk1 <- data %>% 
+#   filter(used == 1 & weeks_since_emig == 1) %>% 
+#   dplyr::select(location.long, location.lat, used) %>% 
+#   st_as_sf(coords = c("location.long", "location.lat"), crs = wgs)
+# 
+# wk1_m <- wk1 %>%  sf::st_transform(crs = st_crs(ridge_100))
+# 
+# wk1_r <- wk1_m %>% 
+#   as("SpatVector") %>% 
+#   rasterize(y = ridge_100, touches=TRUE)
+# 
+# 
+# #area used in week 1
+# wk1_area <- ridge_100 %>% 
+#   mask(as(wk1_m,"SpatVector")) %>% 
+#   as.data.frame() %>% 
+#   drop_na(distance_to_ridge_line_mask) %>% 
+#   summarize(pixels = n()) %>% #count the 
+#   mutate(area_m2 = pixels * 100 * 100, #the resolution of the cell size
+#          area_km2 = round(area_m2/1e6,3)) # 4.78 area_km2
+# 
+# #area used in total
+# 
+# 
+# #area used in week 1
+# wk1_156_area <- ridge_100 %>% 
+#   terra::mask(as(wk1_156,"SpatVector")) %>% 
+#   as.data.frame() %>% 
+#   drop_na(distance_to_ridge_line_mask) %>% 
+#   summarize(pixels = n()) %>% #count the 
+#   mutate(area_m2 = pixels * 100 * 100, #the resolution of the cell size
+#          area_km2 = round(area_m2/1e6,3)) # 428.87 area_km2
+# 
+# 
+# 
+#  
+# #look at the data over the alps
+# alps_sf <- st_read("/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/GIS_files/Alpine_perimeter/Alpine_Convention_Perimeter_2018_v2.shp")
+# data_sf <- data %>% filter(used == 1) %>% st_as_sf(coords = c("location.long", "location.lat"), crs = wgs)
+
+# #look at the mcp of points
+# library(adehabitatHR)
+# 
+# mcps <- mcp(as(data_sf, "Spatial"), percent = 100)
+# 
+# mcps <- data_sf %>% 
+#   st_union() %>% 
+# st_convex_hull(allow_holes = T)
+# 
+# mcps <- data_sf %>% 
+#   st_union() %>% 
+#   st_boundary()
+# 
+# mapview(alps_sf) + mapview(data_sf) + mapview(mcps)
+# 
+# 
+mapview(alps_sf) + mapview(data_sf) + mapview(dd)
+
+# STEP 9: metadata from manuscript ------------------------------------------------------------------ 
+
+data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds") %>% 
+  mutate(animal_ID = as.numeric(as.factor(ind1)), #animal ID and stratum ID should be numeric
+         stratum_ID = as.numeric(as.factor(stratum)))
+
+metadata <- data %>% 
+  group_by(individual.local.identifier) %>% 
+  mutate(year = year(timestamp)) %>% 
+  summarise(n_years = n_distinct(year),
+            n_weeks = max(weeks_since_emig),
+            n_weeks2 = n_distinct(weeks_since_emig)) %>% 
+  arrange(desc(n_weeks)) %>% 
+  as.data.frame()
+
+

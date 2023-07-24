@@ -2,6 +2,9 @@
 #full data set downloaded from Movebank on Jan. 13. 2022
 #Jan 11. 2022. Elham Nourani. Konstanz, DE
 
+###use the new dates for the two individuals:
+#Matsch19 (eobs 7035) 2020-03-08 12:17:00
+#Güstizia18 (eobs 5942) 2019-03-24 11:18:31
 
 library(tidyverse)
 library(lubridate)
