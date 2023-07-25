@@ -1,82 +1,16 @@
-#script for analysis of golden eagle data for the dynamics of the energy landscape manuscript: data clean up and segmentation
-#full data set downloaded from Movebank on Jan. 13. 2022
-#Jan 11. 2022. Elham Nourani. Konstanz, DE
-
-###use the new dates for the two individuals:
-#Matsch19 (eobs 7035) 2020-03-08 12:17:00
-#Güstizia18 (eobs 5942) 2019-03-24 11:18:31
+#Script for preparing golden eagle tracking data for step-selection analysis as reported in Nourani et al. 2023
+# Elham Nourani, PhD. 25.07.2023
+# enourani@ab.mpg.de
 
 library(tidyverse)
 library(lubridate)
-library(move)
-library(sf)
 library(EMbC)
-library(mapview)
-library(terra)
-library(data.table); setDTthreads(percent = 65) #set this so getMovebankData works!
 
-wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
-meters_proj <- CRS("+proj=moll +ellps=WGS84")
+##### STEP 0: open tracking data #####
 
-setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
+#filter for post-dispersal period
 
-
-# STEP 1: Download data ----------------------------------------------------------------
-
-#open file with all data (March 15. 2023)
-  data <- read.csv("/home/enourani/Desktop/Golden_Eagle_data/All_gps_mar23/LifeTrack Golden Eagle Alps.csv", encoding = "UTF-8") %>% 
-  mutate(timestamp = as.POSIXct(timestamp, format = "%Y-%m-%d %H:%M:%S",tz = "UTC"))
-
-#1 min subset to get rid of super bursts!
-data_1min <- data %>% 
-  mutate(dt_1min = round_date(timestamp, "1 minute")) %>% 
-  group_by(individual.local.identifier,dt_1min) %>% 
-  slice(1) 
-
-#remove data and clean up 
-rm(data); gc(gc())
-
-saveRDS(data_1min, file = "/home/enourani/Desktop/Golden_Eagle_data/All_gps_mar23/LifeTrack_Golden_Eagle_Alps_1min.rds")
-
-### only keep data with emigration info
-
-#open file containing emigration dates
-emig_dates <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/fleding_emigration_timing_Mar2023.rds") #this file only has the juvies.
-emig_dates[emig_dates$individual.local.identifier == "Johnsbach21-1 (eobs 7582)", "individual.local.identifier"] <- "Johnsbach1_21 (eobs 7582)"          
-emig_dates[emig_dates$individual.local.identifier == "Johnsbach21-2 (eobs 7585)", "individual.local.identifier"] <- "Johnsbach2_21 (eobs 7585)"
-
-#only keep individuals that we have emigration info
-data_w_info <- data_1min %>% 
-  filter(individual.local.identifier %in% emig_dates$individual.local.identifier) #n = 69
-
-# STEP 2: assign life stages: filter post-emigration ----------------------------------------------------------------
-
-ind_ls <- split(data_w_info, data_w_info$individual.local.identifier)
-
-data_stage <- lapply(ind_ls, function(x){
-  
-  d <- emig_dates %>% 
-    filter(individual.local.identifier ==  unique(x$individual.local.identifier))
-  
-  x <- x %>% 
-    mutate(stage = ifelse(timestamp >= d$emigration_dt, "post_emigration", "pre_emigration")) #don't use the fledging dates. it might not be accurate
-  
-  x
-}) %>% 
-  reduce(rbind)
-
-save(data_stage, file = "data_w_lifestage_1min_69n.RData")
-
-#reduce frequency to 20 minutes already. better to have a rather uniform res when segmenting using embc
-
-#extract post-emigration data
-post_em_20m <- data_stage %>% 
-  mutate(dt_20min = round_date(timestamp, "20 minutes")) %>% 
-  group_by(individual.local.identifier,dt_20min) %>% 
-  slice(1) %>% 
-  filter(stage == "post_emigration")
-
-saveRDS(post_em_20m, file = "post_em_df_20min_68n.rds")
+##### STEP 1: EmbC segmentation #####
 
 # STEP 3: estimate flight height ----------------------------------------------------------------
 
@@ -169,3 +103,7 @@ ln <- SpatialLines(list(Lines(list(Line(sml)), "line1")))
 proj4string(ln) <- wgs
 
 mapview(ln, color = "gray") + mapview(sml, zcol = "embc_clst")
+
+##### STEP 2: step-selection prep - generate alternative steps #####
+
+##### STEP 3: step-selection prep - annotation with topographic info #####

@@ -18,7 +18,7 @@ library(ggnewscale)
 library(performance)
 
 setwd("/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/")
-setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
+#setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
 wgs <- crs("+proj=longlat +datum=WGS84 +no_defs")
 
@@ -416,17 +416,43 @@ mv_w <- mt_as_move2(data %>%
 
 mv_w <- mv_w %>% sf::st_transform(crs = st_crs(ridge_100))
 
-#create line objects
-w_lines <- mt_track_lines(mv_w)
+#estimate used area per week. be careful. this should be cumulative area
+mv_ls <- split(mv_w, mv_w$weeks_since_emig)
 
-#create raster object, convert to a dataframe and count the cells.
-r_lines <- w_lines %>% 
-  st_rasterize(dx = 100, dy = 100) %>% 
-  as.data.frame() %>% 
-  drop_na(ID) %>% 
-  summarize(pixels = n()) %>% #count nrows
-  mutate(area_m2 = pixels * 100 * 100, #the resolution of the cell size
-         area_km2 = round(area_m2/1e6,3)) # 9228.63 area_km2
+used_area_wk <- lapply(1:length(mv_ls), function(x){
+  
+  #weeks prior to this one + this
+  w_lines <- mv_ls[1:x] %>% 
+    reduce(rbind) %>% 
+    mt_track_lines() #create a LINESTRING object
+  
+  #create raster object, convert to a dataframe and count the cells.
+  r_lines <- w_lines %>% 
+    st_rasterize(dx = 100, dy = 100) %>% 
+    as.data.frame() %>% 
+    drop_na(ID) %>% 
+    summarize(pixels = n()) %>% #count nrows
+    mutate(weeks_since_emig = x,
+           area_m2 = pixels * 100 * 100, #the resolution of the cell size
+           area_km2 = round(area_m2/1e6,3)) # 9228.63 area_km2
+  
+  r_lines
+  
+}) %>% 
+  reduce(rbind)
+
+
+#create line objects
+# w_lines <- mt_track_lines(mv_w)
+# 
+# #create raster object, convert to a dataframe and count the cells.
+# r_lines <- w_lines %>% 
+#   st_rasterize(dx = 100, dy = 100) %>% 
+#   as.data.frame() %>% 
+#   drop_na(ID) %>% 
+#   summarize(pixels = n()) %>% #count nrows
+#   mutate(area_m2 = pixels * 100 * 100, #the resolution of the cell size
+#          area_km2 = round(area_m2/1e6,3)) # 9228.63 area_km2
 
 mapview(w_lines, zcol = "ind_step_id") + mapview(r_lines)
 
