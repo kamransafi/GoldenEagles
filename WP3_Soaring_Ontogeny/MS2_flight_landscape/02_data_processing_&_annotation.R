@@ -19,7 +19,7 @@ wgs <- crs("+proj=longlat +datum=WGS84 +no_defs")
 meters_proj <- CRS("+proj=moll +ellps=WGS84") #replace this with utm N32
 
 setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
-source("/home/enourani/ownCloud/Work/Projects/functions.R")
+source("/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/functions.R")
 
 
 # STEP 1: open data and filter out non-commuting flights ----------------------------------------------------------------

@@ -11,11 +11,19 @@ library(EMbC)
 library(CircStats)
 library(circular)
 library(fitdistrplus)
+library(parallel)
+
+
 
 #setwd("/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/public_data/")
-##### STEP 0: open tracking data #####
+##### STEP 0: open tracking data, functions and define variables #####
 data <- read.csv("GPS_data.csv") %>%  #this is the post-dispersal data. weeks_since_emig is the column representing weeks since dispersal
   mutate(timestamp = as.POSIXct(timestamp, tz = "UTC"))
+
+source("functions.r")
+
+meters_proj <- st_crs("+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs +type=crs")
+wgs <- crs("+proj=longlat +datum=WGS84 +no_defs")
 
 ##### STEP 1: EmbC segmentation #####
 
@@ -91,17 +99,6 @@ flight_mv <- mv %>%
 ##### STEP 2: step-selection prep - generate alternative steps #####
 
 # 2.1: hourly subset and calculate turning angles and step lengths -----
-
-# Define a function to calculate step_length and turning_angle for each element of the list
-calculate_metrics <- function(data) {
-  data %>%
-    mutate(
-      step_length = mt_distance(.),
-      turning_angle_rad = mt_turnangle(.),
-      turning_angle_deg = mt_turnangle(.) %>% set_units("degrees")
-    )
-}
-
 # Create a list of move2 objects
 mv_ls <- split(flight_mv, mt_track_id(flight_mv))
 
@@ -111,7 +108,7 @@ sp_obj_ls <- lapply(mv_ls, function(track){ #for each individual (i.e. track),
   #each sequence of rows with a time difference less than step duration will have the same burst_id.
   bursted_mv <- track %>%
     #hourly subset
-    mutate(dt_hr = round_date(timestamp, "1 hour")) %>% 
+    mutate(dt_hr = floor_date(timestamp, "1 hour")) %>% 
     group_by(individual.local.identifier,dt_hr) %>% 
     slice(1) %>% 
     ungroup() %>% 
@@ -175,30 +172,26 @@ plot(function(x) dgamma(x, shape = fit.gamma1$estimate[[1]],
 hist(bursted_df %>% drop_na(turning_angle_rad) %>% pull(turning_angle_rad),freq = F,main = "", xlab = "Turning angles (radians)")
 plot(function(x) dvonmises(x, mu = mu, kappa = kappa), add = TRUE, from = -3.5, to = 3.5, col = "red")
 
-
 #diagnostic plots for step length distribution
-pdf(paste0("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ssf_figs/diagnostics_", hr, "_", tolerance, ".pdf"))
 plot(fit.gamma1)
-dev.off()
 
 # 2.2: generate alternative steps -----
 
-
 sp_obj_ls <- readRDS("sl_60_min_55_ind2.rds")
 
+n_alt <- 50
 #prepare cluster for parallel computation
-mycl <- makeCluster(10) #the number of CPUs to use (adjust this based on your machine)
+mycl <- makeCluster(5) #the number of CPUs to use (adjust this based on your machine)
 
-clusterExport(mycl, c("sp_obj_ls", "hr", "mu", "kappa", "fit.gamma1", "tolerance", "n_alt","wgs", "meters_proj", "NCEP.loxodrome.na")) #define the variable that will be used within the ParLapply call
+clusterExport(mycl, c("sp_obj_ls", "mu", "kappa", "fit.gamma1", "n_alt","wgs", "meters_proj", "NCEP.loxodrome.na")) #define the variable that will be used within the ParLapply call
 
 clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
   library(sf)
-  library(sp)
   library(tidyverse)
-  library(move)
   library(CircStats)
   library(circular)
   library(fitdistrplus)
+  library(units)
 })
 
 (b <- Sys.time()) 
@@ -209,7 +202,6 @@ used_av_track <- parLapply(mycl, sp_obj_ls, function(track){ #for each track
     #assign unique step id
     burst$step_id <- 1:nrow(burst)
     
-    
     lapply(c(2:(length(burst)-1)), function(this_point){ #first point has no bearing to calc turning angle, last point has no used endpoint.
       
       current_point<- burst[this_point,]
@@ -217,52 +209,49 @@ used_av_track <- parLapply(mycl, sp_obj_ls, function(track){ #for each track
       used_point <- burst[this_point+1,] #this is the next point. the observed end-point of the step starting from the current_point
       
       #calculate bearing of previous point
-      #prev_bearing<-bearing(previous_point,current_point) #am I allowing negatives?... no, right? then use NCEP.loxodrome
-      prev_bearing <- NCEP.loxodrome.na(previous_point@coords[,2], current_point@coords[,2],
-                                        previous_point@coords[,1], current_point@coords[,1])
+      prev_bearing <- NCEP.loxodrome.na(st_coordinates(previous_point)[,2], st_coordinates(current_point)[,2],
+                                        st_coordinates(previous_point)[,1], st_coordinates(current_point)[,1])
       
-      current_point_m <- spTransform(current_point, meters_proj) #convert to meters proj
+      current_point_m <- st_transform(current_point, meters_proj) #convert to meters proj
       
       #randomly generate n alternative points
       rnd <- data.frame(turning_angle = as.vector(rvonmises(n = n_alt, mu = mu, kappa = kappa)), #randomly generate n step lengths and turning angles
                         step_length = rgamma(n = n_alt, shape = fit.gamma1$estimate[[1]], rate = fit.gamma1$estimate[[2]]) * 1000) %>% 
         #find the gepgraphic location of each alternative point; calculate bearing to the next point: add ta to the bearing of the previous point
-        mutate(lon = current_point_m@coords[,1] + step_length*cos(turning_angle),
-               lat = current_point_m@coords[,2] + step_length*sin(turning_angle))
+        mutate(lon = st_coordinates(current_point_m)[,1] + step_length*cos(turning_angle),
+               lat = st_coordinates(current_point_m)[,2] + step_length*sin(turning_angle))
       
-      
-      #covnert back to lat-lon proj
-      rnd_sp <- rnd
-      coordinates(rnd_sp) <- ~lon+lat
-      proj4string(rnd_sp) <- meters_proj
-      rnd_sp <- spTransform(rnd_sp, wgs)
-      
+      rnd_sf <- rnd %>% 
+        st_as_sf(coords = c("lon", "lat"), crs = meters_proj) %>% 
+        st_transform(wgs)
+
       #check visually
-      # mapview(current_point, color = "red") + mapview(previous_point, color = "orange") + mapview(used_point, color = "yellow") + mapview(rnd_sp, color = "black", cex = 0.5)
+      # mapview(current_point, color = "red") + mapview(previous_point, color = "orange") + mapview(used_point, color = "yellow") + mapview(rnd_sf, color = "black", cex = 0.5)
       
       #put used and available points together
-      df <- used_point@data %>%  
-        slice(rep(row_number(), n_alt+1)) %>% #paste each row n_alt times for the used and alternative steps
-        mutate(location.long = c(head(coords.x1,1), rnd_sp@coords[,1]), #the coordinates were called x and y in the previous version
-               location.lat = c(head(coords.x2,1), rnd_sp@coords[,2]),
-               turning_angle = c(head(turning_angle,1), deg(rnd_sp$turning_angle)),
-               step_length = c(head(step_length,1), rnd_sp$step_length),
-               used = c(1,rep(0,n_alt)))  %>%
-        dplyr::select(-c("coords.x1","coords.x2")) %>% 
+      df <- used_point %>%  
+        slice(rep(row_number(), n_alt + 1)) %>% #paste each row n_alt times for the used and alternative steps
+        mutate(location.long = c(head(st_coordinates(.)[,1],1), st_coordinates(rnd_sf)[,1]), 
+               location.lat = c(head(st_coordinates(.)[,2],1), st_coordinates(rnd_sf)[,2]),
+               turning_angle_deg = c(head(turning_angle_deg, 1), set_units(deg(rnd_sf$turning_angle), "degrees")),
+               step_length = c(head(step_length,1), set_units(rnd_sf$step_length, "m")),
+               used = c(1, rep(0, n_alt)))  %>%
+        st_drop_geometry() %>% 
+        dplyr::select(-c("turning_angle_rad","dt_hr", "time_lag", "ground_speed", "eobs.horizontal.accuracy.estimate")) %>% 
         rowwise() %>% 
-        mutate(heading = NCEP.loxodrome.na(lat1 = current_point@coords[,2], lat2 = location.lat, lon1 = current_point@coords[,1], lon2 = location.long)) %>% 
+        mutate(heading = NCEP.loxodrome.na(lat1 = st_coordinates(current_point)[,2], lat2 = location.lat, lon1 = st_coordinates(current_point)[,1], lon2 = location.long)) %>% 
         as.data.frame()
       
       df
       
     }) %>% 
-      reduce(rbind)
+      bind_rows()
     
   }) %>% 
-    reduce(rbind)
+    bind_rows()
   
 }) %>% 
-  reduce(rbind)
+  bind_rows()
 
 Sys.time() - b # 
 stopCluster(mycl) 
