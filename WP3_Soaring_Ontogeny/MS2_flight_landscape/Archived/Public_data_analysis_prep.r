@@ -2,23 +2,24 @@
 #Elham Nourani, PhD. 25.07.2023
 #enourani@ab.mpg.de
 
-
-
+library(tidyverse)
+library(lubridate)
 
 ##### STEP 1: open tracking data#####
 
 #open file with all data (March 15. 2023)
-data <- read.csv("/home/enourani/Desktop/Golden_Eagle_data/All_gps_mar23/LifeTrack Golden Eagle Alps.csv", encoding = "UTF-8") %>% 
-  mutate(timestamp = as.POSIXct(timestamp, format = "%Y-%m-%d %H:%M:%S",tz = "UTC"))
+data <- readRDS("/home/enourani/Desktop/Golden_Eagle_data/All_gps_mar23/LifeTrack_Golden_Eagle_Alps_1min.rds")
 
-
+summary(data$location.long)
 
 
 #20 min subset to get rid of super bursts and keep regular sampling
 data <- data %>% 
+  drop_na(location.long) %>% 
   mutate(dt_20min = round_date(timestamp, "20 minutes")) %>% 
   group_by(individual.local.identifier,dt_20min) %>% 
-  slice(1) 
+  slice(1) %>% 
+  ungroup()
 
 #only keep the 55 individuals
 emig_dates <- read.csv("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/dispersal_dates.csv")
@@ -32,22 +33,17 @@ saveRDS(data, file = "/home/enourani/Desktop/Golden_Eagle_data/All_gps_mar23/Lif
 
 
 data <- data %>% 
-  left_join(dispersal_dt %>% dplyr::select(individual.local.identifier, dispersal_dt), by = "individual.local.identifier") %>% 
-  mutate(weeks_since_emig = difftime(date(timestamp), date(dispersal_dt), units = c("weeks")) %>% as.numeric(),
-         days_since_emig = difftime(date(timestamp), date(dispersal_dt), units = c("days")) %>% as.numeric())
-
-#add week since emigration
-dd <- dd %>% 
-  left_join(dispersal_dt %>% dplyr::select(individual.local.identifier, dispersal_dt), by = "individual.local.identifier") %>% 
-  mutate(weeks_since_emig = difftime(date(timestamp), date(dispersal_dt), units = c("weeks")) %>% as.numeric(),
+  left_join(emig_dates %>% dplyr::select(individual.local.identifier, dispersal_dt), by = "individual.local.identifier") %>% 
+  mutate(weeks_since_emig = difftime(date(timestamp), date(dispersal_dt), units = c("weeks")) %>% as.numeric() %>% ceiling(),
          days_since_emig = difftime(date(timestamp), date(dispersal_dt), units = c("days")) %>% as.numeric())
 
 #keep the post dispersal only
 data_pd <- data %>% 
-  filter(weeks_since_emig > -1)
+  filter(between(weeks_since_emig, 1, 156)) %>% 
+  select(timestamp, location.long, location.lat, eobs.horizontal.accuracy.estimate, height.above.ellipsoid, sensor.type, individual.taxon.canonical.name,
+         tag.local.identifier, individual.local.identifier, dispersal_dt, days_since_emig, weeks_since_emig)
 
-saveRDS(data_pd, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/data_wks_20min.rds" )
-
+write.csv(data_pd, file = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/public_data/GPS_data.csv", row.names = F)
 
 #the tracking data contains commuting flights for 55 juvenile golden eagles in the alps
 
