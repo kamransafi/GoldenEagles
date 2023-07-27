@@ -13,9 +13,8 @@ library(circular)
 library(fitdistrplus)
 library(parallel)
 
-
-
 #setwd("/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/public_data/")
+
 ##### STEP 0: open tracking data, functions and define variables #####
 data <- read.csv("GPS_data.csv") %>%  #this is the post-dispersal data. weeks_since_emig is the column representing weeks since dispersal
   mutate(timestamp = as.POSIXct(timestamp, tz = "UTC"))
@@ -202,7 +201,7 @@ used_av_track <- parLapply(mycl, sp_obj_ls, function(track){ #for each track
     #assign unique step id
     burst$step_id <- 1:nrow(burst)
     
-    lapply(c(2:(length(burst)-1)), function(this_point){ #first point has no bearing to calc turning angle, last point has no used endpoint.
+    lapply(c(2:(nrow(burst)-1)), function(this_point){ #first point has no bearing to calc turning angle, last point has no used endpoint.
       
       current_point<- burst[this_point,]
       previous_point <- burst[this_point-1,] #this is the previous point, for calculating turning angle.
@@ -253,12 +252,36 @@ used_av_track <- parLapply(mycl, sp_obj_ls, function(track){ #for each track
 }) %>% 
   bind_rows()
 
-Sys.time() - b # 
+Sys.time() - b # 6 min
 stopCluster(mycl) 
 
 
 used_av_track <- used_av_track %>% 
   mutate(stratum = paste(individual.local.identifier, burst_id, step_id, sep = "_"))
 
+#temporary save
+saveRDS(used_av_track, "/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/rnd_steps_for_public_dev.rds")
 
 ##### STEP 3: step-selection prep - annotation with topographic info #####
+
+used_av_track <- readRDS("/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/rnd_steps_for_public_dev.rds")
+
+#open topographic layers
+TRI_100 <- rast("TRI_100_LF.tif")
+ridge_100 <- rast("ridge_100_LF.tif")
+
+#reproject tracking data to match topography, extract values, and convert back to wgs and save as a dataframe
+topo_ann_df <- used_av_track %>% 
+  st_as_sf(coords = c("location.long", "location.lat"), crs = wgs) %>% 
+  st_transform(crs = crs(TRI_100)) %>% 
+  extract(x = TRI_100, y = ., method = "simple", bind = T) %>%
+  extract(x = ridge_100, y = ., method = "simple", bind = T) %>% 
+  terra::project(wgs) %>% 
+  data.frame(., geom(.)) %>% 
+  dplyr::select(-c("geom", "part", "hole")) %>% 
+  rename(location.long = x,
+         location.lat = y,
+         ridge_100 = distance_to_ridge_line_mask,
+         TRI_100 = TRI)
+
+#write.csv(topo_ann_df, file = "GPS_data_annotated.csv")

@@ -47,9 +47,9 @@ TMB_struc <- glmmTMB(used ~ -1 + TRI_100_z * step_length_z * weeks_since_emig_z 
                      (0 + TRI_100_z | animal_ID), 
                    family = poisson, data = data, doFit = FALSE,
                    #Tell glmmTMB not to change the first standard deviation, all other values are freely estimated (and are different from each other)
-                   map = list(theta = factor(c(NA,1:2))), #2 is the n of random slopes
+                   map = list(theta = factor(c(NA, 1:2))), #2 is the n of random slopes
                    #Set the value of the standard deviation of the first random effect (here (1|startum_ID)):
-                   start = list(theta = c(log(1e3),0,0))) #add a 0 for each random slope. in this case, 2
+                   start = list(theta = c(log(1e3), 0, 0))) #add a 0 for each random slope. in this case, 2
 
 
 TMB_M <- glmmTMB:::fitTMB(TMB_struc)
