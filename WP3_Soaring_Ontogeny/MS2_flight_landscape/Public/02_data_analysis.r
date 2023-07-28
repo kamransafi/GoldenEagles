@@ -8,12 +8,13 @@ library(lubridate)
 library(corrr)
 library(glmmTMB)
 
+setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/public_data/")
+
+
 ##### STEP 0: Open annotated data #####
 
-data <- read.csv("GPS_data_annotated.csv") %>%  #this is the post-dispersal data. weeks_since_emig is the column representing weeks since dispersal
-  mutate(timestamp = as.POSIXct(timestamp, tz = "UTC"),
-         animal_ID = as.numeric(as.factor(individual.local.identifier)), #animal ID and stratum ID should be numeric
-         stratum_ID = as.numeric(as.factor(stratum)))
+data <- read.csv("SSF_input_data.csv") %>%  #this is the post-dispersal data. weeks_since_emig is the column representing weeks since dispersal
+  mutate(timestamp = as.POSIXct(timestamp, tz = "UTC")) #animal ID and stratum ID should be numeric
 
 ##### STEP 2: Check for autocorrelation #####
 

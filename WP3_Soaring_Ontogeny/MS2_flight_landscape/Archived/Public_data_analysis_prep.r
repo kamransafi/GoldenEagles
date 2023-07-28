@@ -72,3 +72,41 @@ used_av_track <- readRDS("alt_50_60_min_55_ind2.rds") %>%
 
 write.csv(used_av_track, file = "/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/ssf_input_data.csv")
 
+
+
+##### TRY2: Jul28#####
+
+setwd("/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/")
+
+#I redid all the steps for data prep with move2 and tidyverse, but the output file was different from the original one and model did not converge.
+#Use the dataset used for the paper: 1) correct the week assignment, correct the dispersal date for two individuals
+
+#open data. data was prepared in 03_energy_landscape_modeling_method1.R. 
+data <- readRDS("all_inds_annotated_static_3yrs_apr23.rds") %>% 
+  mutate(emigration_dt = as.POSIXct(emigration_dt, tz = "UTC"),
+         animal_ID = as.numeric(as.factor(ind1)), #animal ID and stratum ID should be numeric
+         stratum_ID = as.numeric(as.factor(stratum))) %>% 
+  select(c("timestamp" , "height.above.ellipsoid" , "individual.local.identifier",
+           "emigration_dt" , "days_since_emig" ,"weeks_since_emig" , "dem" , "geoid",                      
+           "height_msl", "height_ground" , "embc_clst", "embc_clst_smth" ,    "burst_id",                 
+           "step_length" ,  "turning_angle" , "step_id" ,"used"  , "heading" ,                   
+           "stratum" , "TRI_100", "ridge_100", "location.long" ,"location.lat",             
+           "animal_ID" , "stratum_ID" ))
+
+#remove extra data for the two individuals:
+data_f <- data %>% 
+  filter(case_when(individual.local.identifier == "Matsch19 (eobs 7035)" ~ timestamp >= as.POSIXct("2020-03-08 12:17:00", tz = "UTC"),
+                   individual.local.identifier == "Güstizia18 (eobs 5942)" ~ timestamp >= as.POSIXct("2019-03-24 11:18:31", tz = "UTC"),
+                   TRUE ~ timestamp >= as.POSIXct("2010-01-01 00:00:00", tz = "UTC"))) #case_when needs an else statement, which is specified by true. keep everything else
+
+data_f[data_f$individual.local.identifier == "Matsch19 (eobs 7035)", "emigration_dt"] <- "2020-03-08 12:17:00" 
+data_f[data_f$individual.local.identifier == "Güstizia18 (eobs 5942)", "emigration_dt"] <- "2019-03-24 11:18:31"
+
+## fix the date columns
+data <- data_f %>% 
+  rename(dispersal_dt = emigration_dt) %>% 
+  mutate(weeks_since_emig = difftime(date(timestamp), date(dispersal_dt), units = c("weeks")) %>% as.numeric() %>% ceiling() + 1,
+         days_since_emig = difftime(date(timestamp), date(dispersal_dt), units = c("days")) %>% as.numeric() + 1) %>% 
+  filter(weeks_since_emig < 157)
+
+write.csv(data, file = "/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/public_data/SSF_input_data.csv", row.names = F)
