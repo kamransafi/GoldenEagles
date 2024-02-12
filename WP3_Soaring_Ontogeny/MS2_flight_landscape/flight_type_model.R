@@ -1,17 +1,30 @@
 #modeling flight type as a function of the terrain. to get a better idea of what variables to include when building the energy landscape. Potentially can also include 
-#day/week since fleding as an explanatory variable
+#day/week since fledging as an explanatory variable
 #Elham Nourani, PhD. May 5, 2022. Konstanz, Germany.
+
+#update: Feb, 12. 2024: use TRI and distance to ridgeline... make boxplots
 
 library(tidyverse)
 library(sf)
 library(corrr)
 library(mapview)
-
+library(terra)
 
 # ----------- STEP 1: open data with soaring flight assignments -----------------
 
+#open terrain layers: terrain ruggedness index and distance to ridgeline
+
+TRI_100 <- rast("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/TRI_100_LF.tif")
+ridge_100 <- rast("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/ridge_100_LF.tif")
+
+
+#open bird flight data
+
+
 #build a binomial logistic regression, with thermal soaring as 0 and slope soaring as 1
 #or, even better, make a multinomial model#open terrain layers and put onto one stack. there was no difference between flight types regarding terrain at 100 meters. try the higher res
+
+
 ls <- list.files("/home/enourani/Desktop/golden_eagle_static_layers", pattern = ".tif", full.names = T)
 High_res <- ls[grep(ls, pattern = "100", invert = T)]
 

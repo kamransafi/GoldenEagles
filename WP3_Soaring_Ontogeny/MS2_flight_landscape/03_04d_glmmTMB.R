@@ -17,7 +17,7 @@ library(mapview)
 library(ggnewscale)
 library(performance)
 
-setwd("/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/")
+setwd("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 #setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
 wgs <- crs("+proj=longlat +datum=WGS84 +no_defs")
@@ -349,7 +349,7 @@ Sys.time() - start #30 min per week
 #files <- list.files("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/tmb_figs/alpine_preds_7",
 #                    pattern = "area_alps_wk_", full.names = T)
 
-files <- list.files("/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/tmb_figs/alpine_preds_7",
+files <- list.files("/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/tmb_figs/alpine_preds_7/raw_preds",
                     pattern = "area_alps_wk_", full.names = T)
 areas_df <- files %>%
   map_df(~ get(load(file = .x)))  %>%
