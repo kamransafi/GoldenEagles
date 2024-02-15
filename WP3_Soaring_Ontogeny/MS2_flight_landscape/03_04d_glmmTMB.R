@@ -191,7 +191,7 @@ for (i in y_axis_var){
     ggplot() +
     geom_tile(aes(x = x, y = y, fill = probs)) +
     scale_fill_gradientn(colours = oce::oceColorsPalette(100), limits = c(0,1),
-                         na.value = "white", name = "Energy availability Index")+
+                         na.value = "white", name = "Flyability")+
     guides(fill = guide_colourbar(title.vjust = .95)) + #the legend title needs to move up a bit
     labs(x = "Week since dispersal", y = label) + #add label for GRC plot
     theme_minimal() +
@@ -208,7 +208,7 @@ for (i in y_axis_var){
       ggplot() +
       geom_tile(aes(x = x, y = y, fill = probs)) +
       scale_fill_gradientn(colours = oce::oceColorsPalette(100), limits = c(0,1),
-                           na.value = "white", name = "Energy availability Index")+
+                           na.value = "white", name = "Flyability")+
       guides(fill = guide_colourbar(title.vjust = .95)) + #the legend title needs to move up a bit
       labs(x = "", y = label) + #add label for GRC plot
       theme_minimal() +
@@ -230,7 +230,7 @@ X11(width = 4.5, height = 4.8)
 combined <- TRI_100_p + ridge_100_p & theme(legend.position = "bottom")
 p <- combined + plot_layout( guides = "collect", nrow = 2)
 
-ggsave(p, filename = "/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/paper_prep/tmb_figs/interactions_EAI.pdf", 
+ggsave(p, filename = "/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/tmb_figs/interactions_flyability.pdf", 
        width = 4.5, height = 4.8, dpi = 400)
 
 # STEP 6: predictions for the Alps + PLOTS ------------------------------------------------------------------ 
@@ -242,11 +242,11 @@ TMB_M <- readRDS( "TMB_model.rds")
 topo_df <- readRDS("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/topo_df_100_LF.rds")
 
 #prepare dist to ridge to be used as the base layer for plotting
- ridge_100 <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/ridge_100_LF.tif") %>% 
+ridge_100 <- rast("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/ridge_100_LF.tif") %>% 
    #aggregate(fact = 5) %>% #200*200 m
    as.data.frame(xy = T) %>% 
    drop_na(distance_to_ridge_line_mask)
- ridge_100[ridge_100$distance_to_ridge_line_mask > 5000, "distance_to_ridge_line_mask"] <- NA #do this for the plot to look nicer... NA values will be white
+ridge_100[ridge_100$distance_to_ridge_line_mask > 5000, "distance_to_ridge_line_mask"] <- NA #do this for the plot to look nicer... NA values will be white
 
 #saveRDS(ridge_100, file = "ridge_100_LF_df.rds")
 
@@ -333,6 +333,46 @@ for(x in wks_ls){
 }
 
 Sys.time() - start #30 min per week
+
+
+##### making the plots using the saved weekly predictions #####
+pred_files <- list.files("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/weekly_preds_alps_sep23/",
+                         pattern = ".rds", full.names = T)
+
+setwd("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/tmb_figs/alpine_preds_7/raw_preds_white/")
+
+lapply(pred_files, function(wk_pred){
+  
+  wk_pred <- readRDS(wk_pred)
+  
+  one_week <- wk_pred %>% 
+    distinct(weeks_since_emig) %>% 
+    pull(weeks_since_emig)
+  
+  week_i <- one_week %>% 
+    str_pad(3,"left","0")
+  
+#raw prediction plots
+  p <- wk_pred %>% 
+    ggplot() +
+    geom_tile(aes(x = location.long, y = location.lat, fill = probs)) +
+    scale_fill_gradientn(colours = oce::oceColorsPalette(100), limits = c(0,1),
+                         na.value = "white", name = "Flyability") +
+    labs(x = "", y = "", title = paste0("Week ", one_week, " after emigration")) +
+    theme_void() + 
+    theme(panel.background = element_rect(fill = "white",
+                                          color = "white"),
+          plot.background = element_rect(fill = "white",
+                                         color = "white"))
+      
+ggsave(plot = p, filename = paste0(week_i, "_alpine_pred.tiff"), device = "tiff", width = 7, height = 4.5, dpi = 400) #3min
+
+rm(p)
+gc()
+
+print(paste0("week ", week_i, " of 156 done!"))
+
+})
 
 #create animation of the maps. run the following code in the terminal
 #ffmpeg -framerate 25 -pattern_type glob -i "*.tiff" output.mp4
