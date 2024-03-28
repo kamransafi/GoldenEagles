@@ -19,41 +19,42 @@ ridge_100 <- rast("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de
 
 
 #open bird flight data
+flight <- list.files("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/segmented_eagle_tracks/", pattern = ".rds", full.names = T)
 
+#explore one individual first
 
-#build a binomial logistic regression, with thermal soaring as 0 and slope soaring as 1
-#or, even better, make a multinomial model#open terrain layers and put onto one stack. there was no difference between flight types regarding terrain at 100 meters. try the higher res
-
-
-ls <- list.files("/home/enourani/Desktop/golden_eagle_static_layers", pattern = ".tif", full.names = T)
-High_res <- ls[grep(ls, pattern = "100", invert = T)]
-
-dem <- rast("/home/enourani/ownCloud/Work/GIS_files/EU_DEM/eu_dem_v11_E40N20/eu_dem_v11_E40N20.TIF")
-
-stck <- lapply(High_res, rast) %>% 
-  rast()
-
-
-#open matched data with wind speed and flight type: one individual first
 load("/home/enourani/Desktop/Golden_Eagle_data/gps_acc_age/Almen19 (eobs 7001)_gps_acc_age.RData") #gaa_df 
-one_ind <- gaa_df %>% 
-  st_as_sf(coords = c("location_long", "location_lat"), crs = wgs) %>% 
+
+one_ind <- flight[[10]] %>% 
+  readRDS() %>% 
+  #filter(flightClust_smooth3 %in% c("circular soaring", "linear soaring")) %>% 
+  st_as_sf(coords = c("location.long", "location.lat"), crs = "epsg:4326") %>% 
   as("SpatVector") %>% 
-  project(crs(stck)) #it is faster to reproject this to the terrain and then back to wgs, than to project the terrain to wgs... also when I save
-                     #the topo_wgs, then I can't open it anymore. some permission errors with the new POP OS version
+  terra::project(crs(ridge_100)) #it is faster to reproject this to the terrain and then back to wgs, than to project the terrain to wgs... 
   
 #extract values for tracking points
-tr_ann <- cbind(one_ind, extract(x = stck, y = one_ind, method = "bilinear"))
+terrain_ann <- one_ind %>% 
+  extract(x = TRI_100, y = ., method = "simple", bind = T) %>% 
+  extract(x = ridge_100, y = ., method = "simple", bind = T) 
 
-saveRDS(tr_ann, file = "one_ind_terrain_annotation.rds") #raster file (100m res)
+terrain_df <- terrain_ann %>% 
+  data.frame(., geom(.))
 
-tr_df <- tr_ann %>%
-  project("+proj=longlat +datum=WGS84") %>% #project back to wgs 
-  as.data.frame(geom = "XY") #keep coordinates in the df
+# ----------- STEP 2: box plots -----------------
 
-saveRDS(tr_df, file = "one_ind_terrain_annotation_df.rds") #df file (100m res)
-saveRDS(tr_df, file = "one_ind_terrain_annotation_df_hres.rds") #df file (original res)
+ggplot(aes(y = TRI, x = flightClust_smooth3), data = terrain_df) + 
+  geom_boxplot() +
+ # geom_jitter(width = 0.2, height = 0, size = 3, alpha = 0.8) +
+  theme_minimal()
 
+ggplot(aes(y = distance_to_ridge_line_mask, x = flightClust_smooth3), data = terrain_df) + 
+  geom_boxplot() +
+  # geom_jitter(width = 0.2, height = 0, size = 3, alpha = 0.8) +
+  theme_minimal()
+
+
+
+#%%% old
 # ----------- STEP 2: cluster/PCA to classify flight type based on the terrain -----------------
 
 #make density plots comparing the two categories: all look very similar

@@ -37,6 +37,14 @@ data %>%
 dplyr::select(c("TRI_100", "step_length", "weeks_since_emig", "ridge_100", "dem_100")) %>% 
   correlate() #TRI and ridge = 0.44
 
+### calculate total hours of flight for the manuscript
+data %>% 
+  filter(used == 1) %>% 
+  mutate(year = year(timestamp),
+         yday = yday(timestamp),
+         hour = hour(timestamp)) %>% 
+  group_by(individual.local.identifier, year, yday, hour) #46,005 groups
+
 # STEP 1: run the model ------------------------------------------------------------------ 
 #this is based on Muff et al:
 #https://conservancy.umn.edu/bitstream/handle/11299/204737/Otters_SSF.html?sequence=40&isAllowed=y#glmmtmb-1
