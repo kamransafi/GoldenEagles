@@ -1,5 +1,6 @@
-#Script for preparing golden eagle tracking data for step-selection analysis as reported in Nourani et al. 2023
-# Elham Nourani, PhD. 25.07.2023
+#Script for preparing golden eagle tracking data for step-selection analysis as reported in Nourani et al. 2024, eLife (https://doi.org/10.7554/eLife.98818.1)
+#script 1/2
+# Elham Nourani, PhD. 12.07.2024
 # enourani@ab.mpg.de
 
 library(tidyverse)
@@ -15,12 +16,8 @@ library(parallel)
 library(mapview)
 library(units)
 
-#setwd("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/public_data/")
-
-#GPS_data.csv is here: "/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/movebank_doi/"
-
 ##### STEP 0: open tracking data, functions and define variables #####
-data <- read.csv("GPS_data.csv") %>%  #this is the post-dispersal data. weeks_since_emig is the column representing weeks since dispersal
+data <- read.csv("GPS_data.csv") %>%  #this is the post-dispersal data. weeks_since_emig is the column representing weeks since start of dispersal
   mutate(timestamp = as.POSIXct(timestamp, tz = "UTC"))
 
 #source the functions from the github repository
@@ -34,9 +31,8 @@ wgs <- crs("+proj=longlat +datum=WGS84 +no_defs")
 # 1.1: estimate flight altitude -----
 
 #open geoid and dem layers
-geo <- rast("GIS_layers/EGM96_us_nga_egm96_15.tif")
-dem <- rast("GIS_layers/region-alpes-dem.tif") %>% 
-  project("+proj=longlat +datum=WGS84 +no_defs")
+geo <- rast("EGM96_us_nga_egm96_15.tif")
+dem <- rast("dem_Alpine_region.tif")
 
 #extract elevation and geoid values for each tracking point 
 data_h <- data %>% 
@@ -134,8 +130,6 @@ sp_obj_ls <- lapply(mv_ls, function(track){ #for each individual (i.e. track),
     
 }) 
 
-#saveRDS(sp_obj_ls, file = "prep_material/sl_60_min_55_ind.rds") #tolerance of 10 min
-
 # 2.2: estimate turning angles and step length distributions -----
 
 #put everything in one data frame
@@ -179,8 +173,6 @@ plot(function(x) dvonmises(x, mu = mu, kappa = kappa), add = TRUE, from = -3.5, 
 plot(fit.gamma1)
 
 # 2.2: generate alternative steps -----
-
-sp_obj_ls <- readRDS("sl_60_min_55_ind2.rds")
 
 n_alt <- 50
 #prepare cluster for parallel computation
@@ -259,16 +251,11 @@ used_av_track <- parLapply(mycl, sp_obj_ls, function(track){ #for each track
 Sys.time() - start_time # Check how long this step took. On my machine this took 
 stopCluster(mycl) 
 
-
+#add stratum ID
 used_av_track <- used_av_track %>% 
   mutate(stratum = paste(individual.local.identifier, burst_id, step_id, sep = "_"))
 
-#temporary save
-saveRDS(used_av_track, "/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/rnd_steps_for_public_dev.rds")
-
 ##### STEP 3: step-selection prep - annotation with topographic info #####
-
-used_av_track <- readRDS("/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/rnd_steps_for_public_dev.rds")
 
 #open topographic layers
 TRI_100 <- rast("TRI_100_LF.tif")
@@ -288,4 +275,5 @@ topo_ann_df <- used_av_track %>%
          ridge_100 = distance_to_ridge_line_mask,
          TRI_100 = TRI)
 
-#write.csv(topo_ann_df, file = "GPS_data_annotated.csv")
+#The output of this step is stored as "SSF_input_data.csv" in the Edmond repository: https://doi.org/10.17617/3.FM4EJC
+#For the next steps, including data analysis and plotting, see "02_data_analysis.r" in the Github repository

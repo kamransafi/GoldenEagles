@@ -1,6 +1,7 @@
-#Script for step-selection analysis of golden eagle commuting flights as reported in Nourani et al. 2023
+#Script for step-selection analysis of golden eagle commuting flights as reported in Nourani et al. 2024, eLife (https://doi.org/10.7554/eLife.98818.1)
+#script 2/2
 #this script contains the code for reproducing all the plots in the paper
-#Elham Nourani, PhD. 25.07.2023
+#Elham Nourani, PhD. 12.07.2024
 #enourani@ab.mpg.de
 
 library(tidyverse)
@@ -17,7 +18,7 @@ library(stars)
 
 ##### STEP 1: Open annotated data #####
 
-data <- read.csv("SSF_input_data.csv") %>%  #this is the post-emigration data, including all the available and alternative steps
+data <- read.csv("SSF_input_data.csv") %>%  #this is the post-emigration data, including all the available and alternative steps. See "01_data_preparation.r" for data preparation steps.
   mutate(timestamp = as.POSIXct(timestamp, tz = "UTC"))
 
 #define colors and variables to use later on
@@ -278,12 +279,12 @@ ridge_100[ridge_100$distance_to_ridge_line_mask > 5000, "distance_to_ridge_line_
 #this whole process is quite memory hungry. 
 #to save the plots, create an output directory and call the path "output_path"
 
-#output_path <- "/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/tmb_figs/alpine_preds_7/raw_preds/"
+#output_path <- "your_path"
 
 #read in model rds
 TMB_M <- readRDS("TMB_model.rds")
 
-wks_ls <- split(data, data$weeks_since_emig)[43:156] #make a list with one element per week.
+wks_ls <- split(data, data$weeks_since_emig) #make a list with one element per week.
 
 #regularly clean up the memory
 gc()
@@ -395,7 +396,9 @@ p <- ggplot(areas_df, aes(x = week_since_emig, y = area_km2)) +
         axis.title.x = element_text(hjust = 1, margin = margin(t = 6)), #align the axis labels
         axis.title.y = element_text(angle = 90, hjust = 1, margin = margin(r = 6)))
 
-#compare with the flyable areas with the Alpine region
+
+
+#compare with the flyable areas within the Alpine region
 #calculate the area of the Alps: calculate the number of cells within the ridge line raster that has been masked using the perimeter of the Alpine
 alps <- rast("ridge_100_LF.tif")
 
@@ -409,6 +412,9 @@ alps_area <- alps %>%
 #add a column for the ratio of the Alpine region being classified as flyable 
 areas <- areas_df %>% 
   mutate(alp_ratio = area_km2/alps_area$area_km2)
+
+
+##### STEP 12: PLOT Fig. S2  Used areas #####
 
 #calculate total area used by the birds per week
 data_used <- data %>% 
@@ -464,31 +470,23 @@ p <- ggplot(used_area_wk, aes(x = weeks_since_emig, y = area_km2)) +
 
 ##### Session info #####
 
-# R version 4.3.1 (2023-06-16)
-# Platform: x86_64-pc-linux-gnu (64-bit)
-# Running under: Ubuntu 22.04.2 LTS
+# R version 4.4.1 (2024-06-14)
+# Platform: x86_64-pc-linux-gnu
+# Running under: Ubuntu 22.04.4 LTS
 # 
 # attached base packages:
-#   [1] stats     graphics  grDevices utils     datasets  methods   base     
+#   [1] parallel  stats     graphics  grDevices utils     datasets  methods   base     
 # 
 # other attached packages:
-# [1] stars_0.6-2        abind_1.4-5        move2_0.2.2        sf_1.0-14         
-# [5] ggnewscale_0.4.9   terra_1.7-39       oce_1.8-1          gsw_1.1-1         
-# [9] performance_0.10.4 corrr_0.4.4        lubridate_1.9.2    forcats_1.0.0     
-# [13] stringr_1.5.0      dplyr_1.1.2        purrr_1.0.1        readr_2.1.4       
-# [17] tidyr_1.3.0        tibble_3.2.1       ggplot2_3.4.2      tidyverse_2.0.0   
+#  [1] units_0.8-5         mapview_2.11.2      fitdistrplus_1.1-11 survival_3.7-0      circular_0.5-0      CircStats_0.2-6     boot_1.3-30         MASS_7.3-60.0.1     EMbC_2.0.4          stars_0.6-5         abind_1.4-5        
+# [12] move2_0.3.0         sf_1.0-16           ggnewscale_0.4.10   terra_1.7-78        oce_1.8-2           gsw_1.1-1           performance_0.12.0  glmmTMB_1.1.9       corrr_0.4.4         lubridate_1.9.3     forcats_1.0.0      
+# [23] stringr_1.5.1       dplyr_1.1.4         purrr_1.0.2         readr_2.1.5         tidyr_1.3.1         tibble_3.2.1        ggplot2_3.5.1       tidyverse_2.0.0    
 # 
 # loaded via a namespace (and not attached):
-# [1] rstudioapi_0.15.0  magrittr_2.0.3     vctrs_0.6.3        KernSmooth_2.23-22
-# [5] TMB_1.9.5          lifecycle_1.0.3    pkgconfig_2.0.3    Matrix_1.6-0      
-# [9] R6_2.5.1           colorspace_2.1-0   lwgeom_0.2-8       fansi_1.0.4       
-# [13] timechange_0.2.0   compiler_4.3.1     proxy_0.4-26       bit64_4.0.5       
-# [17] withr_2.5.0        DBI_1.1.3          MASS_7.3-60        classInt_0.4-9    
-# [21] gtools_3.9.4       tools_4.3.1        units_0.8-0        glue_1.6.2        
-# [25] nlme_3.1-162       grid_4.3.1         generics_0.1.3     gtable_0.3.3      
-# [29] tzdb_0.4.0         class_7.3-22       hms_1.1.3          utf8_1.2.3        
-# [33] pillar_1.9.0       vroom_1.6.3        splines_4.3.1      lattice_0.21-8    
-# [37] bit_4.0.5          tidyselect_1.2.0   stringi_1.7.12     boot_1.3-28       
-# [41] codetools_0.2-19   cli_3.6.1          munsell_0.5.0      Rcpp_1.0.11       
-# [45] parallel_4.3.1     assertthat_0.2.1   scales_1.2.1       e1071_1.7-9       
-# [49] insight_0.19.3     crayon_1.5.2       rlang_1.1.1 
+# [1] tidyselect_1.2.1    fastmap_1.2.0       leaflet_2.2.2       digest_0.6.35       timechange_0.3.0    lifecycle_1.0.4     magrittr_2.0.3      compiler_4.4.1      rlang_1.1.4         tools_4.4.1         utf8_1.2.4         
+# [12] htmlwidgets_1.6.4   bit_4.0.5           sp_2.1-4            classInt_0.4-10     mnormt_2.1.1        RColorBrewer_1.1-3  suntools_1.0.0      KernSmooth_2.23-24  withr_3.0.0         numDeriv_2016.8-1.1 stats4_4.4.1       
+# [23] grid_4.4.1          fansi_1.0.6         leafem_0.2.3        e1071_1.7-14        colorspace_2.1-0    scales_1.3.0        gtools_3.9.5        insight_0.20.1      cli_3.6.2           mvtnorm_1.2-5       crayon_1.5.2       
+# [34] generics_0.1.3      rstudioapi_0.16.0   tzdb_0.4.0          minqa_1.2.7         DBI_1.2.3           proxy_0.4-27        splines_4.4.1       assertthat_0.2.1    base64enc_0.1-3     vctrs_0.6.5         Matrix_1.6-5       
+# [45] hms_1.1.3           bit64_4.0.5         crosstalk_1.2.1     glue_1.7.0          nloptr_2.1.1        codetools_0.2-19    stringi_1.8.4       gtable_0.3.5        raster_3.6-26       lme4_1.1-35.5       munsell_0.5.1      
+# [56] pillar_1.9.0        htmltools_0.5.8.1   satellite_1.0.5     R6_2.5.1            TMB_1.9.13          vroom_1.6.5         lattice_0.22-5      png_0.1-8           class_7.3-22        Rcpp_1.0.12         nlme_3.1-165       
+# [67] mgcv_1.9-1          pkgconfig_2.0.3    
