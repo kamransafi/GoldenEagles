@@ -12,13 +12,18 @@ library(CircStats)
 library(circular)
 library(fitdistrplus)
 library(parallel)
+library(mapview)
+library(units)
 
-#setwd("/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/public_data/")
+#setwd("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/public_data/")
+
+#GPS_data.csv is here: "/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/movebank_doi/"
 
 ##### STEP 0: open tracking data, functions and define variables #####
 data <- read.csv("GPS_data.csv") %>%  #this is the post-dispersal data. weeks_since_emig is the column representing weeks since dispersal
   mutate(timestamp = as.POSIXct(timestamp, tz = "UTC"))
 
+#source the functions from the github repository
 source("functions.r")
 
 meters_proj <- st_crs("+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs +type=crs")
@@ -29,8 +34,8 @@ wgs <- crs("+proj=longlat +datum=WGS84 +no_defs")
 # 1.1: estimate flight altitude -----
 
 #open geoid and dem layers
-geo <- rast("/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/EGM96_us_nga_egm96_15.tif")
-dem <- rast("/home/mahle68/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/public_data/GIS_layers/region-alpes-dem.tif") %>% 
+geo <- rast("GIS_layers/EGM96_us_nga_egm96_15.tif")
+dem <- rast("GIS_layers/region-alpes-dem.tif") %>% 
   project("+proj=longlat +datum=WGS84 +no_defs")
 
 #extract elevation and geoid values for each tracking point 
@@ -40,10 +45,9 @@ data_h <- data %>%
   extract(x = geo, y = ., method = "simple", bind = T) %>% 
   data.frame(., geom(.)) %>% 
   dplyr::select(-c("geom", "part", "hole")) %>% 
-  rename(dem = eu_dem_v11_E40N20,
-         geoid = EGM96_us_nga_egm96_15) %>% 
+  rename(dem = eu_dem_v11_E40N20) %>% 
   #calculate flight altitude as height above mean sea level - dem. height above sea level is height above ellipsoid - geoid
-  mutate(height_msl = height.above.ellipsoid - geoid) %>% 
+  mutate(height_msl = height.above.ellipsoid - geoid_undulation) %>% 
   mutate(height_ground = height_msl - dem)
 
 # 1.2: calculate ground speed -----
@@ -130,7 +134,7 @@ sp_obj_ls <- lapply(mv_ls, function(track){ #for each individual (i.e. track),
     
 }) 
 
-saveRDS(sp_obj_ls, file = "prep_material/sl_60_min_55_ind.rds") #tolerance of 10 min
+#saveRDS(sp_obj_ls, file = "prep_material/sl_60_min_55_ind.rds") #tolerance of 10 min
 
 # 2.2: estimate turning angles and step length distributions -----
 
@@ -193,7 +197,7 @@ clusterEvalQ(mycl, { #the packages that will be used within the ParLapply call
   library(units)
 })
 
-(b <- Sys.time()) 
+(start_time <- Sys.time()) 
 used_av_track <- parLapply(mycl, sp_obj_ls, function(track){ #for each track
   
   lapply(split(track,track$burst_id),function(burst){ #for each burst,
@@ -216,7 +220,7 @@ used_av_track <- parLapply(mycl, sp_obj_ls, function(track){ #for each track
       #randomly generate n alternative points
       rnd <- data.frame(turning_angle = as.vector(rvonmises(n = n_alt, mu = mu, kappa = kappa)), #randomly generate n step lengths and turning angles
                         step_length = rgamma(n = n_alt, shape = fit.gamma1$estimate[[1]], rate = fit.gamma1$estimate[[2]]) * 1000) %>% 
-        #find the gepgraphic location of each alternative point; calculate bearing to the next point: add ta to the bearing of the previous point
+        #find the geographic location of each alternative point; calculate bearing to the next point: add ta to the bearing of the previous point
         mutate(lon = st_coordinates(current_point_m)[,1] + step_length*cos(turning_angle),
                lat = st_coordinates(current_point_m)[,2] + step_length*sin(turning_angle))
       
@@ -252,7 +256,7 @@ used_av_track <- parLapply(mycl, sp_obj_ls, function(track){ #for each track
 }) %>% 
   bind_rows()
 
-Sys.time() - b # 6 min
+Sys.time() - start_time # Check how long this step took. On my machine this took 
 stopCluster(mycl) 
 
 

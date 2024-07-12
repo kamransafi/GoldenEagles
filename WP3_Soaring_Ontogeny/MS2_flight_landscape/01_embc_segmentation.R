@@ -18,7 +18,7 @@ library(data.table); setDTthreads(percent = 65) #set this so getMovebankData wor
 wgs <- CRS("+proj=longlat +datum=WGS84 +no_defs")
 meters_proj <- CRS("+proj=moll +ellps=WGS84")
 
-setwd("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/")
+setwd("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/")
 
 
 # STEP 1: Download data ----------------------------------------------------------------
@@ -83,8 +83,8 @@ saveRDS(post_em_20m, file = "post_em_df_20min_68n.rds")
 post_em <- readRDS("post_em_df_20min_68n.rds")
 
 #open geoid and dem layer
-geo <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/EGM96_us_nga_egm96_15.tif")
-dem <- rast("/home/enourani/ownCloud/Work/Projects/GE_ontogeny_of_soaring/R_files/Alps_east_west_dem.tif") %>% 
+geo <- rast("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/EGM96_us_nga_egm96_15.tif")
+dem <- rast("/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/R_files/Alps_east_west_dem.tif") %>% 
   project("+proj=longlat +datum=WGS84 +no_defs")
 
 
@@ -155,6 +155,32 @@ ln <- SpatialLines(list(Lines(list(Line(smpl)), "line1")))
 proj4string(ln) <- wgs
 
 mapview(ln, color = "gray") + mapview(smpl, zcol = "embc_clst")
+
+### summary info for the different categories
+bc_output <- readRDS("embc_output_20min_61ind.rds") #n = 61.. some of these have very few data points
+
+bc_output <- bc_output %>% 
+  mutate(embc_used = ifelse(embc_clst_smth %in% c(3,4), "used", "not_used"))
+
+clr <- oce::oceColorsPalette(100)[20] 
+#clr2 <- oce::oceColorsPalette(100)[80]
+
+cols <- c(used = clr,
+          not_used = "gray40")
+
+p <- ggplot(bc_output, aes(x = ground_speed, y = height_ground, color = embc_used)) +
+  geom_point(size = 1.5,  alpha = .4) +
+  scale_color_manual(values = cols) + 
+  labs(color = "") +
+  labs(x = "Ground speed (m/s)", y = "Height above ground (m)") +
+  theme_minimal() +
+  theme(text = element_text(size = 8), #font size should be between 6-8
+        axis.title.x = element_text(hjust = 1, margin = margin(t=6)), #align the axis labels
+        axis.title.y = element_text(angle = 90, hjust = 1, margin=margin(r=6)))
+
+ggsave(plot = p, filename = "/home/enourani/ownCloud - enourani@ab.mpg.de@owncloud.gwdg.de/Work/Projects/GE_ontogeny_of_soaring/paper_prep/submission_elife/revision1/embc_classes.png", 
+       width = 4, height = 3)
+
 
 ##################
 #only look at levels 3 and 4

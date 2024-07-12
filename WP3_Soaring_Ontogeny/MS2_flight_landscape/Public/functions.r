@@ -7,8 +7,8 @@ calculate_metrics <- function(data) {
   data %>%
     mutate(
       step_length = mt_distance(.),
-      turning_angle_rad = mt_turnangle(.) - set_units(pi, "rad") , #the mt_turnangle claims to return values in positive and negative, but they are all positive. subtract 2*pi to make them in the correct range
-      turning_angle_deg = set_units(turning_angle_rad, "degrees")
+      turning_angle_rad = mt_turnangle(., units = "rad"),
+      turning_angle_deg =  mt_turnangle(., units = "degrees")
     )
 }
 

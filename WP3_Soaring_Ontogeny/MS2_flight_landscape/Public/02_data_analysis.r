@@ -383,6 +383,7 @@ areas_df <- files %>%
   map_df(~ get(load(file = .x)))  %>%
   mutate(week_since_emig = as.numeric(week_since_emig))
 
+#plot flyable area over time
 X11(width = 3.4, height = 2) 
 p <- ggplot(areas_df, aes(x = week_since_emig, y = area_km2)) +
   geom_point(size = 1.5,  alpha = .4, color = clr, fill = clr) +
@@ -448,6 +449,17 @@ used_area_wk <- lapply(1:length(mv_ls), function(x){
 }) %>% 
   reduce(rbind)
 
+#plot cumulative area used over time
+X11(width = 3.4, height = 2) 
+p <- ggplot(used_area_wk, aes(x = weeks_since_emig, y = area_km2)) +
+  geom_point(size = 1.5,  alpha = .4, color = clr, fill = clr) +
+  labs(x = "Weeks since emigration",
+       y = bquote("Cumulative area used " (km^2))) +
+  theme_minimal() +
+  theme(plot.margin = margin(0, 5, 0, 0, "pt"),
+        text = element_text(size = 8), #font size should be between 6-8
+        axis.title.x = element_text(hjust = 1, margin = margin(t = 6)), #align the axis labels
+        axis.title.y = element_text(angle = 90, hjust = 1, margin = margin(r = 6)))
 
 
 ##### Session info #####

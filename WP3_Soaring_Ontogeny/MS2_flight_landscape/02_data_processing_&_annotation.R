@@ -31,7 +31,7 @@ flight <- bc_output %>%
 
 saveRDS(flight, file = "flight_only_20min_56ind.rds") #n = 56
 
-#did I filter for post dispersal!??? yes!!
+
 
 # STEP 2: variogram to decide on data resolution ----------------------------------------------------------------
 
